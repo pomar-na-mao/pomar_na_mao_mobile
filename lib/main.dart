@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'app/pomar_na_mao_app.dart';
+import 'core/config/app_config.dart';
+import 'core/di/app_dependencies.dart';
 
 void main() {
-  runApp(const MainApp());
-}
+  // Garante que os bindings do Flutter estejam iniciados antes do runApp
+  WidgetsFlutterBinding.ensureInitialized();
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+  final supabaseClient = SupabaseClient(
+    AppConfig.supabaseUrl,
+    AppConfig.supabasePublishableKey,
+  );
 
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(body: Center(child: Text('Pomar na mão'))),
-    );
-  }
+  final dependencies = AppDependencies.fromSupabaseClient(supabaseClient);
+
+  runApp(PomarNaMaoApp(dependencies: dependencies));
 }
