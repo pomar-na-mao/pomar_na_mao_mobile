@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pomar_na_mao_mobile/app/widgets/main_shell.dart';
+import 'package:pomar_na_mao_mobile/app/widgets/splash_screen.dart';
 import 'package:pomar_na_mao_mobile/core/di/app_dependencies.dart';
 import 'package:pomar_na_mao_mobile/core/di/app_scope.dart';
 
@@ -12,6 +14,13 @@ class PomarNaMaoApp extends StatefulWidget {
 }
 
 class _PomarNaMaoAppState extends State<PomarNaMaoApp> {
+  var _showSplash = true;
+
+  void _hideSplash() {
+    if (!mounted || !_showSplash) return;
+    setState(() => _showSplash = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     Widget app = MaterialApp(
@@ -21,7 +30,16 @@ class _PomarNaMaoAppState extends State<PomarNaMaoApp> {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3C6E47)),
         useMaterial3: true,
       ),
-      home: Scaffold(body: Center(child: Text('Pomar na mão'))),
+      //home: Scaffold(body: Center(child: Text('Pomar na mão'))),
+      home: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 400),
+        child: _showSplash
+            ? SplashScreen(
+                key: const ValueKey('splash'),
+                onFinished: _hideSplash,
+              )
+            : MainShell(key: const ValueKey('main-shell')),
+      ),
     );
 
     if (widget.dependencies case final deps?) {
