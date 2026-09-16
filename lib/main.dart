@@ -6,15 +6,16 @@ import 'core/config/app_config.dart';
 import 'core/di/app_dependencies.dart';
 
 void main() {
-  // Garante que os bindings do Flutter estejam iniciados antes do runApp
   WidgetsFlutterBinding.ensureInitialized();
-
   final supabaseClient = SupabaseClient(
     AppConfig.supabaseUrl,
     AppConfig.supabasePublishableKey,
   );
-
   final dependencies = AppDependencies.fromSupabaseClient(supabaseClient);
 
-  runApp(PomarNaMaoApp(dependencies: dependencies));
+  runApp(
+    PomarNaMaoApp(
+      dependencies: dependencies,
+    ),
+  );
 }
