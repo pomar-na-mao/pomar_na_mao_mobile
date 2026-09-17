@@ -19,9 +19,9 @@ void main() {
     expect(profile.farmName, 'Sítio São Francisco');
     expect(profile.totalArea, '54 ha');
     expect(profile.crop, 'Avocado');
-    expect(profile.spacing, '7 × 7 m a 8 × 8 m');
+    expect(profile.spacing, '8 × 5 m');
     expect(profile.classification, 'Semi-adensado');
-    expect(profile.density, '70 a 100 plantas/ha');
+    expect(profile.density, '250 plantas/ha');
     expect(profile.variety, 'Hass');
   });
 }

@@ -175,9 +175,9 @@ void main() {
     expect(find.bySemanticsLabel('Ilustração de avocado'), findsOneWidget);
     expect(find.text('21.809'), findsOneWidget);
     expect(find.text('2'), findsOneWidget);
-    expect(find.text('7 × 7 m a 8 × 8 m'), findsOneWidget);
+    expect(find.text('8 × 5 m'), findsOneWidget);
     expect(find.text('Semi-adensado'), findsOneWidget);
-    expect(find.text('70 a 100 plantas/ha'), findsOneWidget);
+    expect(find.text('250 plantas/ha'), findsOneWidget);
     expect(find.text('Hass'), findsOneWidget);
     expect(find.text('Fazenda'), findsOneWidget);
     expect(find.text('Zona A'), findsOneWidget);

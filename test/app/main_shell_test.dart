@@ -58,6 +58,43 @@ class ShellLocationService implements LocationService {
 }
 
 void main() {
+  testWidgets('shows the four destinations in order and selects each one', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(420, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const MaterialApp(home: MainShell()));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widgetList<NavigationDestination>(find.byType(NavigationDestination))
+          .map((destination) => destination.label),
+      ['Inventário', 'Fazenda', 'Operações', 'Sobre'],
+    );
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      0,
+    );
+
+    for (final (label, index) in [
+      ('Fazenda', 1),
+      ('Operações', 2),
+      ('Sobre', 3),
+      ('Inventário', 0),
+    ]) {
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        index,
+      );
+    }
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('opens inventory first and preserves it across navigation', (
     tester,
   ) async {
@@ -91,6 +128,10 @@ void main() {
     expect(find.text('Sítio São Francisco'), findsOneWidget);
     expect(find.text('21.809'), findsOneWidget);
     expect(inventoryRepository.calls, 1);
+
+    await tester.tap(find.text('Operações'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cuidado em cada etapa'), findsOneWidget);
 
     await tester.tap(find.text('Sobre'));
     await tester.pumpAndSettle();

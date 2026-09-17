@@ -1,10 +1,4 @@
-# main-navigation Specification
-
-## Purpose
-
-Fornecer acesso previsível às três áreas principais do aplicativo por meio de uma navegação inferior persistente e adequada a dispositivos móveis.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Exibir os destinos principais
 O aplicativo SHALL exibir uma barra de navegação inferior com os destinos Inventário, Fazenda, Operações e Sobre, nessa ordem, identificados por texto e ícone.
@@ -35,10 +29,3 @@ O aplicativo SHALL trocar o conteúdo principal e o estado selecionado da barra 
 #### Scenario: Retornar ao Inventário
 - **WHEN** o usuário seleciona Inventário na barra inferior
 - **THEN** o sistema exibe a tela Inventário e marca Inventário como selecionado
-
-### Requirement: Disponibilizar telas iniciais reservadas
-O aplicativo SHALL fornecer telas acessíveis e identificáveis para Inventário e Sobre, mesmo sem funcionalidades de domínio adicionais nesta versão.
-
-#### Scenario: Visualizar tela reservada
-- **WHEN** o usuário abre Inventário ou Sobre
-- **THEN** o sistema exibe a identificação do destino sem apresentar erro ou conteúdo fictício obrigatório
