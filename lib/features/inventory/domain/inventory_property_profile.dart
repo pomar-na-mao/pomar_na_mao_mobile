@@ -13,9 +13,9 @@ class InventoryPropertyProfile {
     farmName: 'Sítio São Francisco',
     totalArea: '54 ha',
     crop: 'Avocado',
-    spacing: '7 × 7 m a 8 × 8 m',
+    spacing: '8 × 5 m',
     classification: 'Semi-adensado',
-    density: '70 a 100 plantas/ha',
+    density: '250 plantas/ha',
     variety: 'Hass',
   );
 
