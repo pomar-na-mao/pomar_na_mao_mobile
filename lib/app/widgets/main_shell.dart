@@ -6,13 +6,10 @@ import '../../features/farm/presentation/farm_map_view.dart';
 import '../../features/farm/presentation/farm_map_view_model.dart';
 import '../../features/inventory/presentation/inventory_view.dart';
 import '../../features/inventory/presentation/inventory_view_model.dart';
+import '../../features/operations/presentation/operations_view.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({
-    this.farmMapViewModel,
-    this.inventoryViewModel,
-    super.key,
-  });
+  const MainShell({this.farmMapViewModel, this.inventoryViewModel, super.key});
 
   final FarmMapViewModel? farmMapViewModel;
   final InventoryViewModel? inventoryViewModel;
@@ -28,8 +25,10 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final scopeDeps = AppScope.maybeOf(context);
-    final effectiveInventoryVm = widget.inventoryViewModel ?? scopeDeps?.inventoryViewModel;
-    final effectiveFarmVm = widget.farmMapViewModel ?? scopeDeps?.farmMapViewModel;
+    final effectiveInventoryVm =
+        widget.inventoryViewModel ?? scopeDeps?.inventoryViewModel;
+    final effectiveFarmVm =
+        widget.farmMapViewModel ?? scopeDeps?.farmMapViewModel;
 
     return Scaffold(
       body: SafeArea(
@@ -45,6 +44,7 @@ class _MainShellState extends State<MainShell> {
               FarmMapView(viewModel: effectiveFarmVm)
             else
               const SizedBox.expand(),
+            const OperationsView(),
             const AboutView(),
           ],
         ),
@@ -67,6 +67,11 @@ class _MainShellState extends State<MainShell> {
             icon: Icon(Icons.eco_outlined),
             selectedIcon: Icon(Icons.eco),
             label: 'Fazenda',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.grid_view_outlined),
+            selectedIcon: Icon(Icons.grid_view),
+            label: 'Operações',
           ),
           NavigationDestination(
             icon: Icon(Icons.info_outline),
