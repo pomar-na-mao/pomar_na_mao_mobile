@@ -52,6 +52,46 @@ void main() {
     expect(polygons, isEmpty);
   });
 
+  test('builds a polygon for every zone with enough points', () {
+    final polygons = buildFarmPolygons(
+      farmPoints: const [],
+      zonePointsById: {
+        'zone-a': zonePoints,
+        'zone-b': zonePoints
+            .map(
+              (point) => RegionPoint(
+                latitude: point.latitude + 0.01,
+                longitude: point.longitude + 0.01,
+                zoneId: 'zone-b',
+              ),
+            )
+            .toList(),
+      },
+    );
+
+    expect(polygons, hasLength(2));
+    expect(
+      polygons.map((polygon) => polygon.polygonId.value),
+      containsAll(['zone_zone-a', 'zone_zone-b']),
+    );
+  });
+
+  test('builds closed dotted boundaries for all valid zones', () {
+    final boundaries = buildDottedZoneBoundaries({
+      'zone-a': zonePoints,
+      'zone-invalid': zonePoints.take(2).toList(),
+    });
+
+    expect(boundaries, hasLength(1));
+    final boundary = boundaries.single;
+    expect(boundary.polylineId, const PolylineId('zone_dotted_zone-a'));
+    expect(boundary.points.first, boundary.points.last);
+    expect(boundary.points, hasLength(zonePoints.length + 1));
+    expect(boundary.color, zoneBoundaryStrokeColor);
+    expect(boundary.patterns.first.toJson(), ['dot']);
+    expect(boundary.patterns.last.toJson(), ['gap', 8.0]);
+  });
+
   test('calculates bounds and center for multiple coordinates', () {
     final viewport = calculateMapCameraViewport(const [
       LatLng(-22.20, -48.95),
