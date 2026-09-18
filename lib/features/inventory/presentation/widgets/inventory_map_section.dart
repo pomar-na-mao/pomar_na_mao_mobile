@@ -11,8 +11,7 @@ import 'inventory_status_banner.dart';
 typedef InventoryMapBuilder = Widget Function(
   BuildContext context,
   List<FarmPoint> farmPoints,
-  List<RegionPoint> zonePoints,
-  String? zoneId,
+  Map<String, List<RegionPoint>> zonePointsById,
 );
 
 class InventoryMapSection extends StatelessWidget {
@@ -39,7 +38,7 @@ class InventoryMapSection extends StatelessWidget {
         children: [
           const InventorySectionTitle(
             title: 'Mapa da propriedade',
-            subtitle: 'Fazenda e Zona A',
+            subtitle: 'Fazenda e zonas de cultivo',
           ),
           const SizedBox(height: 12),
           const Wrap(
@@ -47,7 +46,11 @@ class InventoryMapSection extends StatelessWidget {
             runSpacing: 8,
             children: [
               _MapLegend(color: farmBoundaryStrokeColor, label: 'Fazenda'),
-              _MapLegend(color: zoneBoundaryStrokeColor, label: 'Zona A'),
+              _MapLegend(
+                color: zoneBoundaryStrokeColor,
+                label: 'Zonas A–G',
+                dotted: true,
+              ),
             ],
           ),
           if (!error && viewModel.mapMessage != null) ...[
@@ -72,8 +75,8 @@ class InventoryMapSection extends StatelessWidget {
                         ),
                       )
                     : error
-                        ? InventoryMapError(onRetry: viewModel.loadMapData)
-                        : _buildMap(context),
+                    ? InventoryMapError(onRetry: viewModel.loadMapData)
+                    : _buildMap(context),
               ),
             ),
           ),
@@ -88,41 +91,63 @@ class InventoryMapSection extends StatelessWidget {
       return builder(
         context,
         viewModel.farmBoundaryPoints,
-        viewModel.zoneAPoints,
-        viewModel.zoneAId,
+        viewModel.zonePointsById,
       );
     }
     return InventoryMap(
       farmPoints: viewModel.farmBoundaryPoints,
-      zonePoints: viewModel.zoneAPoints,
-      zoneId: viewModel.zoneAId,
+      zonePointsById: viewModel.zonePointsById,
     );
   }
 }
 
 class _MapLegend extends StatelessWidget {
-  const _MapLegend({required this.color, required this.label});
+  const _MapLegend({
+    required this.color,
+    required this.label,
+    this.dotted = false,
+  });
 
   final Color color;
   final String label;
+  final bool dotted;
 
   @override
   Widget build(BuildContext context) {
     final colorName = color == farmBoundaryStrokeColor ? 'azul' : 'verde';
+    final lineStyle = dotted ? ' pontilhado' : '';
     return Semantics(
-      label: '$label, limite $colorName',
+      label: '$label, limite$lineStyle $colorName',
       child: ExcludeSemantics(
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 18,
-              height: 8,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(4),
+            if (dotted)
+              SizedBox(
+                width: 18,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: List.generate(
+                    4,
+                    (_) => DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const SizedBox.square(dimension: 3),
+                    ),
+                  ),
+                ),
+              )
+            else
+              Container(
+                width: 18,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(4),
+                ),
               ),
-            ),
             const SizedBox(width: 7),
             Text(label, style: Theme.of(context).textTheme.labelLarge),
           ],

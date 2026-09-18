@@ -8,6 +8,29 @@ import '../domain/zone.dart';
 import 'farm_map_geometry.dart';
 import 'farm_map_view_model.dart';
 
+List<Zone> sortZonesByCode(Iterable<Zone> zones) {
+  final sortedZones = zones.toList();
+  sortedZones.sort((first, second) {
+    final firstCode = _normalizedZoneCode(first);
+    final secondCode = _normalizedZoneCode(second);
+    if (firstCode == null && secondCode == null) {
+      return first.name.toLowerCase().compareTo(second.name.toLowerCase());
+    }
+    if (firstCode == null) return 1;
+    if (secondCode == null) return -1;
+
+    final codeComparison = firstCode.compareTo(secondCode);
+    if (codeComparison != 0) return codeComparison;
+    return first.name.toLowerCase().compareTo(second.name.toLowerCase());
+  });
+  return sortedZones;
+}
+
+String? _normalizedZoneCode(Zone zone) {
+  final code = zone.code?.trim().toUpperCase();
+  return code == null || code.isEmpty ? null : code;
+}
+
 class FarmMapView extends StatefulWidget {
   const FarmMapView({required this.viewModel, super.key});
 
@@ -311,6 +334,7 @@ class _ZoneFilterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sortedZones = sortZonesByCode(zones);
     return Align(
       alignment: Alignment.topCenter,
       child: SafeArea(
@@ -331,7 +355,7 @@ class _ZoneFilterCard extends StatelessWidget {
                     value: _FarmMapViewState._allZonesValue,
                     child: Text('Todas as zonas'),
                   ),
-                  ...zones.map(
+                  ...sortedZones.map(
                     (zone) => DropdownMenuItem(
                       value: zone.id,
                       child: Text(

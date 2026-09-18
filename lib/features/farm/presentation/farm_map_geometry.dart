@@ -14,8 +14,10 @@ const zoneBoundaryFillColor = Color(0x334CAF50);
 
 Set<Polygon> buildFarmPolygons({
   required List<FarmPoint> farmPoints,
-  required List<RegionPoint> zonePoints,
-  required String? zoneId,
+  List<RegionPoint> zonePoints = const [],
+  String? zoneId,
+  Map<String, List<RegionPoint>> zonePointsById = const {},
+  bool showZoneStroke = true,
 }) {
   final polygons = <Polygon>{};
 
@@ -35,15 +37,22 @@ Set<Polygon> buildFarmPolygons({
     );
   }
 
-  if (zonePoints.length >= 3 && zoneId != null) {
+  final allZonePoints = <String, List<RegionPoint>>{
+    ...zonePointsById,
+    if (zoneId != null) zoneId: zonePoints,
+  };
+  for (final MapEntry(key: id, value: points) in allZonePoints.entries) {
+    if (points.length < 3) continue;
     polygons.add(
       Polygon(
-        polygonId: PolygonId('zone_$zoneId'),
-        points: zonePoints
+        polygonId: PolygonId('zone_$id'),
+        points: points
             .map((point) => LatLng(point.latitude, point.longitude))
             .toList(growable: false),
-        strokeColor: zoneBoundaryStrokeColor,
-        strokeWidth: 3,
+        strokeColor: showZoneStroke
+            ? zoneBoundaryStrokeColor
+            : Colors.transparent,
+        strokeWidth: showZoneStroke ? 3 : 0,
         fillColor: zoneBoundaryFillColor,
         geodesic: true,
         zIndex: 1,
@@ -52,6 +61,31 @@ Set<Polygon> buildFarmPolygons({
   }
 
   return polygons;
+}
+
+Set<Polyline> buildDottedZoneBoundaries(
+  Map<String, List<RegionPoint>> zonePointsById,
+) {
+  final boundaries = <Polyline>{};
+  for (final MapEntry(key: id, value: points) in zonePointsById.entries) {
+    if (points.length < 3) continue;
+    final coordinates = points
+        .map((point) => LatLng(point.latitude, point.longitude))
+        .toList(growable: true);
+    coordinates.add(coordinates.first);
+    boundaries.add(
+      Polyline(
+        polylineId: PolylineId('zone_dotted_$id'),
+        points: coordinates,
+        color: zoneBoundaryStrokeColor,
+        width: 3,
+        patterns: [PatternItem.dot, PatternItem.gap(8)],
+        geodesic: true,
+        zIndex: 2,
+      ),
+    );
+  }
+  return boundaries;
 }
 
 class MapCameraViewport {

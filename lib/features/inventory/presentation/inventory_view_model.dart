@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import '../../farm/domain/farm_point.dart';
 import '../../farm/domain/farm_repository.dart';
 import '../../farm/domain/region_point.dart';
-import '../../farm/domain/zone.dart';
 import '../../farm/domain/zones_repository.dart';
 import '../domain/inventory_property_profile.dart';
 import '../domain/inventory_repository.dart';
@@ -38,11 +37,8 @@ class InventoryViewModel extends ChangeNotifier {
   List<FarmPoint> _farmBoundaryPoints = const [];
   List<FarmPoint> get farmBoundaryPoints => _farmBoundaryPoints;
 
-  List<RegionPoint> _zoneAPoints = const [];
-  List<RegionPoint> get zoneAPoints => _zoneAPoints;
-
-  String? _zoneAId;
-  String? get zoneAId => _zoneAId;
+  Map<String, List<RegionPoint>> _zonePointsById = const {};
+  Map<String, List<RegionPoint>> get zonePointsById => _zonePointsById;
 
   String? _mapMessage;
   String? get mapMessage => _mapMessage;
@@ -80,8 +76,7 @@ class InventoryViewModel extends ChangeNotifier {
     _notifySafely();
 
     var farmPoints = <FarmPoint>[];
-    var zonePoints = <RegionPoint>[];
-    String? zoneId;
+    var zonePointsById = <String, List<RegionPoint>>{};
     var farmFailed = false;
     var zoneFailed = false;
 
@@ -96,13 +91,26 @@ class InventoryViewModel extends ChangeNotifier {
       () async {
         try {
           final zones = await _zonesRepository.fetchZones();
-          final zoneA = _findZoneA(zones);
-          if (zoneA == null) {
+          if (zones.isEmpty) {
             zoneFailed = true;
             return;
           }
-          zoneId = zoneA.id;
-          zonePoints = await _zonesRepository.fetchRegionsForZone(zoneA.id);
+          final results = await Future.wait(
+            zones.map((zone) async {
+              try {
+                final points = await _zonesRepository.fetchRegionsForZone(
+                  zone.id,
+                );
+                return (zoneId: zone.id, points: points, failed: false);
+              } on Exception {
+                return (zoneId: zone.id, points: <RegionPoint>[], failed: true);
+              }
+            }),
+          );
+          zoneFailed = results.any((result) => result.failed);
+          zonePointsById = {
+            for (final result in results) result.zoneId: result.points,
+          };
         } on Exception {
           zoneFailed = true;
         }
@@ -111,12 +119,13 @@ class InventoryViewModel extends ChangeNotifier {
 
     if (_isDisposed) return;
     _farmBoundaryPoints = farmPoints;
-    _zoneAPoints = zonePoints;
-    _zoneAId = zoneId;
+    _zonePointsById = zonePointsById;
 
     final hasFarmPolygon = farmPoints.length >= 3;
-    final hasZonePolygon = zonePoints.length >= 3;
-    final bothSourcesFailed = farmFailed && zoneFailed;
+    final hasZonePolygon = zonePointsById.values.any(
+      (points) => points.length >= 3,
+    );
+    final bothSourcesFailed = farmFailed && zoneFailed && !hasZonePolygon;
 
     if (bothSourcesFailed) {
       _mapStatus = InventoryLoadStatus.error;
@@ -128,24 +137,14 @@ class InventoryViewModel extends ChangeNotifier {
       } else if (!hasFarmPolygon) {
         _mapMessage = 'O limite da fazenda não pôde ser exibido.';
       } else if (!hasZonePolygon) {
-        _mapMessage = 'A Zona A não pôde ser exibida.';
+        _mapMessage = 'As zonas não puderam ser exibidas.';
+      } else if (zoneFailed) {
+        _mapMessage = 'Algumas zonas não puderam ser exibidas.';
       }
     }
 
     _notifySafely();
   }
-
-  Zone? _findZoneA(List<Zone> zones) {
-    for (final zone in zones) {
-      if (zone.code?.trim().toUpperCase() == 'A') return zone;
-    }
-    for (final zone in zones) {
-      if (_normalize(zone.name) == 'zona a') return zone;
-    }
-    return null;
-  }
-
-  String _normalize(String value) => value.trim().toLowerCase();
 
   void _notifySafely() {
     if (!_isDisposed) notifyListeners();

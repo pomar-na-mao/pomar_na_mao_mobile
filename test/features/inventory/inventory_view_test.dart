@@ -96,12 +96,18 @@ Widget buildSubject(
     home: InventoryView(
       viewModel: viewModel,
       fruitAssetPath: fruitAssetPath,
-      mapBuilder: (context, farmPoints, zonePoints, zoneId) {
+      mapBuilder: (context, farmPoints, zonePointsById) {
+        final zonePointCount = zonePointsById.values.fold<int>(
+          0,
+          (total, points) => total + points.length,
+        );
         return ColoredBox(
           key: const ValueKey('test-map'),
           color: Colors.lightGreen.shade50,
           child: Center(
-            child: Text('${farmPoints.length}/${zonePoints.length}/$zoneId'),
+            child: Text(
+              '${farmPoints.length}/$zonePointCount/${zonePointsById.length}',
+            ),
           ),
         );
       },
@@ -124,9 +130,24 @@ void main() {
       FarmPoint(id: '3', latitude: -22.1, longitude: -48.8, boundaryOrder: 3),
     ];
     const zonePoints = [
-      RegionPoint(latitude: -22.12, longitude: -48.88, zoneId: 'zone-a'),
-      RegionPoint(latitude: -22.16, longitude: -48.90, zoneId: 'zone-a'),
-      RegionPoint(latitude: -22.14, longitude: -48.84, zoneId: 'zone-a'),
+      RegionPoint(
+        latitude: -22.12,
+        longitude: -48.88,
+        region: 'A',
+        zoneId: 'zone-a',
+      ),
+      RegionPoint(
+        latitude: -22.16,
+        longitude: -48.90,
+        region: 'A',
+        zoneId: 'zone-a',
+      ),
+      RegionPoint(
+        latitude: -22.14,
+        longitude: -48.84,
+        region: 'A',
+        zoneId: 'zone-a',
+      ),
     ];
     final coordinates = [
       ...farmPoints.map((point) => LatLng(point.latitude, point.longitude)),
@@ -135,17 +156,49 @@ void main() {
 
     final map = createInventoryGoogleMap(
       farmPoints: farmPoints,
-      zonePoints: zonePoints,
-      zoneId: 'zone-a',
+      zonePointsById: const {'zone-a': zonePoints},
+      zoneLabelIcons: const {'A': BitmapDescriptor.defaultMarker},
       viewport: calculateMapCameraViewport(coordinates),
       onMapCreated: (_) {},
     );
 
     expect(map.polygons, hasLength(2));
-    expect(map.markers, isEmpty);
+    final zonePolygon = map.polygons.singleWhere(
+      (polygon) => polygon.polygonId == const PolygonId('zone_zone-a'),
+    );
+    expect(zonePolygon.strokeColor, Colors.transparent);
+    expect(zonePolygon.strokeWidth, 0);
+    expect(map.polylines, hasLength(1));
+    expect(
+      map.polylines.single.polylineId,
+      const PolylineId('zone_dotted_zone-a'),
+    );
+    expect(map.markers, hasLength(1));
+    expect(map.markers.single.markerId, const MarkerId('zone_label_zone-a'));
+    expect(map.markers.single.infoWindow.title, 'Zona A');
     expect(map.clusterManagers, isEmpty);
     expect(map.myLocationEnabled, isFalse);
     expect(map.myLocationButtonEnabled, isFalse);
+  });
+
+  test('places each zone letter at the center of its polygon', () {
+    const zoneBPoints = [
+      RegionPoint(latitude: -22.10, longitude: -48.90, region: 'Zona B'),
+      RegionPoint(latitude: -22.20, longitude: -48.80, region: 'B'),
+      RegionPoint(latitude: -22.15, longitude: -48.85, region: 'B'),
+    ];
+
+    final markers = buildZoneLabelMarkers(
+      zonePointsById: const {'zone-b': zoneBPoints},
+      iconsByLabel: const {'B': BitmapDescriptor.defaultMarker},
+    );
+
+    expect(markers, hasLength(1));
+    final marker = markers.single;
+    expect(marker.infoWindow.title, 'Zona B');
+    expect(marker.anchor, const Offset(0.5, 0.5));
+    expect(marker.position.latitude, closeTo(-22.15, 0.000001));
+    expect(marker.position.longitude, closeTo(-48.85, 0.000001));
   });
 
   testWidgets('renders all dashboard blocks in semantic order', (tester) async {
@@ -180,9 +233,13 @@ void main() {
     expect(find.text('250 plantas/ha'), findsOneWidget);
     expect(find.text('Hass'), findsOneWidget);
     expect(find.text('Fazenda'), findsOneWidget);
-    expect(find.text('Zona A'), findsOneWidget);
+    expect(find.text('Zonas A–G'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('Zonas A–G, limite pontilhado verde'),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('test-map')), findsOneWidget);
-    expect(find.text('3/3/zone-a'), findsOneWidget);
+    expect(find.text('3/3/1'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     semantics.dispose();
@@ -338,7 +395,7 @@ void main() {
       find.text('Os limites da propriedade estão indisponíveis.'),
       findsOneWidget,
     );
-    expect(find.text('0/0/zone-a'), findsOneWidget);
+    expect(find.text('0/0/1'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

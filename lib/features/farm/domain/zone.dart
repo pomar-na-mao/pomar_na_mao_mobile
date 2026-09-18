@@ -16,7 +16,7 @@ class Zone {
   String get displayName {
     final trimmedCode = code?.trim();
     if (trimmedCode == null || trimmedCode.isEmpty) return name;
-    return '$name ($trimmedCode)';
+    return name;
   }
 
   factory Zone.fromJson(Map<String, dynamic> json) =>

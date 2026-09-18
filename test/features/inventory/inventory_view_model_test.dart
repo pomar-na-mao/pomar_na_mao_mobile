@@ -46,11 +46,13 @@ class FakeFarmRepository implements FarmRepository {
 
 class FakeZonesRepository implements ZonesRepository {
   List<Zone> zones = const [Zone(id: 'zone-a', name: 'Primeira', code: 'A')];
-  List<RegionPoint> regions = const [
-    RegionPoint(latitude: -22.12, longitude: -48.88, zoneId: 'zone-a'),
-    RegionPoint(latitude: -22.16, longitude: -48.90, zoneId: 'zone-a'),
-    RegionPoint(latitude: -22.14, longitude: -48.84, zoneId: 'zone-a'),
-  ];
+  Map<String, List<RegionPoint>> regionsByZone = {
+    'zone-a': const [
+      RegionPoint(latitude: -22.12, longitude: -48.88, zoneId: 'zone-a'),
+      RegionPoint(latitude: -22.16, longitude: -48.90, zoneId: 'zone-a'),
+      RegionPoint(latitude: -22.14, longitude: -48.84, zoneId: 'zone-a'),
+    ],
+  };
   Exception? zonesError;
   Exception? regionsError;
   int zoneCalls = 0;
@@ -65,7 +67,7 @@ class FakeZonesRepository implements ZonesRepository {
   @override
   Future<List<RegionPoint>> fetchRegionsForZone(String zoneId) async {
     if (regionsError case final error?) throw error;
-    return regions;
+    return regionsByZone[zoneId] ?? const [];
   }
 }
 
@@ -95,8 +97,7 @@ void main() {
     expect(viewModel.summary?.existingPlants, 100);
     expect(viewModel.mapStatus, InventoryLoadStatus.success);
     expect(viewModel.farmBoundaryPoints, hasLength(3));
-    expect(viewModel.zoneAPoints, hasLength(3));
-    expect(viewModel.zoneAId, 'zone-a');
+    expect(viewModel.zonePointsById['zone-a'], hasLength(3));
     expect(viewModel.mapMessage, isNull);
   });
 
@@ -129,29 +130,46 @@ void main() {
 
     expect(viewModel.mapStatus, InventoryLoadStatus.success);
     expect(viewModel.farmBoundaryPoints, isEmpty);
-    expect(viewModel.zoneAPoints, hasLength(3));
+    expect(viewModel.zonePointsById['zone-a'], hasLength(3));
     expect(viewModel.mapMessage, 'O limite da fazenda não pôde ser exibido.');
   });
 
-  test('finds Zona A by normalized name when code is unavailable', () async {
-    zonesRepository.zones = const [Zone(id: 'zone-a-name', name: '  ZONA A  ')];
+  test('loads the region points for every zone from A to G', () async {
+    zonesRepository.zones = List.generate(7, (index) {
+      final code = String.fromCharCode('A'.codeUnitAt(0) + index);
+      return Zone(
+        id: 'zone-${code.toLowerCase()}',
+        name: 'Zona $code',
+        code: code,
+      );
+    });
+    zonesRepository.regionsByZone = {
+      for (final zone in zonesRepository.zones)
+        zone.id: List.generate(
+          3,
+          (index) => RegionPoint(
+            latitude: -22 - index / 100,
+            longitude: -48 - index / 100,
+            zoneId: zone.id,
+          ),
+        ),
+    };
 
     await viewModel.loadMapData();
 
-    expect(viewModel.zoneAId, 'zone-a-name');
+    expect(viewModel.zonePointsById.keys, hasLength(7));
+    expect(viewModel.zonePointsById.values, everyElement(hasLength(3)));
     expect(viewModel.mapStatus, InventoryLoadStatus.success);
   });
 
-  test('reports missing Zona A while retaining the farm polygon', () async {
-    zonesRepository.zones = const [
-      Zone(id: 'zone-b', name: 'Zona B', code: 'B'),
-    ];
+  test('reports missing zones while retaining the farm polygon', () async {
+    zonesRepository.zones = const [];
 
     await viewModel.loadMapData();
 
     expect(viewModel.farmBoundaryPoints, hasLength(3));
-    expect(viewModel.zoneAPoints, isEmpty);
-    expect(viewModel.mapMessage, 'A Zona A não pôde ser exibida.');
+    expect(viewModel.zonePointsById, isEmpty);
+    expect(viewModel.mapMessage, 'As zonas não puderam ser exibidas.');
   });
 
   test('reports an error when both geographic sources fail', () async {
