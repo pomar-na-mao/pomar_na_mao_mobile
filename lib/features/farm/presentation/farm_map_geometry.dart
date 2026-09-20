@@ -39,7 +39,7 @@ Set<Polygon> buildFarmPolygons({
 
   final allZonePoints = <String, List<RegionPoint>>{
     ...zonePointsById,
-    if (zoneId != null) zoneId: zonePoints,
+    ?zoneId: zonePoints,
   };
   for (final MapEntry(key: id, value: points) in allZonePoints.entries) {
     if (points.length < 3) continue;

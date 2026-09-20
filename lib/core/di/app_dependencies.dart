@@ -12,6 +12,12 @@ import '../../features/farm/presentation/farm_map_view_model.dart';
 import '../../features/inventory/data/supabase_inventory_repository.dart';
 import '../../features/inventory/domain/inventory_repository.dart';
 import '../../features/inventory/presentation/inventory_view_model.dart';
+import '../../features/operations/data/inspection_database.dart';
+import '../../features/operations/data/inspection_local_store.dart';
+import '../../features/operations/data/inspection_remote_data_source.dart';
+import '../../features/operations/data/inspection_repository.dart';
+import '../../features/operations/domain/inspection_models.dart';
+import '../../features/operations/presentation/inspection_view_model.dart';
 
 /// Container central de injeção de dependências do aplicativo.
 ///
@@ -24,14 +30,20 @@ class AppDependencies {
     required this.zonesRepository,
     required this.inventoryRepository,
     required this.locationService,
+    InspectionRepository? inspectionRepository,
+    this.inspectionDatabase,
     InventoryViewModel? inventoryViewModel,
     FarmMapViewModel? farmMapViewModel,
-  })  : _injectedInventoryViewModel = inventoryViewModel,
-        _injectedFarmMapViewModel = farmMapViewModel;
+    InspectionViewModel? inspectionViewModel,
+  })  : _injectedInspectionRepository = inspectionRepository,
+        _injectedInventoryViewModel = inventoryViewModel,
+        _injectedFarmMapViewModel = farmMapViewModel,
+        _injectedInspectionViewModel = inspectionViewModel;
 
   factory AppDependencies.fromSupabaseClient(
     SupabaseClient supabaseClient, {
     LocationService? locationService,
+    InspectionDatabase? inspectionDatabase,
   }) {
     final farmRepo = SupabaseFarmRepository(supabaseClient);
     final plantsRepo = SupabasePlantsRepository(supabaseClient);
@@ -39,12 +51,23 @@ class AppDependencies {
     final inventoryRepo = SupabaseInventoryRepository(supabaseClient);
     final locService = locationService ?? GeolocatorLocationService();
 
+    final inspDb = inspectionDatabase ??
+        InspectionDatabase(projectUrl: supabaseClient.rest.url.toString());
+    final inspStore = InspectionLocalStore(inspDb);
+    final inspRemote = SupabaseInspectionRemoteDataSource(supabaseClient);
+    final inspRepo = DefaultInspectionRepository(
+      localStore: inspStore,
+      remoteDataSource: inspRemote,
+    );
+
     return AppDependencies(
       farmRepository: farmRepo,
       plantsRepository: plantsRepo,
       zonesRepository: zonesRepo,
       inventoryRepository: inventoryRepo,
       locationService: locService,
+      inspectionDatabase: inspDb,
+      inspectionRepository: inspRepo,
     );
   }
 
@@ -53,9 +76,21 @@ class AppDependencies {
   final ZonesRepository zonesRepository;
   final InventoryRepository inventoryRepository;
   final LocationService locationService;
+  final InspectionDatabase? inspectionDatabase;
+  final InspectionRepository? _injectedInspectionRepository;
+
+  InspectionRepository get inspectionRepository =>
+      _injectedInspectionRepository ??
+      DefaultInspectionRepository(
+        localStore: InspectionLocalStore(
+          inspectionDatabase ?? InspectionDatabase(projectUrl: ''),
+        ),
+        remoteDataSource: FakeEmptyRemoteDataSource(),
+      );
 
   final InventoryViewModel? _injectedInventoryViewModel;
   final FarmMapViewModel? _injectedFarmMapViewModel;
+  final InspectionViewModel? _injectedInspectionViewModel;
 
   late final InventoryViewModel inventoryViewModel =
       _injectedInventoryViewModel ??
@@ -74,9 +109,41 @@ class AppDependencies {
         farmRepository,
       );
 
+  late final InspectionViewModel inspectionViewModel =
+      _injectedInspectionViewModel ??
+      InspectionViewModel(
+        repository: inspectionRepository,
+        zonesRepository: zonesRepository,
+        locationService: locationService,
+      );
+
   /// Libera recursos e encerra listeners dos ViewModels criados.
   void dispose() {
     inventoryViewModel.dispose();
     farmMapViewModel.dispose();
+    inspectionViewModel.dispose();
+    inspectionDatabase?.close();
   }
+}
+
+class FakeEmptyRemoteDataSource implements InspectionRemoteDataSource {
+  @override
+  Future<List<OccurrenceType>> fetchOccurrenceTypes() async => const [];
+
+  @override
+  Future<List<InspectionPlant>> fetchPlants({int pageSize = 1000}) async => const [];
+
+  @override
+  Future<Map<String, Set<String>>> fetchOpenOccurrences(
+    List<String> plantIds, {
+    int batchSize = 500,
+  }) async => const {};
+
+  @override
+  Future<InspectionSnapshot> fetchSnapshot({int pageSize = 1000}) async =>
+      InspectionSnapshot(plants: const [], types: const [], loadedAt: DateTime.now());
+
+  @override
+  Future<InspectionSyncResult> syncInspection(Map<String, dynamic> payload) async =>
+      const InspectionSyncResult(operationId: '', created: 0, updated: 0, resolved: 0);
 }

@@ -15,7 +15,7 @@ class InventoryView extends StatefulWidget {
   const InventoryView({
     required this.viewModel,
     this.mapBuilder,
-    this.fruitAssetPath = 'assets/images/fruit.png',
+    this.fruitAssetPath = 'assets/images/avocado.png',
     super.key,
   });
 
@@ -45,9 +45,9 @@ class _InventoryViewState extends State<InventoryView> {
   }
 
   Future<void> _refresh() => Future.wait([
-        widget.viewModel.loadSummary(),
-        widget.viewModel.loadMapData(),
-      ]);
+    widget.viewModel.loadSummary(),
+    widget.viewModel.loadMapData(),
+  ]);
 
   @override
   Widget build(BuildContext context) {
@@ -63,8 +63,7 @@ class _InventoryViewState extends State<InventoryView> {
         onRefresh: _refresh,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final horizontalPadding =
-                constraints.maxWidth >= 720 ? 28.0 : 16.0;
+            final horizontalPadding = constraints.maxWidth >= 720 ? 28.0 : 16.0;
             return SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(

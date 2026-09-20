@@ -7,15 +7,13 @@ import 'core/di/app_dependencies.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
   final supabaseClient = SupabaseClient(
     AppConfig.supabaseUrl,
     AppConfig.supabasePublishableKey,
   );
+
   final dependencies = AppDependencies.fromSupabaseClient(supabaseClient);
 
-  runApp(
-    PomarNaMaoApp(
-      dependencies: dependencies,
-    ),
-  );
+  runApp(PomarNaMaoApp(dependencies: dependencies));
 }

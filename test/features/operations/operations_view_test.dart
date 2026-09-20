@@ -3,13 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/inspection_view.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/operations_view.dart';
 
-Widget buildSubject() {
+Widget buildSubject({InspectionMapBuilder? inspectionMapBuilder}) {
   return MaterialApp(
     theme: ThemeData(
       colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3C6E47)),
       useMaterial3: true,
     ),
-    home: const OperationsView(),
+    home: OperationsView(
+      inspectionMapBuilder: inspectionMapBuilder ??
+          (_, _) => const SizedBox(key: ValueKey('test-inspection-map')),
+    ),
   );
 }
 
@@ -98,7 +101,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(InspectionView), findsOneWidget);
-    expect(find.text('Área de inspeção'), findsOneWidget);
+    expect(find.byKey(const ValueKey('action-load-plants')), findsOneWidget);
+    expect(find.byKey(const ValueKey('action-occurrences')), findsOneWidget);
+    expect(find.byKey(const ValueKey('action-saved-inspections')), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();

@@ -1,19 +1,33 @@
 import 'package:flutter/material.dart';
 
 import 'inspection_view.dart';
+import 'inspection_view_model.dart';
 import 'operation_definition.dart';
 import 'widgets/operation_card.dart';
 
 class OperationsView extends StatelessWidget {
-  const OperationsView({super.key});
+  const OperationsView({
+    this.inspectionViewModel,
+    this.inspectionMapBuilder,
+    super.key,
+  });
+
+  final InspectionViewModel? inspectionViewModel;
+  final InspectionMapBuilder? inspectionMapBuilder;
 
   static const _backgroundColor = Color(0xFFF4F7F2);
 
   void _openOperation(BuildContext context, OperationDefinition operation) {
     if (!operation.isEnabled || operation.id != 'inspection') return;
 
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => const InspectionView()));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => InspectionView(
+          viewModel: inspectionViewModel,
+          mapBuilder: inspectionMapBuilder,
+        ),
+      ),
+    );
   }
 
   @override
@@ -115,7 +129,7 @@ class _OperationsHeader extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Cuidado em cada etapa',
+                    'Cuidado planta a planta',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       color: colorScheme.onPrimaryContainer,
                       fontWeight: FontWeight.w900,
@@ -123,7 +137,7 @@ class _OperationsHeader extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Acesse as rotinas de manejo e acompanhe as atividades do pomar.',
+                    'Acesse as rotinas de manejo e acompanhe as atividades do seu pomar.',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: colorScheme.onPrimaryContainer,
                       height: 1.4,

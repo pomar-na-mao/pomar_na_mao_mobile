@@ -59,6 +59,7 @@ void main() {
 
       expect(dependencies.inventoryViewModel, isNotNull);
       expect(dependencies.farmMapViewModel, isNotNull);
+      expect(dependencies.inspectionViewModel, isNotNull);
 
       expect(() => dependencies.dispose(), returnsNormally);
     });
