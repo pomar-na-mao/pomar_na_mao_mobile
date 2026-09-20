@@ -6,12 +6,12 @@ import 'package:pomar_na_mao_mobile/features/farm/domain/farm_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/region_point.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/zone.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/zones_repository.dart';
+import 'package:pomar_na_mao_mobile/features/farm/presentation/farm_map_geometry.dart';
 import 'package:pomar_na_mao_mobile/features/inventory/domain/inventory_repository.dart';
 import 'package:pomar_na_mao_mobile/features/inventory/domain/inventory_summary.dart';
 import 'package:pomar_na_mao_mobile/features/inventory/presentation/inventory_map.dart';
 import 'package:pomar_na_mao_mobile/features/inventory/presentation/inventory_view.dart';
 import 'package:pomar_na_mao_mobile/features/inventory/presentation/inventory_view_model.dart';
-import 'package:pomar_na_mao_mobile/features/farm/presentation/farm_map_geometry.dart';
 
 class ViewTestInventoryRepository implements InventoryRepository {
   InventorySummary result = const InventorySummary(
@@ -80,7 +80,7 @@ Widget buildSubject(
   InventoryViewModel viewModel, {
   TargetPlatform platform = TargetPlatform.android,
   double textScale = 1,
-  String fruitAssetPath = 'assets/images/fruit.png',
+  String fruitAssetPath = 'assets/images/avocado.png',
 }) {
   return MaterialApp(
     theme: ThemeData(
@@ -254,7 +254,7 @@ void main() {
     await tester.pumpWidget(
       buildSubject(
         buildViewModel(),
-        fruitAssetPath: 'assets/images/missing-fruit.png',
+        fruitAssetPath: 'assets/images/missing-avocado.png',
       ),
     );
     await tester.pumpAndSettle();

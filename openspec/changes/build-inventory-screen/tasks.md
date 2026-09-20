@@ -19,7 +19,7 @@
 ## 4. Interface visual do painel
 
 - [x] 4.1 Substituir a tela vazia por um painel rolável com fundo, espaçamento, bordas, sombras, raios e tipografia definidos no design, verificando em teste de widget a ordem semântica dos quatro blocos.
-- [x] 4.2 Implementar o hero com “Sítio São Francisco”, “54 ha”, chip “Avocado” e `assets/images/fruit.png` usando `BoxFit.contain`, limite responsivo, semântica e fallback, verificando os estados normal e de falha do asset em teste de widget.
+- [x] 4.2 Implementar o hero com “Sítio São Francisco”, “54 ha”, chip “Avocado” e `assets/images/avocado.png` usando `BoxFit.contain`, limite responsivo, semântica e fallback, verificando os estados normal e de falha do asset em teste de widget.
 - [x] 4.3 Implementar os cards “Plantas existentes” e “Disponíveis para plantio” com formatação de milhares, ícones Material e estados de loading/zero/erro/retry, verificando por testes de widget rótulos, valores e ações.
 - [x] 4.4 Implementar o card “Configuração do cultivo” com Espaçamento, Classificação, Adensamento e Variedade, verificando que os valores exatos da especificação permanecem associados aos respectivos rótulos com escala de texto ampliada.
 - [x] 4.5 Implementar o card de mapa com legenda acessível, polígonos da fazenda e Zona A, câmera enquadrada e conjuntos vazios de marcadores/clusters, verificando por teste que nenhuma planta é solicitada ou renderizada.

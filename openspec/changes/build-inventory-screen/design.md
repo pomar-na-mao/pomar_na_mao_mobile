@@ -4,7 +4,7 @@ Consulte `proposal.md` para a motivação e `specs/inventory-dashboard/spec.md` 
 
 O schema remoto confirma `plants.non_existent`, uma Zona A identificada por nome e código, e fontes geográficas já consumidas pelo app. Não existe uma entidade remota dedicada aos metadados da propriedade. Nesta entrega, os valores informados pelo usuário serão um perfil imutável e centralizado no cliente; migrar esses dados para persistência poderá ser uma mudança posterior sem alterar a composição visual.
 
-O asset `assets/images/fruit.png` já está incluído pelo glob de assets do `pubspec.yaml`. O tema Material 3 usa a cor semente `#3C6E47`, e o Google Maps já está configurado para as plataformas suportadas.
+O asset `assets/images/avocado.png` já está incluído pelo glob de assets do `pubspec.yaml`. O tema Material 3 usa a cor semente `#3C6E47`, e o Google Maps já está configurado para as plataformas suportadas.
 
 ## Goals / Non-Goals
 
