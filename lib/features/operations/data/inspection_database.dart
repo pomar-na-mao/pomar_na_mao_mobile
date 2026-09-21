@@ -26,22 +26,30 @@ class InspectionDatabase {
     final project = Uri.parse(projectUrl).origin;
     final fileId = const Uuid().v5(Namespace.url.value, project);
     final root = directory ?? await resolvedFactory.getDatabasesPath();
-    final db = await resolvedFactory.openDatabase(p.join(root, 'inspections_$fileId.db'),
-      options: OpenDatabaseOptions(version: 1,
+    final db = await resolvedFactory.openDatabase(
+      p.join(root, 'inspections_$fileId.db'),
+      options: OpenDatabaseOptions(
+        version: 2,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) => _migrate(db, 0, version),
-        onUpgrade: _migrate));
+        onUpgrade: _migrate,
+      ),
+    );
     try {
       await db.transaction((txn) async {
         final metadata = await txn.query('installation');
         if (metadata.isEmpty) {
-          await txn.insert('installation', {'id': 1, 'project_url': project,
-            'device_id': const Uuid().v4()});
+          await txn.insert('installation', {
+            'id': 1,
+            'project_url': project,
+            'device_id': const Uuid().v4(),
+          });
         } else if (metadata.single['project_url'] != project) {
           throw StateError('O banco pertence a outro projeto');
         }
-        await txn.update('local_inspections', {'sync_status': 'pending'},
-          where: "sync_status = 'syncing'");
+        await txn.update('local_inspections', {
+          'sync_status': 'pending',
+        }, where: "sync_status = 'syncing'");
       });
       return db;
     } catch (_) {
@@ -50,14 +58,32 @@ class InspectionDatabase {
     }
   }
 
-  static Future<void> _migrate(Database db, int oldVersion, int newVersion) async {
+  static Future<void> _migrate(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
     if (oldVersion < 1) {
-      for (final sql in _versionOne) { await db.execute(sql); }
+      for (final sql in _versionOne) {
+        await db.execute(sql);
+      }
+    }
+    if (oldVersion < 2) {
+      for (final sql in _versionTwo) {
+        await db.execute(sql);
+      }
+      await db.execute('''
+        INSERT OR IGNORE INTO cache_metadata(cache_key, loaded_at, is_complete)
+        SELECT 'occurrence_types', COALESCE(loaded_at, CURRENT_TIMESTAMP), 1
+        FROM installation
+        WHERE EXISTS (SELECT 1 FROM occurrence_types)
+      ''');
     }
   }
 
   Future<String> get deviceId async =>
-    (await (await database).query('installation')).single['device_id'] as String;
+      (await (await database).query('installation')).single['device_id']
+          as String;
 
   Future<void> close() async {
     _closed = true;
@@ -98,7 +124,27 @@ class InspectionDatabase {
         REFERENCES local_inspection_loaded_plants(inspection_local_id, plant_id))''',
     'CREATE INDEX changes_plant ON local_inspection_changes(inspection_local_id, plant_id, sequence)',
   ];
+
+  static const _versionTwo = [
+    '''CREATE TABLE cache_metadata (
+      cache_key TEXT PRIMARY KEY,
+      loaded_at TEXT NOT NULL,
+      is_complete INTEGER NOT NULL DEFAULT 1 CHECK(is_complete IN (0, 1)))''',
+    '''CREATE TABLE cached_farm (
+      sequence INTEGER PRIMARY KEY,
+      snapshot TEXT NOT NULL)''',
+    '''CREATE TABLE cached_zones (
+      id TEXT PRIMARY KEY,
+      sequence INTEGER NOT NULL,
+      snapshot TEXT NOT NULL)''',
+    'CREATE INDEX cached_zones_sequence ON cached_zones(sequence)',
+    '''CREATE TABLE cached_regions (
+      zone_id TEXT NOT NULL,
+      sequence INTEGER NOT NULL,
+      snapshot TEXT NOT NULL,
+      PRIMARY KEY(zone_id, sequence))''',
+  ];
 }
 
 Map<String, dynamic> decodeInspectionJson(Object? value) =>
-  jsonDecode(value as String) as Map<String, dynamic>;
+    jsonDecode(value as String) as Map<String, dynamic>;

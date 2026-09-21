@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomar_na_mao_mobile/app/widgets/main_shell.dart';
+import 'package:pomar_na_mao_mobile/core/ui/app_loading_controller.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/farm_point.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/farm_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/plant.dart';
@@ -144,5 +147,51 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     farmViewModel.dispose();
+  });
+
+  testWidgets('displays translucent loading overlay and blocks gestures when loading', (
+    tester,
+  ) async {
+    final loadingController = AppLoadingController();
+    await tester.binding.setSurfaceSize(const Size(420, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MainShell(loadingController: loadingController),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    final completer = Completer<void>();
+    final trackedFuture = loadingController.track(() => completer.future);
+
+    await tester.pump(); // rebuild with loading state
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    // Verify background interactions are blocked while loading
+    await tester.tap(find.text('Fazenda'), warnIfMissed: false);
+    await tester.pump();
+
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      0,
+    );
+
+    completer.complete();
+    await trackedFuture;
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    // Interactions work after loading finishes
+    await tester.tap(find.text('Fazenda'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      1,
+    );
   });
 }

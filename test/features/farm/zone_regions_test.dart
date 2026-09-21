@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/farm_point.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/farm_repository.dart';
@@ -10,8 +12,14 @@ import 'package:pomar_na_mao_mobile/features/farm/domain/zones_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/presentation/farm_map_view_model.dart';
 
 class MockPlantsRepository implements PlantsRepository {
+  List<Plant> result = [];
+  int calls = 0;
+
   @override
-  Future<List<Plant>> fetchPlants() async => [];
+  Future<List<Plant>> fetchPlants() async {
+    calls++;
+    return result;
+  }
 }
 
 class MockZonesRepository implements ZonesRepository {
@@ -212,4 +220,42 @@ void main() {
       },
     );
   });
+
+  test(
+    'reloads plants from cache when a shared revision is published',
+    () async {
+      final changes = StreamController<void>.broadcast();
+      final plants = MockPlantsRepository();
+      final viewModel = FarmMapViewModel(
+        plants,
+        MockZonesRepository(),
+        MockLocationService(),
+        MockFarmRepository(),
+        plantChanges: changes.stream,
+      );
+      await viewModel.initialize();
+      expect(viewModel.plants, isEmpty);
+
+      plants.result = [_plant('plant-1')];
+      changes.add(null);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(viewModel.plants.single.id, 'plant-1');
+      expect(plants.calls, 2);
+      viewModel.dispose();
+      await changes.close();
+    },
+  );
 }
+
+Plant _plant(String id) => Plant(
+  id: id,
+  latitude: -23.1,
+  longitude: -46.1,
+  isDead: false,
+  isNew: false,
+  nonExistent: false,
+  syncStatus: 'synced',
+  createdAt: DateTime.utc(2026),
+  updatedAt: DateTime.utc(2026),
+);

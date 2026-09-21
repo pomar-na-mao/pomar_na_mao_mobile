@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/data/shared_read_repository.dart';
 import '../domain/farm_point.dart';
 import '../domain/farm_repository.dart';
 import 'datasources/farm_remote_data_source.dart';
@@ -10,16 +11,23 @@ class SupabaseFarmRepository implements FarmRepository {
     SupabaseClient client, {
     FarmRemoteDataSource? remoteDataSource,
   }) : this.fromDataSource(
-          remoteDataSource ?? SupabaseFarmRemoteDataSource(client),
-        );
+         remoteDataSource ?? SupabaseFarmRemoteDataSource(client),
+       );
 
-  const SupabaseFarmRepository.fromDataSource(this._remoteDataSource);
+  const SupabaseFarmRepository.fromDataSource(this._remoteDataSource)
+    : _sharedReadRepository = null;
 
-  final FarmRemoteDataSource _remoteDataSource;
+  const SupabaseFarmRepository.fromShared(this._sharedReadRepository)
+    : _remoteDataSource = null;
+
+  final FarmRemoteDataSource? _remoteDataSource;
+  final SharedReadRepository? _sharedReadRepository;
 
   @override
   Future<List<FarmPoint>> fetchFarmBoundary() async {
-    final rows = await _remoteDataSource.fetchFarmBoundaryRows();
+    final rows = _sharedReadRepository != null
+        ? await _sharedReadRepository.getFarmBoundaryRows()
+        : await _remoteDataSource!.fetchFarmBoundaryRows();
     return rows
         .map((row) => FarmPointDto.fromJson(row).toDomain())
         .toList(growable: false);

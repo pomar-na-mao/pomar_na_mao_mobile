@@ -236,4 +236,28 @@ void main() {
       );
     },
   );
+
+  test('reloads summary when a shared plant revision is published', () async {
+    final changes = StreamController<void>.broadcast();
+    viewModel.dispose();
+    viewModel = InventoryViewModel(
+      inventoryRepository,
+      farmRepository,
+      zonesRepository,
+      plantChanges: changes.stream,
+    );
+    await viewModel.initialize();
+    expect(viewModel.summary?.existingPlants, 100);
+
+    inventoryRepository.result = const InventorySummary(
+      existingPlants: 120,
+      availablePlantingSpots: 8,
+    );
+    changes.add(null);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(viewModel.summary?.existingPlants, 120);
+    expect(inventoryRepository.calls, 2);
+    await changes.close();
+  });
 }

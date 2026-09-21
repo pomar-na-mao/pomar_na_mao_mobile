@@ -1,5 +1,27 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+const sharedPlantColumns =
+    'id, latitude, longitude, description, zone_id, non_existent';
+
+typedef PlantPageLoader = Future<List<Map<String, dynamic>>> Function(
+  int from,
+  int to,
+);
+
+Future<List<Map<String, dynamic>>> fetchAllPlantPages(
+  PlantPageLoader loadPage, {
+  int pageSize = 1000,
+}) async {
+  final allRows = <Map<String, dynamic>>[];
+  var from = 0;
+  while (true) {
+    final rows = await loadPage(from, from + pageSize - 1);
+    allRows.addAll(rows);
+    if (rows.length < pageSize) return allRows;
+    from += pageSize;
+  }
+}
+
 abstract interface class FarmRemoteDataSource {
   Future<List<Map<String, dynamic>>> fetchFarmBoundaryRows();
   Future<List<Map<String, dynamic>>> fetchPlantsRows({int pageSize = 1000});
@@ -22,29 +44,15 @@ class SupabaseFarmRemoteDataSource implements FarmRemoteDataSource {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> fetchPlantsRows({int pageSize = 1000}) async {
-    const columns = 'id, latitude, longitude, zone_id, non_existent';
-    final allRows = <Map<String, dynamic>>[];
-    var from = 0;
-
-    while (true) {
-      final to = from + pageSize - 1;
-      final rows = await _client
-          .from('plants')
-          .select(columns)
-          .order('id')
-          .range(from, to);
-
-      allRows.addAll(List<Map<String, dynamic>>.from(rows));
-
-      if (rows.length < pageSize) {
-        break;
-      }
-      from += pageSize;
-    }
-
-    return allRows;
-  }
+  Future<List<Map<String, dynamic>>> fetchPlantsRows({int pageSize = 1000}) =>
+      fetchAllPlantPages((from, to) async {
+        final rows = await _client
+            .from('plants')
+            .select(sharedPlantColumns)
+            .order('id')
+            .range(from, to);
+        return List<Map<String, dynamic>>.from(rows);
+      }, pageSize: pageSize);
 
   @override
   Future<List<Map<String, dynamic>>> fetchZonesRows() async {
