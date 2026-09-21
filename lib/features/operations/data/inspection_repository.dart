@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../../../core/data/shared_read_repository.dart';
+import '../../../core/ui/app_loading_controller.dart';
 import '../../farm/domain/user_location.dart';
 import '../domain/inspection_models.dart';
 import 'inspection_local_store.dart';
@@ -25,22 +27,53 @@ class DefaultInspectionRepository implements InspectionRepository {
   DefaultInspectionRepository({
     required this.localStore,
     required this.remoteDataSource,
+    this.sharedReadRepository,
+    this.loadingController,
   });
 
   final InspectionLocalStore localStore;
   final InspectionRemoteDataSource remoteDataSource;
+  final SharedReadRepository? sharedReadRepository;
+  final AppLoadingController? loadingController;
 
   Completer<bool>? _currentSync;
 
   @override
   Future<InspectionSnapshot?> loadSnapshot({bool forceRemote = false}) async {
     final local = await localStore.readSnapshot();
+    final shared = sharedReadRepository;
+    if (shared != null) {
+      if (!forceRemote) {
+        if (local != null && local.types.isEmpty) {
+          try {
+            await shared.getOccurrenceTypes();
+            return await localStore.readSnapshot();
+          } catch (_) {
+            return local;
+          }
+        }
+        return local;
+      }
+
+      final catalog = await shared.getOccurrenceTypes();
+      if (catalog.isEmpty) {
+        throw StateError(
+          'Catálogo indisponível. Verifique o acesso e carregue novamente.',
+        );
+      }
+      await shared.refreshPlantRows();
+      return await localStore.readSnapshot();
+    }
+
     if (!forceRemote && local != null) {
       return local;
     }
 
     try {
-      final remote = await remoteDataSource.fetchSnapshot();
+      final controller = loadingController;
+      final remote = await (controller == null
+          ? remoteDataSource.fetchSnapshot()
+          : controller.track(remoteDataSource.fetchSnapshot));
       await localStore.replaceSnapshot(remote);
       return await localStore.readSnapshot();
     } catch (e) {
@@ -53,13 +86,19 @@ class DefaultInspectionRepository implements InspectionRepository {
 
   @override
   Future<List<OccurrenceType>> getCatalog() async {
+    final shared = sharedReadRepository;
+    if (shared != null) return shared.getOccurrenceTypes();
+
     final local = await localStore.readCatalog();
     if (local.isNotEmpty) {
       return local;
     }
 
     try {
-      final remote = await remoteDataSource.fetchOccurrenceTypes();
+      final controller = loadingController;
+      final remote = await (controller == null
+          ? remoteDataSource.fetchOccurrenceTypes()
+          : controller.track(remoteDataSource.fetchOccurrenceTypes));
       await localStore.saveCatalog(remote);
       return remote;
     } catch (_) {
@@ -120,7 +159,8 @@ class DefaultInspectionRepository implements InspectionRepository {
       DateTime? latestFinishedAt;
 
       for (final inspection in pending) {
-        if (earliestStartedAt == null || inspection.startedAt.isBefore(earliestStartedAt)) {
+        if (earliestStartedAt == null ||
+            inspection.startedAt.isBefore(earliestStartedAt)) {
           earliestStartedAt = inspection.startedAt;
         }
         final finished = inspection.finishedAt ?? inspection.startedAt;
@@ -142,21 +182,30 @@ class DefaultInspectionRepository implements InspectionRepository {
 
       final mergedPlantsChanged = [
         for (final entry in groupedPlants.entries)
-          {'plantId': entry.key, 'changes': entry.value}
+          {'plantId': entry.key, 'changes': entry.value},
       ];
 
       final mergedPayload = <String, dynamic>{
         'deviceId': primary.payload['deviceId'],
         'localInspectionId': primary.id,
-        'startedAt': earliestStartedAt?.toIso8601String() ?? primary.startedAt.toIso8601String(),
-        'finishedAt': latestFinishedAt?.toIso8601String() ?? (primary.finishedAt ?? primary.startedAt).toIso8601String(),
+        'startedAt':
+            earliestStartedAt?.toIso8601String() ??
+            primary.startedAt.toIso8601String(),
+        'finishedAt':
+            latestFinishedAt?.toIso8601String() ??
+            (primary.finishedAt ?? primary.startedAt).toIso8601String(),
         'zoneId': null,
         'occurrenceTypeId': null,
         'plantsChanged': mergedPlantsChanged,
       };
 
       try {
-        final result = await remoteDataSource.syncInspection(mergedPayload);
+        final controller = loadingController;
+        final result = await (controller == null
+            ? remoteDataSource.syncInspection(mergedPayload)
+            : controller.track(
+                () => remoteDataSource.syncInspection(mergedPayload),
+              ));
         await localStore.acknowledgeMerged(
           inspectionIds: allPendingIds,
           result: result,

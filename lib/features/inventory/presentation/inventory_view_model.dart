@@ -18,7 +18,17 @@ class InventoryViewModel extends ChangeNotifier {
     this._farmRepository,
     this._zonesRepository, {
     this.profile = InventoryPropertyProfile.sitioSaoFrancisco,
-  });
+    Stream<void>? plantChanges,
+  }) {
+    _plantChangesSubscription = plantChanges?.listen((_) {
+      if (_summaryStatus == InventoryLoadStatus.initial ||
+          _summaryStatus == InventoryLoadStatus.loading ||
+          _isDisposed) {
+        return;
+      }
+      unawaited(loadSummary());
+    });
+  }
 
   final InventoryRepository _inventoryRepository;
   final FarmRepository _farmRepository;
@@ -45,6 +55,7 @@ class InventoryViewModel extends ChangeNotifier {
 
   bool _initializationStarted = false;
   bool _isDisposed = false;
+  StreamSubscription<void>? _plantChangesSubscription;
 
   Future<void> initialize() async {
     if (_initializationStarted || _isDisposed) return;
@@ -153,6 +164,7 @@ class InventoryViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    unawaited(_plantChangesSubscription?.cancel());
     super.dispose();
   }
 }

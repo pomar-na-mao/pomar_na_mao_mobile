@@ -34,7 +34,13 @@ class InspectionViewModel extends ChangeNotifier {
     required this.repository,
     required this.locationService,
     this.zonesRepository,
-  });
+    Stream<void>? plantChanges,
+  }) {
+    _plantChangesSubscription = plantChanges?.listen((_) {
+      if (_loadStatus == InspectionLoadStatus.loading) return;
+      unawaited(_loadExistingSnapshotSilently());
+    });
+  }
 
   final InspectionRepository repository;
   final LocationService locationService;
@@ -76,6 +82,7 @@ class InspectionViewModel extends ChangeNotifier {
   }
 
   StreamSubscription<LocationResult>? _locationSubscription;
+  StreamSubscription<void>? _plantChangesSubscription;
   bool _isLocationActive = false;
 
   InspectionLoadStatus _loadStatus = InspectionLoadStatus.initial;
@@ -126,7 +133,8 @@ class InspectionViewModel extends ChangeNotifier {
       ? null
       : _zones.where((z) => z.id == _selectedZoneFilterId).firstOrNull;
 
-  OccurrenceType? get selectedOccurrenceFilter => _selectedOccurrenceFilterId == null
+  OccurrenceType? get selectedOccurrenceFilter =>
+      _selectedOccurrenceFilterId == null
       ? null
       : _catalog.where((t) => t.id == _selectedOccurrenceFilterId).firstOrNull;
 
@@ -138,7 +146,8 @@ class InspectionViewModel extends ChangeNotifier {
 
   List<InspectionPlant> get plants {
     return _plants.where((plant) {
-      if (_selectedZoneFilterId != null && plant.zoneId != _selectedZoneFilterId) {
+      if (_selectedZoneFilterId != null &&
+          plant.zoneId != _selectedZoneFilterId) {
         return false;
       }
       if (_selectedOccurrenceFilterId != null &&
@@ -160,7 +169,8 @@ class InspectionViewModel extends ChangeNotifier {
   Set<String> _stagedOccurrenceTypeIds = const {};
   Set<String> get stagedOccurrenceTypeIds => _stagedOccurrenceTypeIds;
 
-  bool isOccurrenceChecked(String typeId) => _stagedOccurrenceTypeIds.contains(typeId);
+  bool isOccurrenceChecked(String typeId) =>
+      _stagedOccurrenceTypeIds.contains(typeId);
 
   bool get hasStagedChanges {
     if (_selectedPlant == null) return false;
@@ -171,7 +181,8 @@ class InspectionViewModel extends ChangeNotifier {
   List<LocalInspection> get localInspections => _localInspections;
 
   Map<String, List<InspectionChange>> _inspectionChanges = {};
-  Map<String, List<InspectionChange>> get inspectionChanges => _inspectionChanges;
+  Map<String, List<InspectionChange>> get inspectionChanges =>
+      _inspectionChanges;
 
   bool _isSavingLocal = false;
   bool get isSavingLocal => _isSavingLocal;
@@ -314,8 +325,8 @@ class InspectionViewModel extends ChangeNotifier {
     _selectedZoneFilterId = zoneId;
     _selectedZonePoints =
         (zoneId != null && _zoneRegionsCache.containsKey(zoneId))
-            ? _zoneRegionsCache[zoneId]!
-            : const [];
+        ? _zoneRegionsCache[zoneId]!
+        : const [];
     notifyListeners();
 
     if (zoneId != null && !_zoneRegionsCache.containsKey(zoneId)) {
@@ -451,7 +462,9 @@ class InspectionViewModel extends ChangeNotifier {
           (p) => p.id == plant.id,
           orElse: () => plant,
         );
-        _stagedOccurrenceTypeIds = Set<String>.from(_selectedPlant!.openTypeIds);
+        _stagedOccurrenceTypeIds = Set<String>.from(
+          _selectedPlant!.openTypeIds,
+        );
       }
       _feedbackMessage = 'Salvo no dispositivo';
       await refreshLocalInspections();
@@ -527,7 +540,9 @@ class InspectionViewModel extends ChangeNotifier {
       final hasNetworkIssue = _localInspections.any((i) => i.isNetworkError);
       _feedbackMessage = success
           ? 'Sincronizado com sucesso!'
-          : (hasNetworkIssue ? 'Sem internet' : 'Algumas inspeções não puderam ser sincronizadas.');
+          : (hasNetworkIssue
+                ? 'Sem internet'
+                : 'Algumas inspeções não puderam ser sincronizadas.');
 
       final snapshot = await repository.loadSnapshot(forceRemote: false);
       if (snapshot != null) {
@@ -545,7 +560,9 @@ class InspectionViewModel extends ChangeNotifier {
   List<AlteredPlantItem> getAlteredPlantsForInspection(String inspectionId) {
     final changes = _inspectionChanges[inspectionId] ?? const [];
     if (changes.isEmpty) {
-      final inspection = _localInspections.where((i) => i.id == inspectionId).firstOrNull;
+      final inspection = _localInspections
+          .where((i) => i.id == inspectionId)
+          .firstOrNull;
       if (inspection?.payloadJson != null) {
         try {
           final payload = inspection!.payload;
@@ -554,7 +571,8 @@ class InspectionViewModel extends ChangeNotifier {
             final map = Map<String, dynamic>.from(p as Map);
             final plantId = map['plantId'] as String;
             final plant = _plants.where((pl) => pl.id == plantId).firstOrNull;
-            final plantLabel = plant?.label ??
+            final plantLabel =
+                plant?.label ??
                 'Planta ${plantId.substring(0, plantId.length < 8 ? plantId.length : 8)}';
             final changesList = (map['changes'] as List<dynamic>? ?? [])
                 .map((c) => Map<String, dynamic>.from(c as Map))
@@ -585,7 +603,8 @@ class InspectionViewModel extends ChangeNotifier {
     return grouped.entries.map((entry) {
       final plantId = entry.key;
       final plant = _plants.where((p) => p.id == plantId).firstOrNull;
-      final plantLabel = plant?.label ??
+      final plantLabel =
+          plant?.label ??
           'Planta ${plantId.substring(0, plantId.length < 8 ? plantId.length : 8)}';
 
       final descriptions = entry.value.map((c) {
@@ -607,7 +626,9 @@ class InspectionViewModel extends ChangeNotifier {
       _localInspections = await repository.listLocalInspections();
       final changesMap = <String, List<InspectionChange>>{};
       for (final inspection in _localInspections) {
-        changesMap[inspection.id] = await repository.getInspectionChanges(inspection.id);
+        changesMap[inspection.id] = await repository.getInspectionChanges(
+          inspection.id,
+        );
       }
       _inspectionChanges = changesMap;
       notifyListeners();
@@ -659,6 +680,7 @@ class InspectionViewModel extends ChangeNotifier {
   @override
   void dispose() {
     pauseLocation();
+    unawaited(_plantChangesSubscription?.cancel());
     super.dispose();
   }
 }

@@ -18,14 +18,24 @@ class FarmMapViewModel extends ChangeNotifier {
     this._plantsRepository,
     this._zonesRepository,
     this._locationService,
-    this._farmRepository,
-  );
+    this._farmRepository, {
+    Stream<void>? plantChanges,
+  }) {
+    _plantChangesSubscription = plantChanges?.listen((_) {
+      if (_plantsStatus == PlantsLoadStatus.initial ||
+          _plantsStatus == PlantsLoadStatus.loading) {
+        return;
+      }
+      unawaited(_reloadPlantsFromCache());
+    });
+  }
 
   final PlantsRepository _plantsRepository;
   final ZonesRepository _zonesRepository;
   final LocationService _locationService;
   final FarmRepository _farmRepository;
   StreamSubscription<LocationResult>? _locationSubscription;
+  StreamSubscription<void>? _plantChangesSubscription;
 
   PlantsLoadStatus _plantsStatus = PlantsLoadStatus.initial;
   PlantsLoadStatus get plantsStatus => _plantsStatus;
@@ -91,6 +101,19 @@ class FarmMapViewModel extends ChangeNotifier {
 
   Future<void> loadPlants() => loadFarmData();
 
+  Future<void> _reloadPlantsFromCache() async {
+    try {
+      _allPlants = await _plantsRepository.fetchPlants();
+      _plantsStatus = plants.isEmpty
+          ? PlantsLoadStatus.empty
+          : PlantsLoadStatus.success;
+      _errorMessage = null;
+      notifyListeners();
+    } on Exception {
+      // The previously displayed complete revision remains available.
+    }
+  }
+
   Future<List<FarmPoint>> _loadFarmBoundarySilently() async {
     try {
       return await _farmRepository.fetchFarmBoundary();
@@ -154,6 +177,7 @@ class FarmMapViewModel extends ChangeNotifier {
   @override
   void dispose() {
     unawaited(_locationSubscription?.cancel());
+    unawaited(_plantChangesSubscription?.cancel());
     super.dispose();
   }
 }

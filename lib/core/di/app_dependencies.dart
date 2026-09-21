@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../features/farm/data/datasources/farm_remote_data_source.dart';
 import '../../features/farm/data/geolocator_location_service.dart';
 import '../../features/farm/data/supabase_farm_repository.dart';
 import '../../features/farm/data/supabase_plants_repository.dart';
@@ -18,6 +21,8 @@ import '../../features/operations/data/inspection_remote_data_source.dart';
 import '../../features/operations/data/inspection_repository.dart';
 import '../../features/operations/domain/inspection_models.dart';
 import '../../features/operations/presentation/inspection_view_model.dart';
+import '../data/shared_read_repository.dart';
+import '../ui/app_loading_controller.dart';
 
 /// Container central de injeção de dependências do aplicativo.
 ///
@@ -30,34 +35,50 @@ class AppDependencies {
     required this.zonesRepository,
     required this.inventoryRepository,
     required this.locationService,
+    AppLoadingController? loadingController,
     InspectionRepository? inspectionRepository,
     this.inspectionDatabase,
+    this.sharedReadRepository,
     InventoryViewModel? inventoryViewModel,
     FarmMapViewModel? farmMapViewModel,
     InspectionViewModel? inspectionViewModel,
-  })  : _injectedInspectionRepository = inspectionRepository,
-        _injectedInventoryViewModel = inventoryViewModel,
-        _injectedFarmMapViewModel = farmMapViewModel,
-        _injectedInspectionViewModel = inspectionViewModel;
+  }) : loadingController = loadingController ?? AppLoadingController(),
+       _injectedInspectionRepository = inspectionRepository,
+       _injectedInventoryViewModel = inventoryViewModel,
+       _injectedFarmMapViewModel = farmMapViewModel,
+       _injectedInspectionViewModel = inspectionViewModel;
 
   factory AppDependencies.fromSupabaseClient(
     SupabaseClient supabaseClient, {
     LocationService? locationService,
     InspectionDatabase? inspectionDatabase,
   }) {
-    final farmRepo = SupabaseFarmRepository(supabaseClient);
-    final plantsRepo = SupabasePlantsRepository(supabaseClient);
-    final zonesRepo = SupabaseZonesRepository(supabaseClient);
-    final inventoryRepo = SupabaseInventoryRepository(supabaseClient);
     final locService = locationService ?? GeolocatorLocationService();
 
-    final inspDb = inspectionDatabase ??
+    final inspDb =
+        inspectionDatabase ??
         InspectionDatabase(projectUrl: supabaseClient.rest.url.toString());
     final inspStore = InspectionLocalStore(inspDb);
+    final loadingController = AppLoadingController();
+    final farmRemote = SupabaseFarmRemoteDataSource(supabaseClient);
     final inspRemote = SupabaseInspectionRemoteDataSource(supabaseClient);
+    final sharedReadRepo = SharedReadRepository(
+      localStore: inspStore,
+      farmRemoteDataSource: farmRemote,
+      inspectionRemoteDataSource: inspRemote,
+      loadingController: loadingController,
+    );
+    final farmRepo = SupabaseFarmRepository.fromShared(sharedReadRepo);
+    final plantsRepo = SupabasePlantsRepository.fromShared(sharedReadRepo);
+    final zonesRepo = SupabaseZonesRepository.fromShared(sharedReadRepo);
+    final inventoryRepo = SupabaseInventoryRepository.fromShared(
+      sharedReadRepo,
+    );
     final inspRepo = DefaultInspectionRepository(
       localStore: inspStore,
       remoteDataSource: inspRemote,
+      sharedReadRepository: sharedReadRepo,
+      loadingController: loadingController,
     );
 
     return AppDependencies(
@@ -66,7 +87,9 @@ class AppDependencies {
       zonesRepository: zonesRepo,
       inventoryRepository: inventoryRepo,
       locationService: locService,
+      loadingController: loadingController,
       inspectionDatabase: inspDb,
+      sharedReadRepository: sharedReadRepo,
       inspectionRepository: inspRepo,
     );
   }
@@ -76,7 +99,9 @@ class AppDependencies {
   final ZonesRepository zonesRepository;
   final InventoryRepository inventoryRepository;
   final LocationService locationService;
+  final AppLoadingController loadingController;
   final InspectionDatabase? inspectionDatabase;
+  final SharedReadRepository? sharedReadRepository;
   final InspectionRepository? _injectedInspectionRepository;
 
   InspectionRepository get inspectionRepository =>
@@ -98,6 +123,7 @@ class AppDependencies {
         inventoryRepository,
         farmRepository,
         zonesRepository,
+        plantChanges: sharedReadRepository?.plantChanges,
       );
 
   late final FarmMapViewModel farmMapViewModel =
@@ -107,6 +133,7 @@ class AppDependencies {
         zonesRepository,
         locationService,
         farmRepository,
+        plantChanges: sharedReadRepository?.plantChanges,
       );
 
   late final InspectionViewModel inspectionViewModel =
@@ -115,6 +142,7 @@ class AppDependencies {
         repository: inspectionRepository,
         zonesRepository: zonesRepository,
         locationService: locationService,
+        plantChanges: sharedReadRepository?.plantChanges,
       );
 
   /// Libera recursos e encerra listeners dos ViewModels criados.
@@ -122,7 +150,8 @@ class AppDependencies {
     inventoryViewModel.dispose();
     farmMapViewModel.dispose();
     inspectionViewModel.dispose();
-    inspectionDatabase?.close();
+    unawaited(sharedReadRepository?.dispose());
+    unawaited(inspectionDatabase?.close());
   }
 }
 
@@ -131,7 +160,8 @@ class FakeEmptyRemoteDataSource implements InspectionRemoteDataSource {
   Future<List<OccurrenceType>> fetchOccurrenceTypes() async => const [];
 
   @override
-  Future<List<InspectionPlant>> fetchPlants({int pageSize = 1000}) async => const [];
+  Future<List<InspectionPlant>> fetchPlants({int pageSize = 1000}) async =>
+      const [];
 
   @override
   Future<Map<String, Set<String>>> fetchOpenOccurrences(
@@ -141,9 +171,19 @@ class FakeEmptyRemoteDataSource implements InspectionRemoteDataSource {
 
   @override
   Future<InspectionSnapshot> fetchSnapshot({int pageSize = 1000}) async =>
-      InspectionSnapshot(plants: const [], types: const [], loadedAt: DateTime.now());
+      InspectionSnapshot(
+        plants: const [],
+        types: const [],
+        loadedAt: DateTime.now(),
+      );
 
   @override
-  Future<InspectionSyncResult> syncInspection(Map<String, dynamic> payload) async =>
-      const InspectionSyncResult(operationId: '', created: 0, updated: 0, resolved: 0);
+  Future<InspectionSyncResult> syncInspection(
+    Map<String, dynamic> payload,
+  ) async => const InspectionSyncResult(
+    operationId: '',
+    created: 0,
+    updated: 0,
+    resolved: 0,
+  );
 }
