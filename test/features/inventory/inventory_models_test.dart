@@ -7,21 +7,27 @@ void main() {
     const summary = InventorySummary(
       existingPlants: 21809,
       availablePlantingSpots: 2,
+      zones: 8,
+      regionPoints: 434,
+      farmBoundaryPoints: 18,
     );
 
     expect(summary.existingPlants, 21809);
     expect(summary.availablePlantingSpots, 2);
+    expect(summary.zones, 8);
+    expect(summary.regionPoints, 434);
+    expect(summary.farmBoundaryPoints, 18);
   });
 
   test('default property profile exposes the specified orchard data', () {
-    const profile = InventoryPropertyProfile.sitioSaoFrancisco;
+    const profile = InventoryPropertyProfile.ricardoLichia;
 
-    expect(profile.farmName, 'Sítio São Francisco');
-    expect(profile.totalArea, '54 ha');
-    expect(profile.crop, 'Avocado');
+    expect(profile.farmName, 'Fazenda Coatiara');
+    expect(profile.totalArea, '117 ha');
+    expect(profile.crop, 'Lichia');
     expect(profile.spacing, '8 × 5 m');
     expect(profile.classification, 'Semi-adensado');
-    expect(profile.density, '250 plantas/ha');
-    expect(profile.variety, 'Hass');
+    expect(profile.density, '187 plantas/ha');
+    expect(profile.variety, 'Múltiplas');
   });
 }

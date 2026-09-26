@@ -48,7 +48,7 @@ class InventoryMapSection extends StatelessWidget {
               _MapLegend(color: farmBoundaryStrokeColor, label: 'Fazenda'),
               _MapLegend(
                 color: zoneBoundaryStrokeColor,
-                label: 'Zonas A–G',
+                label: 'Zonas',
                 dotted: true,
               ),
             ],

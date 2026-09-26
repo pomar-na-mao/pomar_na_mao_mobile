@@ -124,9 +124,9 @@ class _HeroBadge extends StatelessWidget {
             Text(
               label,
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: const Color(0xFF294C35),
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: const Color(0xFF294C35),
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
@@ -145,7 +145,7 @@ class _FruitIllustration extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       image: true,
-      label: 'Ilustração de avocado',
+      label: 'Ilustração de lichia',
       child: Container(
         width: size,
         height: size,

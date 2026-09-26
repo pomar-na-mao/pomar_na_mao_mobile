@@ -66,7 +66,7 @@ class SupabaseFarmRemoteDataSource implements FarmRemoteDataSource {
         .from('regions')
         .select('latitude, longitude, region, zone_id')
         .eq('zone_id', zoneId)
-        .order('created_at', ascending: true);
+        .order('order', ascending: true);
     return List<Map<String, dynamic>>.from(rows);
   }
 }
