@@ -128,7 +128,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Sítio São Francisco'), findsOneWidget);
+    expect(find.text('Fazenda Coatiara'), findsOneWidget);
     expect(find.text('21.809'), findsOneWidget);
     expect(inventoryRepository.calls, 1);
 
@@ -142,56 +142,55 @@ void main() {
 
     await tester.tap(find.text('Inventário'));
     await tester.pumpAndSettle();
-    expect(find.text('Sítio São Francisco'), findsOneWidget);
+    expect(find.text('Fazenda Coatiara'), findsOneWidget);
     expect(inventoryRepository.calls, 1);
 
     await tester.pumpWidget(const SizedBox.shrink());
     farmViewModel.dispose();
   });
 
-  testWidgets('displays translucent loading overlay and blocks gestures when loading', (
-    tester,
-  ) async {
-    final loadingController = AppLoadingController();
-    await tester.binding.setSurfaceSize(const Size(420, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'displays translucent loading overlay and blocks gestures when loading',
+    (tester) async {
+      final loadingController = AppLoadingController();
+      await tester.binding.setSurfaceSize(const Size(420, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: MainShell(loadingController: loadingController),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        MaterialApp(home: MainShell(loadingController: loadingController)),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
 
-    final completer = Completer<void>();
-    final trackedFuture = loadingController.track(() => completer.future);
+      final completer = Completer<void>();
+      final trackedFuture = loadingController.track(() => completer.future);
 
-    await tester.pump(); // rebuild with loading state
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      await tester.pump(); // rebuild with loading state
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-    // Verify background interactions are blocked while loading
-    await tester.tap(find.text('Fazenda'), warnIfMissed: false);
-    await tester.pump();
+      // Verify background interactions are blocked while loading
+      await tester.tap(find.text('Fazenda'), warnIfMissed: false);
+      await tester.pump();
 
-    expect(
-      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
-      0,
-    );
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        0,
+      );
 
-    completer.complete();
-    await trackedFuture;
-    await tester.pumpAndSettle();
+      completer.complete();
+      await trackedFuture;
+      await tester.pumpAndSettle();
 
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
 
-    // Interactions work after loading finishes
-    await tester.tap(find.text('Fazenda'));
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
-      1,
-    );
-  });
+      // Interactions work after loading finishes
+      await tester.tap(find.text('Fazenda'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        1,
+      );
+    },
+  );
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/config/app_config.dart';
 import 'inventory_view_model.dart';
 import 'widgets/inventory_cultivation_card.dart';
 import 'widgets/inventory_map_section.dart';
@@ -12,12 +13,13 @@ export 'widgets/inventory_dashboard_card.dart' show formatInventoryCount;
 export 'widgets/inventory_map_section.dart' show InventoryMapBuilder;
 
 class InventoryView extends StatefulWidget {
-  const InventoryView({
+  InventoryView({
     required this.viewModel,
     this.mapBuilder,
-    this.fruitAssetPath = 'assets/images/avocado.png',
+    String? fruitAssetPath,
     super.key,
-  });
+  }) : fruitAssetPath =
+           fruitAssetPath ?? AppConfig.activeTenant.fruitAssetPath;
 
   final InventoryViewModel viewModel;
   final InventoryMapBuilder? mapBuilder;

@@ -9,13 +9,23 @@ class InventoryPropertyProfile {
     required this.variety,
   });
 
-  static const sitioSaoFrancisco = InventoryPropertyProfile(
-    farmName: 'Sítio São Francisco',
-    totalArea: '54 ha',
-    crop: 'Avocado',
+  static const ricardoLichia = InventoryPropertyProfile(
+    farmName: 'Fazenda Coatiara',
+    totalArea: '117 ha',
+    crop: 'Lichia',
     spacing: '8 × 5 m',
     classification: 'Semi-adensado',
-    density: '250 plantas/ha',
+    density: '187 plantas/ha',
+    variety: 'Múltiplas',
+  );
+
+  static const hassAvocado = InventoryPropertyProfile(
+    farmName: 'Fazenda Santa Maria',
+    totalArea: '85 ha',
+    crop: 'Abacate Hass',
+    spacing: '6 × 4 m',
+    classification: 'Adensado',
+    density: '416 plantas/ha',
     variety: 'Hass',
   );
 

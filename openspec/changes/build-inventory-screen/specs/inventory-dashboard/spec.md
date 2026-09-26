@@ -34,7 +34,7 @@ O aplicativo SHALL exibir o espaçamento “7 × 7 m a 8 × 8 m”, a classifica
 - **THEN** o sistema associa cada valor ao respectivo rótulo Espaçamento, Classificação, Adensamento e Variedade
 
 ### Requirement: Ilustrar o cultivo com o asset de avocado
-O aplicativo SHALL incorporar `assets/images/avocado.png` ao resumo visual do cultivo de forma proporcional, sem distorção e com identificação semântica equivalente a “Avocado”.
+O aplicativo SHALL incorporar `assets/images/lichia.png` ao resumo visual do cultivo de forma proporcional, sem distorção e com identificação semântica equivalente a “Avocado”.
 
 #### Scenario: Exibir a ilustração em largura reduzida
 - **WHEN** a tela é renderizada em um dispositivo estreito

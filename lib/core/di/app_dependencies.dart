@@ -21,6 +21,7 @@ import '../../features/operations/data/inspection_remote_data_source.dart';
 import '../../features/operations/data/inspection_repository.dart';
 import '../../features/operations/domain/inspection_models.dart';
 import '../../features/operations/presentation/inspection_view_model.dart';
+import '../config/app_config.dart';
 import '../data/shared_read_repository.dart';
 import '../ui/app_loading_controller.dart';
 
@@ -71,9 +72,9 @@ class AppDependencies {
     final farmRepo = SupabaseFarmRepository.fromShared(sharedReadRepo);
     final plantsRepo = SupabasePlantsRepository.fromShared(sharedReadRepo);
     final zonesRepo = SupabaseZonesRepository.fromShared(sharedReadRepo);
-    final inventoryRepo = SupabaseInventoryRepository.fromShared(
-      sharedReadRepo,
-    );
+    final inventoryRepo = SupabaseInventoryRepository(supabaseClient);
+    final inventoryFarmRepo = SupabaseFarmRepository(supabaseClient);
+    final inventoryZonesRepo = SupabaseZonesRepository(supabaseClient);
     final inspRepo = DefaultInspectionRepository(
       localStore: inspStore,
       remoteDataSource: inspRemote,
@@ -91,6 +92,13 @@ class AppDependencies {
       inspectionDatabase: inspDb,
       sharedReadRepository: sharedReadRepo,
       inspectionRepository: inspRepo,
+      inventoryViewModel: InventoryViewModel(
+        inventoryRepo,
+        inventoryFarmRepo,
+        inventoryZonesRepo,
+        profile: AppConfig.activeTenant.propertyProfile,
+        plantChanges: sharedReadRepo.plantChanges,
+      ),
     );
   }
 
@@ -123,6 +131,7 @@ class AppDependencies {
         inventoryRepository,
         farmRepository,
         zonesRepository,
+        profile: AppConfig.activeTenant.propertyProfile,
         plantChanges: sharedReadRepository?.plantChanges,
       );
 

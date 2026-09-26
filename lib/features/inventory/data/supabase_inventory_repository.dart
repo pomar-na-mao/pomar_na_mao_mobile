@@ -35,6 +35,14 @@ class SupabaseInventoryRepository implements InventoryRepository {
     final shared = _sharedReadRepository;
     if (shared != null) {
       final plants = await shared.getPlantRows();
+      final zones = await shared.getZoneRows();
+      final farmBoundary = await shared.getFarmBoundaryRows();
+      final regionPointCounts = await Future.wait(
+        zones
+            .map((zone) => zone['id'])
+            .whereType<String>()
+            .map((zoneId) async => (await shared.getRegionRows(zoneId)).length),
+      );
       var existing = 0;
       var available = 0;
       for (final plant in plants) {
@@ -47,17 +55,29 @@ class SupabaseInventoryRepository implements InventoryRepository {
       return InventorySummary(
         existingPlants: existing,
         availablePlantingSpots: available,
+        zones: zones.length,
+        regionPoints: regionPointCounts.fold<int>(
+          0,
+          (total, count) => total + count,
+        ),
+        farmBoundaryPoints: farmBoundary.length,
       );
     }
 
     final counts = await Future.wait([
       _remoteDataSource!.countPlants(nonExistent: false),
       _remoteDataSource.countPlants(nonExistent: true),
+      _remoteDataSource.countZones(),
+      _remoteDataSource.countRegionPoints(),
+      _remoteDataSource.countFarmBoundaryPoints(),
     ]);
 
     return InventorySummary(
       existingPlants: counts[0],
       availablePlantingSpots: counts[1],
+      zones: counts[2],
+      regionPoints: counts[3],
+      farmBoundaryPoints: counts[4],
     );
   }
 }
@@ -71,4 +91,13 @@ class _FunctionalInventoryRemoteDataSource
   @override
   Future<int> countPlants({required bool nonExistent}) =>
       _countQuery(nonExistent);
+
+  @override
+  Future<int> countZones() async => 0;
+
+  @override
+  Future<int> countRegionPoints() async => 0;
+
+  @override
+  Future<int> countFarmBoundaryPoints() async => 0;
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../farm/domain/farm_point.dart';
 import '../../farm/domain/farm_repository.dart';
 import '../../farm/domain/region_point.dart';
@@ -17,9 +18,9 @@ class InventoryViewModel extends ChangeNotifier {
     this._inventoryRepository,
     this._farmRepository,
     this._zonesRepository, {
-    this.profile = InventoryPropertyProfile.sitioSaoFrancisco,
+    InventoryPropertyProfile? profile,
     Stream<void>? plantChanges,
-  }) {
+  }) : profile = profile ?? AppConfig.activeTenant.propertyProfile {
     _plantChangesSubscription = plantChanges?.listen((_) {
       if (_summaryStatus == InventoryLoadStatus.initial ||
           _summaryStatus == InventoryLoadStatus.loading ||

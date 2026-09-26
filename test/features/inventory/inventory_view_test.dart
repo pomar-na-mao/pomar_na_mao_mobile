@@ -17,6 +17,9 @@ class ViewTestInventoryRepository implements InventoryRepository {
   InventorySummary result = const InventorySummary(
     existingPlants: 21809,
     availablePlantingSpots: 2,
+    zones: 8,
+    regionPoints: 434,
+    farmBoundaryPoints: 18,
   );
   Exception? error;
 
@@ -80,7 +83,7 @@ Widget buildSubject(
   InventoryViewModel viewModel, {
   TargetPlatform platform = TargetPlatform.android,
   double textScale = 1,
-  String fruitAssetPath = 'assets/images/avocado.png',
+  String fruitAssetPath = 'assets/images/lichia.png',
 }) {
   return MaterialApp(
     theme: ThemeData(
@@ -222,20 +225,22 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('inventory-map-card')), findsOneWidget);
-    expect(find.text('Sítio São Francisco'), findsOneWidget);
-    expect(find.text('54 ha'), findsOneWidget);
-    expect(find.text('Avocado'), findsOneWidget);
-    expect(find.bySemanticsLabel('Ilustração de avocado'), findsOneWidget);
+    expect(find.text('Fazenda Coatiara'), findsOneWidget);
+    expect(find.text('117 ha'), findsOneWidget);
+    expect(find.text('Lichia'), findsOneWidget);
+    expect(find.bySemanticsLabel('Ilustração de lichia'), findsOneWidget);
     expect(find.text('21.809'), findsOneWidget);
     expect(find.text('2'), findsOneWidget);
+    expect(find.text('8'), findsOneWidget);
+    expect(find.text('452'), findsOneWidget);
     expect(find.text('8 × 5 m'), findsOneWidget);
     expect(find.text('Semi-adensado'), findsOneWidget);
-    expect(find.text('250 plantas/ha'), findsOneWidget);
-    expect(find.text('Hass'), findsOneWidget);
+    expect(find.text('187 plantas/ha'), findsOneWidget);
+    expect(find.text('Múltiplas'), findsOneWidget);
     expect(find.text('Fazenda'), findsOneWidget);
-    expect(find.text('Zonas A–G'), findsOneWidget);
+    expect(find.text('Zonas'), findsOneWidget);
     expect(
-      find.bySemanticsLabel('Zonas A–G, limite pontilhado verde'),
+      find.bySemanticsLabel('Zonas, limite pontilhado verde'),
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('test-map')), findsOneWidget);
@@ -254,13 +259,13 @@ void main() {
     await tester.pumpWidget(
       buildSubject(
         buildViewModel(),
-        fruitAssetPath: 'assets/images/missing-avocado.png',
+        fruitAssetPath: 'assets/images/missing-lichia.png',
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.image_not_supported_outlined), findsOneWidget);
-    expect(find.text('Sítio São Francisco'), findsOneWidget);
+    expect(find.text('Fazenda Coatiara'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
