@@ -8,7 +8,16 @@ class AboutView extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Quem somos')),
+      appBar: AppBar(
+        title: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.info),
+            SizedBox(width: 8),
+            Flexible(child: Text('Sobre', overflow: TextOverflow.ellipsis)),
+          ],
+        ),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
         child: Column(

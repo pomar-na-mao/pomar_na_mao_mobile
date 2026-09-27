@@ -18,8 +18,7 @@ class InventoryView extends StatefulWidget {
     this.mapBuilder,
     String? fruitAssetPath,
     super.key,
-  }) : fruitAssetPath =
-           fruitAssetPath ?? AppConfig.activeTenant.fruitAssetPath;
+  }) : fruitAssetPath = fruitAssetPath ?? AppConfig.activeTenant.fruitAssetPath;
 
   final InventoryViewModel viewModel;
   final InventoryMapBuilder? mapBuilder;
@@ -58,8 +57,16 @@ class _InventoryViewState extends State<InventoryView> {
       appBar: AppBar(
         backgroundColor: _backgroundColor,
         surfaceTintColor: Colors.transparent,
-        leading: const Icon(Icons.inventory_2_outlined),
-        title: const Text('Inventário'),
+        title: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.inventory_2_outlined),
+            SizedBox(width: 8),
+            Flexible(
+              child: Text('Inventário', overflow: TextOverflow.ellipsis),
+            ),
+          ],
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,

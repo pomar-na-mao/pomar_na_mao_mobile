@@ -14,19 +14,28 @@ O aplicativo SHALL apresentar um mapa Google interativo como conteúdo principal
 - **THEN** o sistema exibe o mapa e informa visualmente enquanto os dados das plantas estão sendo carregados
 
 ### Requirement: Carregar plantas cadastradas
-O aplicativo SHALL consultar a totalidade dos registros disponíveis na tabela `public.plants` do projeto Supabase configurado utilizando paginação em lotes (sem truncamento por limites artificiais ou tetos de página da API), processando a carga e decodificação dos registros de forma assíncrona fora da thread principal de interface para disponibilização no mapa.
+
+O aplicativo SHALL disponibilizar no mapa a totalidade dos registros de `public.plants` do projeto configurado a partir do cache local compartilhado, processando carga e decodificação fora da thread principal de interface. Quando ainda não existir uma versão local, SHALL realizar uma única inicialização remota paginada até a exaustão da tabela; quando existir cache, abrir ou tentar novamente na Fazenda SHALL NOT consultar `plants` remotamente. Atualizações posteriores SHALL ser recebidas do carregamento explícito realizado na Inspeção.
+
+#### Scenario: Primeira carga sem cache
+- **WHEN** a Fazenda precisa das plantas e nenhuma versão local foi inicializada
+- **THEN** o sistema obtém todos os registros disponíveis em páginas, persiste o conjunto completo e o disponibiliza para o mapa sem travar a interface
 
 #### Scenario: Consulta concluída com plantas
-- **WHEN** a consulta ao Supabase retorna registros da tabela `plants`
-- **THEN** o sistema conclui o carregamento de todos os registros disponíveis paginados até a exaustão da tabela e disponibiliza o conjunto completo para o mapa sem travar a interface do usuário
+- **WHEN** existe um conjunto local de plantas com registros
+- **THEN** o sistema disponibiliza a totalidade desse conjunto para o mapa sem enviar nova consulta HTTP a `plants`
 
 #### Scenario: Consulta concluída sem plantas
-- **WHEN** a consulta ao Supabase não retorna registros
-- **THEN** o sistema mantém o mapa utilizável e informa que nenhuma planta foi encontrada
+- **WHEN** o cache contém uma versão completa e confirmada sem registros
+- **THEN** o sistema mantém o mapa utilizável, informa que nenhuma planta foi encontrada e não repete automaticamente a consulta remota
 
 #### Scenario: Falha ao carregar plantas
-- **WHEN** a consulta ao Supabase falha
+- **WHEN** a inicialização remota falha sem existir cache de plantas utilizável
 - **THEN** o sistema mantém a tela Fazenda estável e apresenta uma mensagem de erro com uma ação para tentar novamente
+
+#### Scenario: Inspeção atualiza as plantas
+- **WHEN** o carregamento explícito da Inspeção publica uma nova versão do conjunto de plantas
+- **THEN** a Fazenda passa a representar essa versão sem iniciar uma atualização remota própria
 
 ### Requirement: Representar todas as plantas no mapa
 O aplicativo SHALL representar geograficamente a totalidade das plantas carregadas através de agrupamento inteligente (clustering) em níveis de zoom distantes e marcadores individuais em níveis de zoom aproximados, mantendo interações de câmera e navegação fluidas sem travamento.
