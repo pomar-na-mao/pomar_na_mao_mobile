@@ -138,7 +138,10 @@ void main() {
 
     await tester.tap(find.text('Sobre'));
     await tester.pumpAndSettle();
-    expect(find.text('Quem somos'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Sobre')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('Inventário'));
     await tester.pumpAndSettle();

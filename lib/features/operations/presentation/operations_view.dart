@@ -37,8 +37,14 @@ class OperationsView extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: _backgroundColor,
         surfaceTintColor: Colors.transparent,
-        leading: const Icon(Icons.grid_view_outlined),
-        title: const Text('Operações'),
+        title: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.grid_view_outlined),
+            SizedBox(width: 8),
+            Flexible(child: Text('Operações', overflow: TextOverflow.ellipsis)),
+          ],
+        ),
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {

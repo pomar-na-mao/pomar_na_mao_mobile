@@ -269,7 +269,13 @@ class _FarmMapViewState extends State<FarmMapView> {
           appBar: AppBar(
             title: const Row(
               mainAxisSize: MainAxisSize.min,
-              children: [Icon(Icons.eco), SizedBox(width: 8), Text('Fazenda')],
+              children: [
+                Icon(Icons.eco),
+                SizedBox(width: 8),
+                Flexible(
+                  child: Text('Fazenda', overflow: TextOverflow.ellipsis),
+                ),
+              ],
             ),
           ),
           body: Stack(
