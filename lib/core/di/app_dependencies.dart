@@ -72,9 +72,9 @@ class AppDependencies {
     final farmRepo = SupabaseFarmRepository.fromShared(sharedReadRepo);
     final plantsRepo = SupabasePlantsRepository.fromShared(sharedReadRepo);
     final zonesRepo = SupabaseZonesRepository.fromShared(sharedReadRepo);
-    final inventoryRepo = SupabaseInventoryRepository(supabaseClient);
-    final inventoryFarmRepo = SupabaseFarmRepository(supabaseClient);
-    final inventoryZonesRepo = SupabaseZonesRepository(supabaseClient);
+    final inventoryRepo = SupabaseInventoryRepository.fromShared(
+      sharedReadRepo,
+    );
     final inspRepo = DefaultInspectionRepository(
       localStore: inspStore,
       remoteDataSource: inspRemote,
@@ -94,8 +94,8 @@ class AppDependencies {
       inspectionRepository: inspRepo,
       inventoryViewModel: InventoryViewModel(
         inventoryRepo,
-        inventoryFarmRepo,
-        inventoryZonesRepo,
+        farmRepo,
+        zonesRepo,
         profile: AppConfig.activeTenant.propertyProfile,
         plantChanges: sharedReadRepo.plantChanges,
       ),

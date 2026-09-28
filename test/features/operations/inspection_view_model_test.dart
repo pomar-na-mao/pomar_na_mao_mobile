@@ -163,6 +163,16 @@ void main() {
     expect(viewModel.userLocation?.latitude, -23.5);
   });
 
+  test('initialization cannot reactivate GPS on a hidden route', () async {
+    viewModel.pauseLocation();
+    await viewModel.initialize();
+    expect(locationService.watchCallCount, 0);
+    viewModel.resumeLocation();
+    viewModel.pauseLocation();
+    await viewModel.initialize();
+    expect(locationService.watchCallCount, 1);
+  });
+
   test(
     'pausing and resuming location subscription avoids duplicate streams',
     () {

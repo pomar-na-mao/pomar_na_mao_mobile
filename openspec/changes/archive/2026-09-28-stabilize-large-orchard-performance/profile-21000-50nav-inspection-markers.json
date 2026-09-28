@@ -1,0 +1,216 @@
+{
+  "navigation": {
+    "average_frame_build_time_millis": 7.251,
+    "90th_percentile_frame_build_time_millis": 13.707,
+    "99th_percentile_frame_build_time_millis": 25.275,
+    "worst_frame_build_time_millis": 25.275,
+    "missed_frame_build_budget_count": 1,
+    "average_frame_rasterizer_time_millis": 6.567,
+    "90th_percentile_frame_rasterizer_time_millis": 9.645,
+    "99th_percentile_frame_rasterizer_time_millis": 27.931,
+    "worst_frame_rasterizer_time_millis": 27.931,
+    "average_layer_cache_count": 0.0,
+    "90th_percentile_layer_cache_count": 0,
+    "99th_percentile_layer_cache_count": 0,
+    "worst_layer_cache_count": 0,
+    "average_layer_cache_memory": 0.0,
+    "90th_percentile_layer_cache_memory": 0.0,
+    "99th_percentile_layer_cache_memory": 0.0,
+    "worst_layer_cache_memory": 0.0,
+    "average_picture_cache_count": 0.0,
+    "90th_percentile_picture_cache_count": 0,
+    "99th_percentile_picture_cache_count": 0,
+    "worst_picture_cache_count": 0,
+    "average_picture_cache_memory": 0.0,
+    "90th_percentile_picture_cache_memory": 0.0,
+    "99th_percentile_picture_cache_memory": 0.0,
+    "worst_picture_cache_memory": 0.0,
+    "missed_frame_rasterizer_budget_count": 1,
+    "frame_count": 14,
+    "frame_build_times": [
+      25275,
+      2077,
+      7144,
+      13707,
+      3858,
+      2436,
+      5991,
+      9249,
+      2333,
+      3957,
+      3002,
+      3466,
+      9879,
+      9151
+    ],
+    "frame_rasterizer_times": [
+      27931,
+      5658,
+      1827,
+      4997,
+      5579,
+      9061,
+      2932,
+      7024,
+      9645,
+      2690,
+      6257,
+      749,
+      5459,
+      2141
+    ],
+    "new_gen_gc_count": 166,
+    "old_gen_gc_count": 30
+  },
+  "orchard": {
+    "plants": 21000,
+    "shellMs": 4528,
+    "navigationMs": [
+      75,
+      32,
+      21,
+      25,
+      11,
+      23
+    ],
+    "diagnostics": {
+      "version": 1,
+      "events": [
+        {
+          "time": "2026-09-28T00:05:31.424028Z",
+          "stage": "databaseOpen",
+          "outcome": "success",
+          "elapsedUs": 33709
+        },
+        {
+          "time": "2026-09-28T00:05:36.389620Z",
+          "stage": "decode",
+          "outcome": "success",
+          "elapsedUs": 112737
+        },
+        {
+          "time": "2026-09-28T00:05:36.389706Z",
+          "stage": "localRead",
+          "outcome": "success",
+          "elapsedUs": 397282
+        },
+        {
+          "time": "2026-09-28T00:05:38.160261Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:05:39.218109Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:05:39.220322Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:05:39.847258Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:05:40.285629Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:05:41.313131Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:05:41.371176Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 0
+        },
+        {
+          "time": "2026-09-28T00:05:41.565734Z",
+          "stage": "localRead",
+          "outcome": "success",
+          "elapsedUs": 246429
+        },
+        {
+          "time": "2026-09-28T00:05:41.568066Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 0
+        },
+        {
+          "time": "2026-09-28T00:05:42.772736Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:05:42.830624Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:05:45.369572Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:05:45.370050Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:05:46.398976Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:05:46.400339Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:05:46.634415Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:05:47.438542Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:05:47.440884Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:05:47.681671Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        }
+      ]
+    },
+    "dataSource": "synthetic local cache; no production HTTP",
+    "limitations": "Warm process UI test including Inspection. Not full acceptance matrix."
+  }
+}

@@ -1,0 +1,1144 @@
+{
+  "navigation": {
+    "average_frame_build_time_millis": 9.897,
+    "90th_percentile_frame_build_time_millis": 13.46,
+    "99th_percentile_frame_build_time_millis": 16.604,
+    "worst_frame_build_time_millis": 25.336,
+    "missed_frame_build_budget_count": 2,
+    "average_frame_rasterizer_time_millis": 4.61,
+    "90th_percentile_frame_rasterizer_time_millis": 8.269,
+    "99th_percentile_frame_rasterizer_time_millis": 14.024,
+    "worst_frame_rasterizer_time_millis": 29.733,
+    "average_layer_cache_count": 0.0,
+    "90th_percentile_layer_cache_count": 0,
+    "99th_percentile_layer_cache_count": 0,
+    "worst_layer_cache_count": 0,
+    "average_layer_cache_memory": 0.0,
+    "90th_percentile_layer_cache_memory": 0.0,
+    "99th_percentile_layer_cache_memory": 0.0,
+    "worst_layer_cache_memory": 0.0,
+    "average_picture_cache_count": 0.0,
+    "90th_percentile_picture_cache_count": 0,
+    "99th_percentile_picture_cache_count": 0,
+    "worst_picture_cache_count": 0,
+    "average_picture_cache_memory": 0.0,
+    "90th_percentile_picture_cache_memory": 0.0,
+    "99th_percentile_picture_cache_memory": 0.0,
+    "worst_picture_cache_memory": 0.0,
+    "missed_frame_rasterizer_budget_count": 1,
+    "frame_count": 102,
+    "frame_build_times": [
+      25336,
+      1274,
+      7610,
+      12436,
+      4563,
+      2732,
+      5299,
+      9220,
+      2812,
+      5098,
+      2595,
+      3596,
+      4341,
+      12330,
+      9885,
+      12159,
+      4202,
+      11678,
+      12622,
+      9442,
+      3743,
+      12385,
+      8470,
+      13503,
+      6352,
+      8936,
+      10782,
+      13460,
+      6893,
+      12942,
+      12231,
+      11410,
+      3123,
+      11322,
+      7254,
+      13441,
+      13311,
+      12936,
+      7659,
+      15035,
+      7543,
+      13333,
+      11230,
+      12375,
+      10415,
+      11861,
+      6804,
+      12459,
+      10519,
+      11617,
+      10718,
+      12460,
+      6211,
+      13215,
+      12935,
+      9324,
+      9602,
+      13862,
+      6622,
+      11837,
+      10382,
+      10704,
+      12826,
+      13299,
+      6776,
+      12925,
+      12874,
+      13616,
+      8671,
+      11219,
+      3067,
+      11426,
+      4320,
+      10387,
+      11832,
+      11681,
+      8619,
+      9464,
+      14626,
+      9048,
+      9487,
+      14983,
+      7015,
+      16604,
+      5471,
+      8603,
+      7776,
+      13979,
+      5706,
+      11738,
+      11529,
+      9294,
+      8287,
+      14640,
+      6904,
+      12925,
+      10513,
+      12888,
+      3800,
+      11837,
+      5734,
+      12747
+    ],
+    "frame_rasterizer_times": [
+      29733,
+      3869,
+      2094,
+      4875,
+      10372,
+      7101,
+      3018,
+      6158,
+      11519,
+      2399,
+      6464,
+      915,
+      5963,
+      1949,
+      6923,
+      1429,
+      4831,
+      878,
+      6609,
+      2440,
+      5719,
+      2915,
+      5770,
+      1954,
+      14024,
+      2202,
+      8269,
+      1228,
+      9423,
+      1778,
+      5850,
+      2514,
+      4402,
+      2967,
+      6912,
+      1690,
+      5864,
+      2550,
+      3585,
+      2483,
+      8268,
+      1525,
+      5818,
+      1476,
+      6999,
+      1386,
+      6407,
+      1440,
+      5985,
+      1311,
+      6790,
+      1690,
+      5024,
+      1893,
+      4885,
+      1386,
+      8140,
+      2776,
+      5890,
+      1779,
+      4395,
+      1021,
+      8471,
+      2372,
+      6204,
+      1623,
+      6126,
+      2104,
+      5732,
+      2155,
+      2932,
+      1657,
+      5515,
+      2352,
+      8999,
+      2096,
+      8806,
+      1744,
+      7740,
+      2364,
+      7477,
+      1767,
+      8411,
+      2389,
+      6559,
+      1866,
+      5725,
+      2223,
+      6499,
+      1543,
+      5996,
+      1460,
+      8972,
+      1830,
+      6282,
+      1786,
+      5044,
+      1545,
+      5686,
+      2954,
+      6327,
+      1014
+    ],
+    "new_gen_gc_count": 184,
+    "old_gen_gc_count": 30
+  },
+  "orchard": {
+    "plants": 21000,
+    "shellMs": 4547,
+    "navigationMs": [
+      54,
+      36,
+      27,
+      29,
+      10,
+      52,
+      46,
+      39,
+      42,
+      54,
+      39,
+      40,
+      43,
+      42,
+      43,
+      56,
+      44,
+      44,
+      51,
+      39,
+      46,
+      42,
+      41,
+      41,
+      43,
+      44,
+      42,
+      47,
+      41,
+      45,
+      42,
+      40,
+      44,
+      44,
+      49,
+      45,
+      38,
+      34,
+      37,
+      46,
+      45,
+      44,
+      50,
+      49,
+      39,
+      44,
+      44,
+      45,
+      55,
+      40
+    ],
+    "diagnostics": {
+      "version": 1,
+      "events": [
+        {
+          "time": "2026-09-28T00:08:00.090073Z",
+          "stage": "databaseOpen",
+          "outcome": "success",
+          "elapsedUs": 29532
+        },
+        {
+          "time": "2026-09-28T00:08:05.086874Z",
+          "stage": "decode",
+          "outcome": "success",
+          "elapsedUs": 103640
+        },
+        {
+          "time": "2026-09-28T00:08:05.086989Z",
+          "stage": "localRead",
+          "outcome": "success",
+          "elapsedUs": 422595
+        },
+        {
+          "time": "2026-09-28T00:08:06.803817Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:07.855102Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:07.857500Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:08.431582Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:08.458379Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:08.925515Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:09.964395Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:10.015892Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 0
+        },
+        {
+          "time": "2026-09-28T00:08:10.176724Z",
+          "stage": "localRead",
+          "outcome": "success",
+          "elapsedUs": 206385
+        },
+        {
+          "time": "2026-09-28T00:08:10.191951Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 0
+        },
+        {
+          "time": "2026-09-28T00:08:11.430685Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:11.474554Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:14.022696Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:14.023202Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:15.053493Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:15.054861Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:15.287169Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:16.122599Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:16.126191Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:16.372739Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:17.211380Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:17.212971Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:18.285684Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:18.291177Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:18.526288Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:19.376967Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:19.379840Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:19.630852Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:20.460881Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:20.462336Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:21.542170Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:21.547626Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:21.797893Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:22.626421Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:22.628794Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:22.879790Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:23.718357Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:23.719868Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:24.795636Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:24.800952Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:25.051813Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:25.882301Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:25.885074Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:26.134881Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:26.970490Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:26.971670Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:28.050723Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:28.056002Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:28.305850Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:29.137104Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:29.140667Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:29.391045Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:30.226451Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:30.227997Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:31.302972Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:31.308239Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:31.533159Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:32.391493Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:32.395129Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:32.620836Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:33.478754Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:33.480286Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:34.554775Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:34.559564Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:34.796144Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:35.643335Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:35.647060Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:35.891174Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:36.730702Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:36.732228Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:37.808379Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:37.813935Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:38.037008Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:38.894973Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:38.897429Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:39.113030Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:39.985693Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:39.987565Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:41.062101Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:41.067135Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:41.294067Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:42.150272Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:42.153525Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:42.376283Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:43.237092Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:43.238574Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:44.314773Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:44.319494Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:44.552273Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:45.407399Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:45.411331Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:45.659727Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:46.488895Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:46.490458Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:47.568349Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:47.573352Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:47.805493Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:48.650401Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:48.652978Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:48.879514Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:49.742096Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:49.743446Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:50.820304Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:50.824169Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:51.065096Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:51.907916Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:51.910802Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:52.134586Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:52.996492Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:52.998203Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:54.077285Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:54.084033Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:54.320389Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:55.159875Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:55.162685Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:55.390563Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:56.252954Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:56.254559Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:57.336497Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:08:57.341283Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:57.558515Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:58.416141Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:58.419207Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:08:58.646318Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:08:59.505303Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:08:59.507115Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:09:00.585143Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:09:00.590940Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:09:00.834366Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:09:01.670658Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:09:01.673969Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:09:01.903633Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        },
+        {
+          "time": "2026-09-28T00:09:02.756899Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 0
+        },
+        {
+          "time": "2026-09-28T00:09:02.758235Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:09:03.835817Z",
+          "stage": "lifecycle",
+          "outcome": "started",
+          "activeMaps": 2
+        },
+        {
+          "time": "2026-09-28T00:09:03.840814Z",
+          "stage": "lifecycle",
+          "outcome": "stopped",
+          "activeMaps": 1
+        },
+        {
+          "time": "2026-09-28T00:09:04.081314Z",
+          "stage": "markers",
+          "outcome": "success",
+          "count": 8
+        }
+      ]
+    },
+    "dataSource": "synthetic local cache; no production HTTP",
+    "limitations": "Warm process UI test including Inspection. Not full acceptance matrix."
+  }
+}

@@ -153,7 +153,7 @@ void main() {
   });
 
   testWidgets(
-    'displays translucent loading overlay and blocks gestures when loading',
+    'keeps navigation available while a shared load is pending',
     (tester) async {
       final loadingController = AppLoadingController();
       await tester.binding.setSurfaceSize(const Size(420, 900));
@@ -164,28 +164,28 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
 
       final completer = Completer<void>();
       final trackedFuture = loadingController.track(() => completer.future);
 
       await tester.pump(); // rebuild with loading state
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
 
-      // Verify background interactions are blocked while loading
+      // Pending data must not prevent switching destinations.
       await tester.tap(find.text('Fazenda'), warnIfMissed: false);
       await tester.pump();
 
       expect(
         tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
-        0,
+        1,
       );
 
       completer.complete();
       await trackedFuture;
       await tester.pumpAndSettle();
 
-      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
 
       // Interactions work after loading finishes
       await tester.tap(find.text('Fazenda'));

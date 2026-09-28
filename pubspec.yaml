@@ -41,8 +41,11 @@ dependencies:
   sqflite: ^2.3.3+1
   path: ^1.9.0
   uuid: ^4.4.0
+  supercluster: 3.2.0
 
 dev_dependencies:
+  integration_test:
+    sdk: flutter
   flutter_test:
     sdk: flutter
   sqflite_common_ffi: ^2.3.3

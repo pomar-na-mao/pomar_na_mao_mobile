@@ -50,15 +50,35 @@ class MockFarmRepository implements FarmRepository {
 }
 
 class MockLocationService implements LocationService {
+  int subscriptions = 0;
   @override
   Future<LocationResult> getCurrentLocation() async =>
       const LocationResult.serviceDisabled();
 
   @override
-  Stream<LocationResult> watchLocation() => const Stream.empty();
+  Stream<LocationResult> watchLocation() {
+    subscriptions++;
+    return const Stream.empty();
+  }
 }
 
 void main() {
+  test('GPS follows explicit visibility, not data initialization', () async {
+    final service = MockLocationService();
+    final vm = FarmMapViewModel(MockPlantsRepository(), MockZonesRepository(), service, MockFarmRepository());
+    await vm.initialize();
+    expect(service.subscriptions, 0);
+    await vm.loadUserLocation();
+    await vm.loadUserLocation();
+    expect(service.subscriptions, 1);
+    vm.pauseLocation();
+    vm.pauseLocation();
+    await vm.loadUserLocation();
+    expect(service.subscriptions, 2);
+    vm.dispose();
+    await vm.loadUserLocation();
+    expect(service.subscriptions, 2);
+  });
   group('RegionPoint.fromJson', () {
     test('instantiates with valid json', () {
       final json = {

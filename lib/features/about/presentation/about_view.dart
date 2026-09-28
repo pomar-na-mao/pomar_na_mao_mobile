@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../../core/diagnostics/runtime_diagnostics.dart';
 
 class AboutView extends StatelessWidget {
   const AboutView({super.key});
@@ -9,6 +12,21 @@ class AboutView extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
+        actions: [
+          IconButton(
+            tooltip: 'Copiar diagnóstico de desempenho',
+            icon: const Icon(Icons.content_copy),
+            onPressed: () async {
+              await Clipboard.setData(
+                ClipboardData(text: RuntimeDiagnostics.instance.exportJson()),
+              );
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Diagnóstico copiado')),
+              );
+            },
+          ),
+        ],
         title: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [

@@ -143,9 +143,24 @@ class InspectionViewModel extends ChangeNotifier {
 
   List<InspectionPlant> _plants = const [];
   List<InspectionPlant> get allPlants => _plants;
+  List<InspectionPlant>? _indexedPlants;
+  Map<String, InspectionPlant> _plantsById = {};
+  InspectionPlant? plantById(String id) {
+    if (!identical(_indexedPlants, _plants)) {
+      _indexedPlants = _plants;
+      _plantsById = {for (final plant in _plants) plant.id: plant};
+    }
+    return _plantsById[id];
+  }
+
+  Object? _filterKey;
+  List<InspectionPlant> _filteredPlants = const [];
 
   List<InspectionPlant> get plants {
-    return _plants.where((plant) {
+    final key = (_plants, _selectedZoneFilterId, _selectedOccurrenceFilterId);
+    if (_filterKey == key) return _filteredPlants;
+    _filterKey = key;
+    return _filteredPlants = _plants.where((plant) {
       if (_selectedZoneFilterId != null &&
           plant.zoneId != _selectedZoneFilterId) {
         return false;
@@ -213,7 +228,6 @@ class InspectionViewModel extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
-    resumeLocation();
     await _loadExistingSnapshotSilently();
     await loadZones();
     await refreshLocalInspections();
@@ -662,10 +676,11 @@ class InspectionViewModel extends ChangeNotifier {
   }
 
   void resumeLocation() {
-    if (_isLocationActive) return;
+    if (_disposed || _isLocationActive) return;
     _isLocationActive = true;
     _locationSubscription?.cancel();
     _locationSubscription = locationService.watchLocation().listen((result) {
+      if (_disposed || !_isLocationActive) return;
       _locationResult = result;
       notifyListeners();
     });
@@ -679,8 +694,15 @@ class InspectionViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     pauseLocation();
     unawaited(_plantChangesSubscription?.cancel());
     super.dispose();
+  }
+
+  bool _disposed = false;
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
   }
 }
