@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
+
+import '../../../core/diagnostics/runtime_diagnostics.dart';
 
 class InspectionDatabase {
   InspectionDatabase({required this.projectUrl, this.factory, this.directory});
@@ -12,13 +15,28 @@ class InspectionDatabase {
   final String? directory;
   Future<Database>? _opening;
   bool _closed = false;
+  int _revision = 0;
+  int get revision => _revision;
+  final _changes = StreamController<int>.broadcast(sync: true);
+  Stream<int> get changes => _changes.stream;
+
+  void publishCommit() {
+    _revision++;
+    if (!_changes.isClosed) _changes.add(_revision);
+    RuntimeDiagnostics.instance.record(
+      RuntimeStage.publication,
+      revision: _revision,
+    );
+  }
 
   Future<Database> get database {
     if (_closed) throw StateError('Banco de inspeção fechado');
-    return _opening ??= _open().catchError((Object error) {
-      _opening = null;
-      throw error;
-    });
+    return _opening ??= RuntimeDiagnostics.instance
+        .track(RuntimeStage.databaseOpen, _open)
+        .catchError((Object error) {
+          _opening = null;
+          throw error;
+        });
   }
 
   Future<Database> _open() async {
@@ -29,7 +47,7 @@ class InspectionDatabase {
     final db = await resolvedFactory.openDatabase(
       p.join(root, 'inspections_$fileId.db'),
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 4,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) => _migrate(db, 0, version),
         onUpgrade: _migrate,
@@ -50,6 +68,8 @@ class InspectionDatabase {
         await txn.update('local_inspections', {
           'sync_status': 'pending',
         }, where: "sync_status = 'syncing'");
+        await txn.delete('staged_plants');
+        await txn.delete('cache_generations');
       });
       return db;
     } catch (_) {
@@ -79,6 +99,16 @@ class InspectionDatabase {
         WHERE EXISTS (SELECT 1 FROM occurrence_types)
       ''');
     }
+    if (oldVersion < 3) {
+      for (final sql in _versionThree) {
+        await db.execute(sql);
+      }
+    }
+    if (oldVersion < 4) {
+      for (final sql in _versionFour) {
+        await db.execute(sql);
+      }
+    }
   }
 
   Future<String> get deviceId async =>
@@ -89,6 +119,7 @@ class InspectionDatabase {
     _closed = true;
     final opening = _opening;
     if (opening != null) await (await opening).close();
+    await _changes.close();
   }
 
   static const _versionOne = [
@@ -143,6 +174,31 @@ class InspectionDatabase {
       sequence INTEGER NOT NULL,
       snapshot TEXT NOT NULL,
       PRIMARY KEY(zone_id, sequence))''',
+  ];
+
+  static const _versionThree = [
+    'ALTER TABLE cache_metadata ADD COLUMN row_count INTEGER',
+    'ALTER TABLE cache_metadata ADD COLUMN existing_plants INTEGER',
+    'ALTER TABLE cache_metadata ADD COLUMN available_planting_spots INTEGER',
+  ];
+
+  static const _versionFour = [
+    '''CREATE TABLE cache_generations (
+      generation_id TEXT PRIMARY KEY,
+      cache_key TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      loaded_at TEXT NOT NULL,
+      row_count INTEGER NOT NULL DEFAULT 0,
+      existing_plants INTEGER NOT NULL DEFAULT 0,
+      available_planting_spots INTEGER NOT NULL DEFAULT 0,
+      is_complete INTEGER NOT NULL DEFAULT 0 CHECK(is_complete IN (0, 1)))''',
+    '''CREATE TABLE staged_plants (
+      generation_id TEXT NOT NULL REFERENCES cache_generations(generation_id)
+        ON DELETE CASCADE,
+      id TEXT NOT NULL,
+      snapshot TEXT NOT NULL,
+      PRIMARY KEY(generation_id, id))''',
+    'CREATE INDEX staged_plants_generation ON staged_plants(generation_id)',
   ];
 }
 

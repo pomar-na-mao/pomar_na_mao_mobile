@@ -8,8 +8,10 @@ import 'package:pomar_na_mao_mobile/features/farm/domain/region_point.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/user_location.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/zone.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/zones_repository.dart';
+import 'package:pomar_na_mao_mobile/features/inventory/data/supabase_inventory_repository.dart';
 import 'package:pomar_na_mao_mobile/features/inventory/domain/inventory_repository.dart';
 import 'package:pomar_na_mao_mobile/features/inventory/domain/inventory_summary.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MockFarmRepository implements FarmRepository {
   @override
@@ -26,15 +28,14 @@ class MockZonesRepository implements ZonesRepository {
   Future<List<Zone>> fetchZones() async => const [];
 
   @override
-  Future<List<RegionPoint>> fetchRegionsForZone(String zoneId) async => const [];
+  Future<List<RegionPoint>> fetchRegionsForZone(String zoneId) async =>
+      const [];
 }
 
 class MockInventoryRepository implements InventoryRepository {
   @override
-  Future<InventorySummary> fetchSummary() async => const InventorySummary(
-        existingPlants: 10,
-        availablePlantingSpots: 5,
-      );
+  Future<InventorySummary> fetchSummary() async =>
+      const InventorySummary(existingPlants: 10, availablePlantingSpots: 5);
 }
 
 class MockLocationService implements LocationService {
@@ -62,6 +63,26 @@ void main() {
       expect(dependencies.inspectionViewModel, isNotNull);
 
       expect(() => dependencies.dispose(), returnsNormally);
+    });
+
+    test('wires inventory to the shared read cache for Supabase clients', () {
+      final dependencies = AppDependencies.fromSupabaseClient(
+        SupabaseClient('https://example.supabase.co', 'anon-key'),
+        locationService: MockLocationService(),
+      );
+
+      final inventoryRepository =
+          dependencies.inventoryRepository as SupabaseInventoryRepository;
+      expect(inventoryRepository.usesSharedReadRepository, isTrue);
+      expect(
+        identical(
+          dependencies.inventoryViewModel,
+          dependencies.inventoryViewModel,
+        ),
+        isTrue,
+      );
+
+      dependencies.dispose();
     });
   });
 }

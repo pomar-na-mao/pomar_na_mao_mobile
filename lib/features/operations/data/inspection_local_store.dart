@@ -6,6 +6,8 @@ import 'package:uuid/uuid.dart';
 import '../../farm/domain/user_location.dart';
 import '../domain/inspection_models.dart';
 import 'inspection_database.dart';
+import '../../../core/diagnostics/runtime_diagnostics.dart';
+import '../../../core/data/json_codec_worker.dart';
 
 class InspectionLocalStore {
   InspectionLocalStore(
@@ -23,6 +25,50 @@ class InspectionLocalStore {
   static const zonesCacheKey = 'zones';
   static const occurrenceTypesCacheKey = 'occurrence_types';
 
+  Future<CachedPlantTotals?> readSharedPlantTotals() async {
+    final db = await database.database;
+    final rows = await db.query(
+      'cache_metadata',
+      columns: ['row_count', 'existing_plants', 'available_planting_spots'],
+      where: 'cache_key = ? AND is_complete = 1',
+      whereArgs: [plantsCacheKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.single;
+    if (row['row_count'] == null ||
+        row['existing_plants'] == null ||
+        row['available_planting_spots'] == null) {
+      final cachedPlants = await db.query('cached_plants');
+      final totals = RuntimeDiagnostics.instance.measure(
+        RuntimeStage.decode,
+        () => CachedPlantTotals.fromPlants(
+          cachedPlants.map(
+            (cached) => InspectionPlant.fromJson(
+              decodeInspectionJson(cached['snapshot']),
+            ),
+          ),
+        ),
+      );
+      await db.update(
+        'cache_metadata',
+        {
+          'row_count': totals.rowCount,
+          'existing_plants': totals.existingPlants,
+          'available_planting_spots': totals.availablePlantingSpots,
+        },
+        where: 'cache_key = ?',
+        whereArgs: [plantsCacheKey],
+      );
+      return totals;
+    }
+    return CachedPlantTotals(
+      rowCount: row['row_count'] as int,
+      existingPlants: row['existing_plants'] as int,
+      availablePlantingSpots: row['available_planting_spots'] as int,
+    );
+  }
+
   Future<bool> hasCompleteCache(String cacheKey) async {
     final rows = await (await database.database).query(
       'cache_metadata',
@@ -34,19 +80,66 @@ class InspectionLocalStore {
     return rows.isNotEmpty && rows.single['is_complete'] == 1;
   }
 
-  Future<List<Map<String, dynamic>>?> readSharedPlantRows() async {
+  Future<List<Map<String, dynamic>>?> readSharedPlantRows() =>
+      RuntimeDiagnostics.instance.track(
+        RuntimeStage.localRead,
+        _readSharedPlantRows,
+      );
+
+  Future<List<Map<String, dynamic>>?> _readSharedPlantRows() async {
     final db = await database.database;
     if (!await hasCompleteCache(plantsCacheKey)) return null;
     final rows = await db.query('cached_plants', orderBy: 'id');
-    return rows
-        .map((row) => decodeInspectionJson(row['snapshot']))
-        .toList(growable: false);
+    return RuntimeDiagnostics.instance.track(
+      RuntimeStage.decode,
+      () => decodeJsonMapsInWorker(rows.map((row) => row['snapshot'])),
+    );
   }
 
   Future<void> replaceSharedPlantRows(
     List<Map<String, dynamic>> rows,
     Map<String, Set<String>> openOccurrences, {
     required DateTime loadedAt,
+  }) => RuntimeDiagnostics.instance.track(
+    RuntimeStage.persistence,
+    () => _replaceSharedPlantRows(rows, openOccurrences, loadedAt: loadedAt),
+  );
+
+  Future<void> _replaceSharedPlantRows(
+    List<Map<String, dynamic>> rows,
+    Map<String, Set<String>> openOccurrences, {
+    required DateTime loadedAt,
+  }) async {
+    final generationId = await beginPlantStaging(loadedAt: loadedAt);
+    try {
+      await appendStagedPlantRows(
+        generationId,
+        rows,
+        openOccurrences: openOccurrences,
+      );
+      await publishPlantStaging(generationId);
+    } catch (_) {
+      await discardPlantStaging(generationId);
+      rethrow;
+    }
+  }
+
+  Future<String> beginPlantStaging({required DateTime loadedAt}) async {
+    final generationId = newId();
+    final db = await database.database;
+    await db.insert('cache_generations', {
+      'generation_id': generationId,
+      'cache_key': plantsCacheKey,
+      'started_at': clock().toUtc().toIso8601String(),
+      'loaded_at': loadedAt.toUtc().toIso8601String(),
+    });
+    return generationId;
+  }
+
+  Future<void> appendStagedPlantRows(
+    String generationId,
+    List<Map<String, dynamic>> rows, {
+    Map<String, Set<String>> openOccurrences = const {},
   }) async {
     final remotePlants = <String, InspectionPlant>{};
     for (final row in rows) {
@@ -67,9 +160,113 @@ class InspectionLocalStore {
       );
     }
 
+    final plantEntries = remotePlants.values.toList(growable: false);
+    final encodedSnapshots = await RuntimeDiagnostics.instance.track(
+      RuntimeStage.decode,
+      () => encodeJsonMapsInWorker(plantEntries.map((plant) => plant.toJson())),
+    );
+
     final db = await database.database;
     await db.transaction((txn) async {
-      final effective = Map<String, InspectionPlant>.from(remotePlants);
+      final generation = await txn.query(
+        'cache_generations',
+        where: 'generation_id = ? AND cache_key = ? AND is_complete = 0',
+        whereArgs: [generationId, plantsCacheKey],
+        limit: 1,
+      );
+      if (generation.isEmpty) {
+        throw StateError('Geracao de plantas indisponivel para staging');
+      }
+      final totals = CachedPlantTotals.fromPlants(plantEntries);
+      final batch = txn.batch();
+      for (var index = 0; index < plantEntries.length; index++) {
+        final plant = plantEntries[index];
+        batch.insert('staged_plants', {
+          'generation_id': generationId,
+          'id': plant.id,
+          'snapshot': encodedSnapshots[index],
+        }, conflictAlgorithm: ConflictAlgorithm.abort);
+      }
+      await batch.commit(noResult: true);
+      await txn.rawUpdate(
+        '''UPDATE cache_generations SET
+          row_count = row_count + ?,
+          existing_plants = existing_plants + ?,
+          available_planting_spots = available_planting_spots + ?
+        WHERE generation_id = ?''',
+        [
+          totals.rowCount,
+          totals.existingPlants,
+          totals.availablePlantingSpots,
+          generationId,
+        ],
+      );
+    });
+  }
+
+  Future<void> applyOpenOccurrencesToStaging(
+    String generationId,
+    Map<String, Set<String>> openOccurrences,
+  ) async {
+    if (openOccurrences.isEmpty) return;
+    final db = await database.database;
+    await db.transaction((txn) async {
+      final generation = await txn.query(
+        'cache_generations',
+        where: 'generation_id = ? AND cache_key = ? AND is_complete = 0',
+        whereArgs: [generationId, plantsCacheKey],
+        limit: 1,
+      );
+      if (generation.isEmpty) {
+        throw StateError('Geracao de plantas indisponivel para ocorrencias');
+      }
+      final batch = txn.batch();
+      for (final entry in openOccurrences.entries) {
+        final rows = await txn.query(
+          'staged_plants',
+          where: 'generation_id = ? AND id = ?',
+          whereArgs: [generationId, entry.key],
+          limit: 1,
+        );
+        if (rows.isEmpty) continue;
+        final plant = InspectionPlant.fromJson(
+          decodeInspectionJson(rows.single['snapshot']),
+        );
+        batch.update(
+          'staged_plants',
+          {'snapshot': jsonEncode(plant.withState(entry.value).toJson())},
+          where: 'generation_id = ? AND id = ?',
+          whereArgs: [generationId, entry.key],
+        );
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
+  Future<void> publishPlantStaging(String generationId) async {
+    final db = await database.database;
+    await db.transaction((txn) async {
+      final generation = await txn.query(
+        'cache_generations',
+        where: 'generation_id = ? AND cache_key = ? AND is_complete = 0',
+        whereArgs: [generationId, plantsCacheKey],
+        limit: 1,
+      );
+      if (generation.isEmpty) {
+        throw StateError('Geracao de plantas indisponivel para publicacao');
+      }
+      final stagedRows = await txn.query(
+        'staged_plants',
+        where: 'generation_id = ?',
+        whereArgs: [generationId],
+        orderBy: 'id',
+      );
+      final effective = <String, InspectionPlant>{
+        for (final row in stagedRows)
+          row['id'] as String: InspectionPlant.fromJson(
+            decodeInspectionJson(row['snapshot']),
+          ),
+      };
       final previous = <String, InspectionPlant>{
         for (final row in await txn.query('cached_plants'))
           row['id'] as String: InspectionPlant.fromJson(
@@ -77,8 +274,39 @@ class InspectionLocalStore {
           ),
       };
       await _overlayPendingChanges(txn, effective, previous);
-      await _replacePlants(txn, effective.values, loadedAt: loadedAt);
-      await _writeCacheMetadata(txn, plantsCacheKey, loadedAt);
+      await _replacePlants(
+        txn,
+        effective.values,
+        loadedAt: DateTime.parse(generation.single['loaded_at'] as String),
+      );
+      await txn.update(
+        'cache_generations',
+        {'is_complete': 1},
+        where: 'generation_id = ?',
+        whereArgs: [generationId],
+      );
+      await txn.delete(
+        'staged_plants',
+        where: 'generation_id = ?',
+        whereArgs: [generationId],
+      );
+    });
+    database.publishCommit();
+  }
+
+  Future<void> discardPlantStaging(String generationId) async {
+    final db = await database.database;
+    await db.transaction((txn) async {
+      await txn.delete(
+        'staged_plants',
+        where: 'generation_id = ?',
+        whereArgs: [generationId],
+      );
+      await txn.delete(
+        'cache_generations',
+        where: 'generation_id = ? AND is_complete = 0',
+        whereArgs: [generationId],
+      );
     });
   }
 
@@ -195,16 +423,30 @@ class InspectionLocalStore {
   Future<void> _writeCacheMetadata(
     Transaction txn,
     String cacheKey,
-    DateTime loadedAt,
-  ) => txn.insert('cache_metadata', {
-    'cache_key': cacheKey,
-    'loaded_at': loadedAt.toUtc().toIso8601String(),
-    'is_complete': 1,
-  }, conflictAlgorithm: ConflictAlgorithm.replace);
+    DateTime loadedAt, {
+    CachedPlantTotals? plantTotals,
+  }) {
+    final values = {
+      'cache_key': cacheKey,
+      'loaded_at': loadedAt.toUtc().toIso8601String(),
+      'is_complete': 1,
+      'row_count': ?plantTotals?.rowCount,
+      'existing_plants': ?plantTotals?.existingPlants,
+      'available_planting_spots': ?plantTotals?.availablePlantingSpots,
+    };
+    return txn.insert(
+      'cache_metadata',
+      values,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
 
   static String _regionsCacheKey(String zoneId) => 'regions:$zoneId';
 
-  Future<InspectionSnapshot?> readSnapshot() async {
+  Future<InspectionSnapshot?> readSnapshot() =>
+      RuntimeDiagnostics.instance.track(RuntimeStage.localRead, _readSnapshot);
+
+  Future<InspectionSnapshot?> _readSnapshot() async {
     final db = await database.database;
     return db.transaction((txn) async {
       final metadata = (await txn.query('installation')).single;
@@ -238,6 +480,7 @@ class InspectionLocalStore {
       }
       await _writeCacheMetadata(txn, occurrenceTypesCacheKey, clock().toUtc());
     });
+    database.publishCommit();
   }
 
   Future<List<OccurrenceType>?> readCachedCatalog() async {
@@ -287,6 +530,7 @@ class InspectionLocalStore {
       );
       await _replacePlants(txn, effective.values, loadedAt: snapshot.loadedAt);
     });
+    database.publishCommit();
   }
 
   Future<void> _overlayPendingChanges(
@@ -330,6 +574,12 @@ class InspectionLocalStore {
     await txn.update('installation', {
       'loaded_at': loadedAt.toUtc().toIso8601String(),
     });
+    await _writeCacheMetadata(
+      txn,
+      plantsCacheKey,
+      loadedAt,
+      plantTotals: CachedPlantTotals.fromPlants(plants),
+    );
     final draft = await _ensureDraft(txn);
     await _capturePlants(txn, draft);
   }
@@ -444,6 +694,7 @@ class InspectionLocalStore {
         [sequence, time.toIso8601String(), draftId, draftId],
       );
     });
+    database.publishCommit();
   }
 
   Future<LocalInspection?> finalize() async {
@@ -722,6 +973,7 @@ class InspectionLocalStore {
         }
       }
     });
+    database.publishCommit();
   }
 
   static LocalInspection _inspection(Map<String, Object?> r) => LocalInspection(
@@ -752,4 +1004,35 @@ class InspectionLocalStore {
     accuracy: (r['accuracy'] as num?)?.toDouble(),
     distance: (r['distance'] as num?)?.toDouble(),
   );
+}
+
+class CachedPlantTotals {
+  const CachedPlantTotals({
+    required this.rowCount,
+    required this.existingPlants,
+    required this.availablePlantingSpots,
+  });
+
+  factory CachedPlantTotals.fromPlants(Iterable<InspectionPlant> plants) {
+    var rowCount = 0;
+    var existingPlants = 0;
+    var availablePlantingSpots = 0;
+    for (final plant in plants) {
+      rowCount++;
+      if (plant.nonExistent) {
+        availablePlantingSpots++;
+      } else if (plant.eligible) {
+        existingPlants++;
+      }
+    }
+    return CachedPlantTotals(
+      rowCount: rowCount,
+      existingPlants: existingPlants,
+      availablePlantingSpots: availablePlantingSpots,
+    );
+  }
+
+  final int rowCount;
+  final int existingPlants;
+  final int availablePlantingSpots;
 }

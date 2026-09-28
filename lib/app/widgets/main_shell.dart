@@ -11,6 +11,7 @@ import '../../features/operations/presentation/inspection_view_model.dart';
 import '../../features/operations/presentation/operations_view.dart';
 
 import '../../core/ui/app_loading_controller.dart';
+import '../../core/ui/map_activity.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({
@@ -67,24 +68,33 @@ class _MainShellState extends State<MainShell> {
                 index: _selectedIndex,
                 children: [
                   if (effectiveInventoryVm != null)
-                    InventoryView(viewModel: effectiveInventoryVm)
+                    MapActivity(
+                      active: _selectedIndex == 0,
+                      child: InventoryView(viewModel: effectiveInventoryVm),
+                    )
                   else
                     const SizedBox.expand(),
                   if (_farmOpened && effectiveFarmVm != null)
-                    FarmMapView(viewModel: effectiveFarmVm)
+                    MapActivity(
+                      active: _selectedIndex == 1,
+                      child: FarmMapView(viewModel: effectiveFarmVm),
+                    )
                   else
                     const SizedBox.expand(),
-                  Navigator(
-                    key: _operationsNavigatorKey,
-                    onGenerateRoute: (settings) {
-                      return MaterialPageRoute<void>(
-                        builder: (_) => OperationsView(
-                          inspectionViewModel: effectiveInspectionVm,
-                          inspectionMapBuilder: widget.inspectionMapBuilder,
-                        ),
-                        settings: settings,
-                      );
-                    },
+                  MapActivity(
+                    active: _selectedIndex == 2,
+                    child: Navigator(
+                      key: _operationsNavigatorKey,
+                      onGenerateRoute: (settings) {
+                        return MaterialPageRoute<void>(
+                          builder: (_) => OperationsView(
+                            inspectionViewModel: effectiveInspectionVm,
+                            inspectionMapBuilder: widget.inspectionMapBuilder,
+                          ),
+                          settings: settings,
+                        );
+                      },
+                    ),
                   ),
                   const AboutView(),
                 ],
@@ -95,8 +105,6 @@ class _MainShellState extends State<MainShell> {
               onDestinationSelected: (index) {
                 if (index != 2) {
                   effectiveInspectionVm?.pauseLocation();
-                } else {
-                  effectiveInspectionVm?.resumeLocation();
                 }
                 setState(() {
                   _selectedIndex = index;
@@ -135,31 +143,15 @@ class _MainShellState extends State<MainShell> {
                   return const SizedBox.shrink();
                 }
 
-                return const Positioned.fill(child: _BlockingLoadingOverlay());
+                return const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(child: LinearProgressIndicator()),
+                );
               },
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _BlockingLoadingOverlay extends StatelessWidget {
-  const _BlockingLoadingOverlay();
-
-  @override
-  Widget build(BuildContext context) {
-    return const AbsorbPointer(
-      absorbing: true,
-      child: ColoredBox(
-        color: Color(0x66000000),
-        child: Center(
-          child: SizedBox(
-            width: 36,
-            height: 36,
-            child: CircularProgressIndicator(strokeWidth: 3),
-          ),
-        ),
       ),
     );
   }

@@ -12,48 +12,115 @@ import 'package:pomar_na_mao_mobile/features/operations/data/inspection_reposito
 import 'package:pomar_na_mao_mobile/features/operations/domain/inspection_models.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+class CountingLocalStore extends InspectionLocalStore {
+  CountingLocalStore(super.database);
+  int reads = 0;
+  @override
+  Future<List<Map<String, dynamic>>?> readSharedPlantRows() {
+    reads++;
+    return super.readSharedPlantRows();
+  }
+}
+
 class CountingFarmRemoteDataSource implements FarmRemoteDataSource {
   List<Map<String, dynamic>> farmRows = const [];
   List<Map<String, dynamic>> plantRows = const [];
+  List<List<Map<String, dynamic>>>? plantPages;
+  Future<List<Map<String, dynamic>>> Function(int from, int to)?
+  plantPageLoader;
   List<Map<String, dynamic>> zoneRows = const [];
   final Map<String, List<Map<String, dynamic>>> regionRows = {};
 
   int farmCalls = 0;
   int plantCalls = 0;
+  int plantPageCalls = 0;
   int zoneCalls = 0;
   final Map<String, int> regionCalls = {};
   Completer<List<Map<String, dynamic>>>? farmCompleter;
+  Duration remoteDelay = Duration.zero;
+  int activeRemoteCalls = 0;
+  int maxActiveRemoteCalls = 0;
   bool throwFarm = false;
   bool throwPlants = false;
   bool throwZones = false;
 
+  Future<T> _trackRemote<T>(FutureOr<T> Function() load) async {
+    activeRemoteCalls++;
+    maxActiveRemoteCalls = maxActiveRemoteCalls < activeRemoteCalls
+        ? activeRemoteCalls
+        : maxActiveRemoteCalls;
+    try {
+      if (remoteDelay > Duration.zero) await Future<void>.delayed(remoteDelay);
+      return await load();
+    } finally {
+      activeRemoteCalls--;
+    }
+  }
+
   @override
   Future<List<Map<String, dynamic>>> fetchFarmBoundaryRows() async {
-    farmCalls++;
-    if (throwFarm) throw Exception('farm failed');
-    return farmCompleter?.future ?? farmRows;
+    return _trackRemote(() async {
+      farmCalls++;
+      if (throwFarm) throw Exception('farm failed');
+      return farmCompleter?.future ?? farmRows;
+    });
   }
 
   @override
   Future<List<Map<String, dynamic>>> fetchPlantsRows({
     int pageSize = 1000,
   }) async {
-    plantCalls++;
-    if (throwPlants) throw Exception('plants failed');
-    return plantRows;
+    final rows = <Map<String, dynamic>>[];
+    var from = 0;
+    while (true) {
+      final page = await fetchPlantRowsPage(
+        from: from,
+        to: from + pageSize - 1,
+      );
+      if (page.isEmpty) return rows;
+      rows.addAll(page);
+      from += page.length;
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchPlantRowsPage({
+    required int from,
+    required int to,
+  }) async {
+    return _trackRemote(() async {
+      plantPageCalls++;
+      if (from == 0) plantCalls++;
+      if (throwPlants) throw Exception('plants failed');
+      final loader = plantPageLoader;
+      if (loader != null) return loader(from, to);
+      final pages = plantPages;
+      if (pages != null) {
+        final pageIndex = plantPageCalls - 1;
+        if (pageIndex >= pages.length) return const [];
+        return pages[pageIndex];
+      }
+      if (from >= plantRows.length) return const [];
+      final end = (to + 1).clamp(0, plantRows.length);
+      return plantRows.sublist(from, end);
+    });
   }
 
   @override
   Future<List<Map<String, dynamic>>> fetchZonesRows() async {
-    zoneCalls++;
-    if (throwZones) throw Exception('zones failed');
-    return zoneRows;
+    return _trackRemote(() {
+      zoneCalls++;
+      if (throwZones) throw Exception('zones failed');
+      return zoneRows;
+    });
   }
 
   @override
   Future<List<Map<String, dynamic>>> fetchRegionsRows(String zoneId) async {
-    regionCalls[zoneId] = (regionCalls[zoneId] ?? 0) + 1;
-    return regionRows[zoneId] ?? const [];
+    return _trackRemote(() {
+      regionCalls[zoneId] = (regionCalls[zoneId] ?? 0) + 1;
+      return regionRows[zoneId] ?? const [];
+    });
   }
 }
 
@@ -112,7 +179,7 @@ void main() {
 
   late Directory tempDir;
   late InspectionDatabase database;
-  late InspectionLocalStore localStore;
+  late CountingLocalStore localStore;
   late CountingFarmRemoteDataSource farmRemote;
   late CountingInspectionRemoteDataSource inspectionRemote;
   late SharedReadRepository repository;
@@ -124,7 +191,7 @@ void main() {
       factory: databaseFactoryFfi,
       directory: tempDir.path,
     );
-    localStore = InspectionLocalStore(database);
+    localStore = CountingLocalStore(database);
     farmRemote = CountingFarmRemoteDataSource();
     inspectionRemote = CountingInspectionRemoteDataSource();
     repository = SharedReadRepository(
@@ -139,6 +206,104 @@ void main() {
     await repository.dispose();
     await database.close();
     if (tempDir.existsSync()) await tempDir.delete(recursive: true);
+  });
+
+  test(
+    'hydrates once per committed revision including known empty cache',
+    () async {
+      await localStore.replaceSharedPlantRows(
+        [],
+        {},
+        loadedAt: DateTime.utc(2026),
+      );
+      final initial = await Future.wait(
+        List.generate(10, (_) => repository.getPlantRows()),
+      );
+      expect(initial.every((rows) => rows.isEmpty), isTrue);
+      expect(localStore.reads, 1);
+      expect(await repository.getPlantRows(), isEmpty);
+      expect(localStore.reads, 1);
+      expect(farmRemote.plantCalls, 0);
+
+      final otherStore = InspectionLocalStore(database);
+      await otherStore.replaceSharedPlantRows(
+        [
+          {'id': 'same-id', 'latitude': 1.0, 'longitude': 2.0},
+        ],
+        {},
+        loadedAt: DateTime.utc(2026),
+      );
+      final first = await repository.getPlantRows();
+      expect(first.single['latitude'], 1.0);
+      await otherStore.replaceSharedPlantRows(
+        [
+          {'id': 'same-id', 'latitude': 3.0, 'longitude': 4.0},
+        ],
+        {},
+        loadedAt: DateTime.utc(2026),
+      );
+      final second = await repository.getPlantRows();
+      expect(second.single['latitude'], 3.0);
+      expect(localStore.reads, 3);
+      expect(identical(first, second), isFalse);
+    },
+  );
+
+  test('committed occurrence edits invalidate warm plant hydration', () async {
+    await localStore.replaceSharedPlantRows(
+      [
+        {'id': 'p'},
+      ],
+      {},
+      loadedAt: DateTime.utc(2026),
+    );
+    await localStore.saveCatalog([
+      const OccurrenceType(id: 't', name: 'Type', code: 'type'),
+    ]);
+    final first = await repository.getPlantRows();
+    await localStore.toggle('p', 't');
+    final second = await repository.getPlantRows();
+    expect(InspectionPlant.fromJson(first.single).openTypeIds, isEmpty);
+    expect(InspectionPlant.fromJson(second.single).openTypeIds, {'t'});
+    expect(localStore.reads, 2);
+  });
+
+  test('independent projects never reuse another project snapshot', () async {
+    final otherDb = InspectionDatabase(
+      projectUrl: 'https://other-project.invalid',
+      factory: databaseFactoryFfi,
+      directory: tempDir.path,
+    );
+    final otherStore = CountingLocalStore(otherDb);
+    final other = SharedReadRepository(
+      localStore: otherStore,
+      farmRemoteDataSource: farmRemote,
+      inspectionRemoteDataSource: inspectionRemote,
+    );
+    try {
+      await localStore.replaceSharedPlantRows(
+        [
+          {'id': 'first'},
+        ],
+        {},
+        loadedAt: DateTime.utc(2026),
+      );
+      await otherStore.replaceSharedPlantRows(
+        [
+          {'id': 'second'},
+        ],
+        {},
+        loadedAt: DateTime.utc(2026),
+      );
+      expect((await repository.getPlantRows()).single['id'], 'first');
+      expect((await other.getPlantRows()).single['id'], 'second');
+      expect((await repository.getPlantRows()).single['id'], 'first');
+      expect(localStore.reads, 1);
+      expect(otherStore.reads, 1);
+    } finally {
+      await other.dispose();
+      await otherDb.close();
+    }
   });
 
   test(
@@ -174,6 +339,31 @@ void main() {
 
     expect(zones.single['id'], 'zone-a');
     expect(farmRemote.zoneCalls, 2);
+  });
+
+  test('limits concurrent remote reads to two operations', () async {
+    farmRemote.remoteDelay = const Duration(milliseconds: 20);
+    farmRemote.farmRows = const [
+      {'id': 1, 'latitude': -23.0, 'longitude': -46.0, 'order': 1},
+    ];
+    farmRemote.zoneRows = const [
+      {'id': 'zone-a', 'name': 'Zona A'},
+    ];
+    farmRemote.regionRows['zone-a'] = const [
+      {'zone_id': 'zone-a', 'latitude': -23.1, 'longitude': -46.1},
+    ];
+    farmRemote.regionRows['zone-b'] = const [
+      {'zone_id': 'zone-b', 'latitude': -23.2, 'longitude': -46.2},
+    ];
+
+    await Future.wait([
+      repository.getFarmBoundaryRows(),
+      repository.getZoneRows(),
+      repository.getRegionRows('zone-a'),
+      repository.getRegionRows('zone-b'),
+    ]);
+
+    expect(farmRemote.maxActiveRemoteCalls, lessThanOrEqualTo(2));
   });
 
   test(
@@ -240,6 +430,101 @@ void main() {
     },
   );
 
+  test(
+    'warm inventory totals do not hydrate the full plant snapshot',
+    () async {
+      await localStore.replaceSharedPlantRows(
+        [
+          {'id': 'p-1', 'non_existent': false},
+          {'id': 'p-2', 'non_existent': true},
+          {'id': 'p-3', 'non_existent': false},
+        ],
+        {},
+        loadedAt: DateTime.utc(2026),
+      );
+      await localStore.replaceFarmRows(const []);
+      await localStore.replaceZoneRows(const []);
+
+      final summary = await SupabaseInventoryRepository.fromShared(repository)
+          .fetchSummary();
+
+      expect(summary.existingPlants, 2);
+      expect(summary.availablePlantingSpots, 1);
+      expect(localStore.reads, 0);
+      expect(farmRemote.plantCalls, 0);
+    },
+  );
+
+  test(
+    'warm inventory summary reuses cached references without remote GETs',
+    () async {
+      await localStore.replaceSharedPlantRows(
+        [
+          {'id': 'p-1', 'non_existent': false},
+          {'id': 'p-2', 'non_existent': true},
+        ],
+        {},
+        loadedAt: DateTime.utc(2026),
+      );
+      await localStore.replaceFarmRows(const [
+        {'id': 1, 'latitude': -23.0, 'longitude': -46.0, 'order': 1},
+      ]);
+      await localStore.replaceZoneRows(const [
+        {'id': 'zone-a', 'name': 'Zona A'},
+      ]);
+      await localStore.replaceRegionRows('zone-a', const [
+        {'zone_id': 'zone-a', 'latitude': -23.1, 'longitude': -46.1},
+        {'zone_id': 'zone-a', 'latitude': -23.2, 'longitude': -46.2},
+      ]);
+
+      final inventory = SupabaseInventoryRepository.fromShared(repository);
+      final first = await inventory.fetchSummary();
+      final second = await inventory.fetchSummary();
+
+      expect(first.existingPlants, 1);
+      expect(first.availablePlantingSpots, 1);
+      expect(first.zones, 1);
+      expect(first.regionPoints, 2);
+      expect(first.farmBoundaryPoints, 1);
+      expect(second.regionPoints, 2);
+      expect(localStore.reads, 0);
+      expect(farmRemote.plantCalls, 0);
+      expect(farmRemote.farmCalls, 0);
+      expect(farmRemote.zoneCalls, 0);
+      expect(farmRemote.regionCalls, isEmpty);
+    },
+  );
+
+  test('upgraded cache computes missing plant totals once', () async {
+    await localStore.replaceSharedPlantRows(
+      [
+        {'id': 'p-1', 'non_existent': false},
+        {'id': 'p-2', 'non_existent': true},
+      ],
+      {},
+      loadedAt: DateTime.utc(2026),
+    );
+    final db = await database.database;
+    await db.update(
+      'cache_metadata',
+      {
+        'row_count': null,
+        'existing_plants': null,
+        'available_planting_spots': null,
+      },
+      where: 'cache_key = ?',
+      whereArgs: [InspectionLocalStore.plantsCacheKey],
+    );
+
+    final first = await repository.getPlantTotals();
+    final second = await repository.getPlantTotals();
+
+    expect(first.existingPlants, 1);
+    expect(first.availablePlantingSpots, 1);
+    expect(second.existingPlants, 1);
+    expect(localStore.reads, 0);
+  });
+
   test('keeps the previous plant revision when refresh fails', () async {
     farmRemote.plantRows = const [
       {
@@ -269,6 +554,133 @@ void main() {
     expect(revisions, 0);
     await subscription.cancel();
   });
+
+  test(
+    'refresh persists plant pages through staging before publishing',
+    () async {
+      farmRemote.plantPages = const [
+        [
+          {
+            'id': 'p-1',
+            'latitude': -23.1,
+            'longitude': -46.1,
+            'non_existent': false,
+          },
+        ],
+        [
+          {
+            'id': 'p-2',
+            'latitude': null,
+            'longitude': null,
+            'non_existent': true,
+          },
+        ],
+        [],
+      ];
+
+      final rows = await repository.refreshPlantRows();
+      final totals = await repository.getPlantTotals();
+
+      expect(rows.map((row) => row['id']), ['p-1', 'p-2']);
+      expect(totals.existingPlants, 1);
+      expect(totals.availablePlantingSpots, 1);
+      expect(farmRemote.plantCalls, 1);
+      expect(farmRemote.plantPageCalls, 3);
+    },
+  );
+
+  test(
+    'timeout during refresh discards staging and keeps previous revision',
+    () async {
+      farmRemote.plantRows = const [
+        {
+          'id': 'p-1',
+          'latitude': -23.1,
+          'longitude': -46.1,
+          'non_existent': false,
+        },
+      ];
+      await repository.getPlantRows();
+      await repository.dispose();
+      repository = SharedReadRepository(
+        localStore: localStore,
+        farmRemoteDataSource: farmRemote,
+        inspectionRemoteDataSource: inspectionRemote,
+        remoteRequestTimeout: const Duration(milliseconds: 1),
+      );
+
+      farmRemote.plantPageLoader = (from, to) {
+        if (from == 0) {
+          return Future.value(const [
+            {
+              'id': 'partial',
+              'latitude': -23.2,
+              'longitude': -46.2,
+              'non_existent': false,
+            },
+          ]);
+        }
+        return Completer<List<Map<String, dynamic>>>().future;
+      };
+
+      await expectLater(
+        repository.refreshPlantRows(),
+        throwsA(isA<TimeoutException>()),
+      );
+
+      final cached = await repository.getPlantRows();
+      expect(cached.map((row) => row['id']), ['p-1']);
+      final raw = await database.database;
+      expect(await raw.query('staged_plants'), isEmpty);
+      expect(
+        await raw.query('cache_generations', where: 'is_complete = 0'),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'publishing staged refresh preserves a local edit made during refresh',
+    () async {
+      await localStore.saveCatalog([
+        const OccurrenceType(id: 'type-1', name: 'Praga', code: 'pest'),
+      ]);
+      farmRemote.plantRows = const [
+        {
+          'id': 'p-1',
+          'latitude': -23.1,
+          'longitude': -46.1,
+          'non_existent': false,
+        },
+      ];
+      await repository.getPlantRows();
+
+      var editedDuringRefresh = false;
+      farmRemote.plantPageLoader = (from, to) async {
+        if (from == 0) {
+          return const [
+            {
+              'id': 'p-1',
+              'latitude': -23.9,
+              'longitude': -46.9,
+              'non_existent': false,
+            },
+          ];
+        }
+        if (!editedDuringRefresh) {
+          editedDuringRefresh = true;
+          await localStore.toggle('p-1', 'type-1');
+        }
+        return const [];
+      };
+
+      final refreshed = await repository.refreshPlantRows();
+      final plant = InspectionPlant.fromJson(refreshed.single);
+
+      expect(plant.latitude, -23.9);
+      expect(plant.openTypeIds, {'type-1'});
+    },
+  );
 
   test('preserves pending changes for a plant removed remotely', () async {
     inspectionRemote.types = const [
@@ -394,7 +806,7 @@ void main() {
       factory: databaseFactoryFfi,
       directory: tempDir.path,
     );
-    localStore = InspectionLocalStore(database);
+    localStore = CountingLocalStore(database);
     repository = SharedReadRepository(
       localStore: localStore,
       farmRemoteDataSource: farmRemote,

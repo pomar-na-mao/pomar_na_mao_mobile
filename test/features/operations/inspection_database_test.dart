@@ -50,6 +50,8 @@ void main() {
           'cached_farm',
           'cached_zones',
           'cached_regions',
+          'cache_generations',
+          'staged_plants',
           'local_inspections',
           'local_inspection_loaded_plants',
           'local_inspection_changes',
@@ -195,7 +197,7 @@ void main() {
     );
     final raw = await migrated.database;
 
-    expect(await raw.getVersion(), 2);
+    expect(await raw.getVersion(), 4);
     expect(await migrated.deviceId, 'legacy-device');
     expect(await raw.query('local_inspections'), hasLength(1));
     expect(await raw.query('local_inspection_changes'), hasLength(1));
@@ -216,7 +218,129 @@ void main() {
       ),
       isEmpty,
     );
+    final cacheColumns = await raw.rawQuery(
+      'PRAGMA table_info(cache_metadata)',
+    );
+    expect(
+      cacheColumns.map((column) => column['name']),
+      containsAll(['row_count', 'existing_plants', 'available_planting_spots']),
+    );
+    final tables = await raw.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table'",
+    );
+    expect(
+      tables.map((row) => row['name']),
+      containsAll(['cache_generations', 'staged_plants']),
+    );
     await migrated.close();
+  });
+
+  test(
+    'migrates version 2 preserving pending, error, and syncing inspections',
+    () async {
+      const projectUrl = 'https://legacy-v2.supabase.co';
+      final origin = Uri.parse(projectUrl).origin;
+      final fileId = const Uuid().v5(Namespace.url.value, origin);
+      final path = p.join(tempDir.path, 'inspections_$fileId.db');
+      final oldDb = await ffiFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 2,
+          onCreate: (db, _) async {
+            for (final sql in [..._versionOneSchema, ..._versionTwoSchema]) {
+              await db.execute(sql);
+            }
+          },
+        ),
+      );
+      await oldDb.insert('installation', {
+        'id': 1,
+        'project_url': origin,
+        'device_id': 'legacy-v2-device',
+        'loaded_at': '2026-09-18T20:00:00.000Z',
+      });
+      await oldDb.insert('cached_plants', {
+        'id': 'plant-1',
+        'snapshot': '{"id":"plant-1","latitude":-23.1,"longitude":-46.1,"openTypeIds":[],"eligible":true}',
+      });
+      for (final entry in const [
+        ('pending-1', 'pending'),
+        ('error-1', 'error'),
+        ('syncing-1', 'syncing'),
+      ]) {
+        await oldDb.insert('local_inspections', {
+          'local_id': entry.$1,
+          'started_at': '2026-09-18T20:00:00.000Z',
+          'finished_at': '2026-09-18T20:05:00.000Z',
+          'state': 'finished',
+          'sync_status': entry.$2,
+          'plants_count': 1,
+          'changes_count': 1,
+          'last_sequence': 1,
+          'last_changed_at': '2026-09-18T20:04:00.000Z',
+          'payload': '{"localInspectionId":"${entry.$1}"}',
+          'error': entry.$2 == 'error' ? 'Falha anterior' : null,
+        });
+      }
+      await oldDb.close();
+
+      final migrated = InspectionDatabase(
+        projectUrl: projectUrl,
+        factory: ffiFactory,
+        directory: tempDir.path,
+      );
+      final raw = await migrated.database;
+      final inspections = {
+        for (final row in await raw.query('local_inspections'))
+          row['local_id'] as String: row,
+      };
+
+      expect(await raw.getVersion(), 4);
+      expect(inspections['pending-1']!['sync_status'], 'pending');
+      expect(inspections['error-1']!['sync_status'], 'error');
+      expect(inspections['syncing-1']!['sync_status'], 'pending');
+      expect(inspections['error-1']!['error'], 'Falha anterior');
+      expect(await raw.query('cached_plants'), hasLength(1));
+      expect(
+        (await raw.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table'",
+        )).map((row) => row['name']),
+        containsAll(['cache_generations', 'staged_plants']),
+      );
+      await migrated.close();
+    },
+  );
+
+  test('cleans incomplete staged generations when reopening', () async {
+    final db = InspectionDatabase(
+      projectUrl: 'https://uxschjkypkkzprbwuhxm.supabase.co',
+      factory: ffiFactory,
+      directory: tempDir.path,
+    );
+    final rawDb = await db.database;
+    await rawDb.insert('cache_generations', {
+      'generation_id': 'gen-1',
+      'cache_key': 'plants',
+      'started_at': '2026-09-18T20:00:00.000Z',
+      'loaded_at': '2026-09-18T20:00:00.000Z',
+    });
+    await rawDb.insert('staged_plants', {
+      'generation_id': 'gen-1',
+      'id': 'plant-1',
+      'snapshot': '{"id":"plant-1"}',
+    });
+    await db.close();
+
+    final reopened = InspectionDatabase(
+      projectUrl: 'https://uxschjkypkkzprbwuhxm.supabase.co',
+      factory: ffiFactory,
+      directory: tempDir.path,
+    );
+    final reopenedRaw = await reopened.database;
+
+    expect(await reopenedRaw.query('cache_generations'), isEmpty);
+    expect(await reopenedRaw.query('staged_plants'), isEmpty);
+    await reopened.close();
   });
 }
 
@@ -250,4 +374,24 @@ const _versionOneSchema = <String>[
     UNIQUE(inspection_local_id, sequence), UNIQUE(inspection_local_id, changed_at),
     FOREIGN KEY(inspection_local_id, plant_id)
       REFERENCES local_inspection_loaded_plants(inspection_local_id, plant_id))''',
+];
+
+const _versionTwoSchema = <String>[
+  '''CREATE TABLE cache_metadata (
+    cache_key TEXT PRIMARY KEY,
+    loaded_at TEXT NOT NULL,
+    is_complete INTEGER NOT NULL DEFAULT 1 CHECK(is_complete IN (0, 1)))''',
+  '''CREATE TABLE cached_farm (
+    sequence INTEGER PRIMARY KEY,
+    snapshot TEXT NOT NULL)''',
+  '''CREATE TABLE cached_zones (
+    id TEXT PRIMARY KEY,
+    sequence INTEGER NOT NULL,
+    snapshot TEXT NOT NULL)''',
+  'CREATE INDEX cached_zones_sequence ON cached_zones(sequence)',
+  '''CREATE TABLE cached_regions (
+    zone_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    snapshot TEXT NOT NULL,
+    PRIMARY KEY(zone_id, sequence))''',
 ];

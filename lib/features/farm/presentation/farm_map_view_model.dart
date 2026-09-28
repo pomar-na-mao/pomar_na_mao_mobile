@@ -36,15 +36,32 @@ class FarmMapViewModel extends ChangeNotifier {
   final FarmRepository _farmRepository;
   StreamSubscription<LocationResult>? _locationSubscription;
   StreamSubscription<void>? _plantChangesSubscription;
+  bool _disposed = false;
 
   PlantsLoadStatus _plantsStatus = PlantsLoadStatus.initial;
   PlantsLoadStatus get plantsStatus => _plantsStatus;
 
   List<Plant> _allPlants = const [];
+  List<Plant> get allPlants => _allPlants;
+  List<Plant>? _indexedPlants;
+  Map<String, Plant> _plantsById = {};
+  Plant? plantById(String id) {
+    if (!identical(_indexedPlants, _allPlants)) {
+      _indexedPlants = _allPlants;
+      _plantsById = {for (final plant in _allPlants) plant.id: plant};
+    }
+    return _plantsById[id];
+  }
+
+  Object? _filterKey;
+  List<Plant> _filteredPlants = const [];
   List<Plant> get plants {
     final zoneId = _selectedZoneId;
     if (zoneId == null) return _allPlants;
-    return _allPlants
+    final key = (_allPlants, zoneId);
+    if (_filterKey == key) return _filteredPlants;
+    _filterKey = key;
+    return _filteredPlants = _allPlants
         .where((plant) => plant.zoneId == zoneId)
         .toList(growable: false);
   }
@@ -74,7 +91,7 @@ class FarmMapViewModel extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_plantsStatus != PlantsLoadStatus.initial) return;
-    await Future.wait([loadFarmData(), loadUserLocation()]);
+    await loadFarmData();
   }
 
   Future<void> loadFarmData() async {
@@ -158,11 +175,23 @@ class FarmMapViewModel extends ChangeNotifier {
   }
 
   Future<void> loadUserLocation() async {
-    await _locationSubscription?.cancel();
+    if (_disposed || _locationSubscription != null) return;
     _locationSubscription = _locationService.watchLocation().listen((result) {
+      if (_disposed || _locationSubscription == null) return;
       _locationResult = result;
       notifyListeners();
     });
+  }
+
+  void pauseLocation() {
+    final subscription = _locationSubscription;
+    _locationSubscription = null;
+    unawaited(subscription?.cancel());
+  }
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
   }
 
   String? get locationMessage => switch (_locationResult?.availability) {
@@ -176,7 +205,8 @@ class FarmMapViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    unawaited(_locationSubscription?.cancel());
+    _disposed = true;
+    pauseLocation();
     unawaited(_plantChangesSubscription?.cancel());
     super.dispose();
   }

@@ -30,11 +30,14 @@ class SupabaseInventoryRepository implements InventoryRepository {
   final InventoryRemoteDataSource? _remoteDataSource;
   final SharedReadRepository? _sharedReadRepository;
 
+  @visibleForTesting
+  bool get usesSharedReadRepository => _sharedReadRepository != null;
+
   @override
   Future<InventorySummary> fetchSummary() async {
     final shared = _sharedReadRepository;
     if (shared != null) {
-      final plants = await shared.getPlantRows();
+      final totals = await shared.getPlantTotals();
       final zones = await shared.getZoneRows();
       final farmBoundary = await shared.getFarmBoundaryRows();
       final regionPointCounts = await Future.wait(
@@ -43,18 +46,9 @@ class SupabaseInventoryRepository implements InventoryRepository {
             .whereType<String>()
             .map((zoneId) async => (await shared.getRegionRows(zoneId)).length),
       );
-      var existing = 0;
-      var available = 0;
-      for (final plant in plants) {
-        if (plant['non_existent'] == true) {
-          available++;
-        } else {
-          existing++;
-        }
-      }
       return InventorySummary(
-        existingPlants: existing,
-        availablePlantingSpots: available,
+        existingPlants: totals.existingPlants,
+        availablePlantingSpots: totals.availablePlantingSpots,
         zones: zones.length,
         regionPoints: regionPointCounts.fold<int>(
           0,

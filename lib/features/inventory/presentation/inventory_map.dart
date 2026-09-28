@@ -7,6 +7,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../farm/domain/farm_point.dart';
 import '../../farm/domain/region_point.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
+import '../../../core/ui/map_activity.dart';
+import '../../../core/ui/map_camera.dart';
 
 class InventoryMap extends StatefulWidget {
   const InventoryMap({
@@ -24,6 +26,7 @@ class InventoryMap extends StatefulWidget {
 
 class _InventoryMapState extends State<InventoryMap> {
   GoogleMapController? _controller;
+  CameraPosition? _savedCamera;
   Map<String, BitmapDescriptor> _zoneLabelIcons = const {};
   var _labelIconLoadVersion = 0;
 
@@ -72,7 +75,8 @@ class _InventoryMapState extends State<InventoryMap> {
     if (controller == null) return;
     final viewport = calculateMapCameraViewport(_coordinates);
     final bounds = viewport.bounds;
-    await controller.animateCamera(
+    await animateMapCamera(
+      controller,
       bounds == null
           ? CameraUpdate.newLatLngZoom(viewport.target, 16)
           : CameraUpdate.newLatLngBounds(bounds, 44),
@@ -81,7 +85,7 @@ class _InventoryMapState extends State<InventoryMap> {
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _controller = null;
     super.dispose();
   }
 
@@ -89,17 +93,24 @@ class _InventoryMapState extends State<InventoryMap> {
   Widget build(BuildContext context) {
     final viewport = calculateMapCameraViewport(_coordinates);
 
-    return createInventoryGoogleMap(
-      farmPoints: widget.farmPoints,
-      zonePointsById: widget.zonePointsById,
-      zoneLabelIcons: _zoneLabelIcons,
-      viewport: viewport,
-      onMapCreated: (controller) {
-        _controller = controller;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) unawaited(_fitCamera());
-        });
+    return ActiveMapSurface(
+      onActivityChanged: (active) {
+        if (!active) _controller = null;
       },
+      builder: (_) => createInventoryGoogleMap(
+        farmPoints: widget.farmPoints,
+        zonePointsById: widget.zonePointsById,
+        zoneLabelIcons: _zoneLabelIcons,
+        viewport: viewport,
+        initialCamera: _savedCamera,
+        onCameraMove: (position) => _savedCamera = position,
+        onMapCreated: (controller) {
+          _controller = controller;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _savedCamera == null) unawaited(_fitCamera());
+          });
+        },
+      ),
     );
   }
 }
@@ -110,13 +121,17 @@ GoogleMap createInventoryGoogleMap({
   Map<String, BitmapDescriptor> zoneLabelIcons = const {},
   required MapCameraViewport viewport,
   required void Function(GoogleMapController controller) onMapCreated,
+  CameraPosition? initialCamera,
+  ValueChanged<CameraPosition>? onCameraMove,
 }) {
   return GoogleMap(
     key: const ValueKey('inventory-google-map'),
-    initialCameraPosition: CameraPosition(
-      target: viewport.target,
-      zoom: viewport.bounds == null ? 16 : 14,
-    ),
+    initialCameraPosition:
+        initialCamera ??
+        CameraPosition(
+          target: viewport.target,
+          zoom: viewport.bounds == null ? 16 : 14,
+        ),
     polygons: buildFarmPolygons(
       farmPoints: farmPoints,
       zonePointsById: zonePointsById,
@@ -133,6 +148,7 @@ GoogleMap createInventoryGoogleMap({
     mapToolbarEnabled: false,
     zoomControlsEnabled: false,
     onMapCreated: onMapCreated,
+    onCameraMove: onCameraMove,
   );
 }
 

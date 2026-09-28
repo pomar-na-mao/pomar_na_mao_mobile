@@ -7,6 +7,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/di/app_scope.dart';
 import '../../farm/domain/user_location.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
+import '../../farm/presentation/bounded_plant_markers.dart';
+import '../../farm/presentation/plant_spatial_index.dart';
+import '../../../core/ui/map_activity.dart';
+import '../../../core/ui/map_camera.dart';
 import '../data/inspection_database.dart';
 import '../data/inspection_local_store.dart';
 import '../data/inspection_remote_data_source.dart';
@@ -38,11 +42,7 @@ typedef InspectionMapBuilder = Widget Function(
 );
 
 class InspectionView extends StatefulWidget {
-  const InspectionView({
-    this.viewModel,
-    this.mapBuilder,
-    super.key,
-  });
+  const InspectionView({this.viewModel, this.mapBuilder, super.key});
 
   final InspectionViewModel? viewModel;
   final InspectionMapBuilder? mapBuilder;
@@ -53,34 +53,28 @@ class InspectionView extends StatefulWidget {
 
 class _InspectionViewState extends State<InspectionView> {
   static const _fallbackPosition = defaultFarmMapPosition;
-  static const _clusterManagerId = ClusterManagerId('inspection_plants');
 
   GoogleMapController? _mapController;
+  CameraPosition? _savedCamera;
   BitmapDescriptor? _plantMarkerIcon;
   Set<Marker> _markers = const {};
-  String? _lastMarkerSignature;
+  final _plantLayer = BoundedPlantMarkers();
   String? _lastFittedFilterSignature;
 
   bool _hasSetInitialCamera = false;
   bool _userHasInteractedWithMap = false;
 
-  late final _clusterManager = ClusterManager(
-    clusterManagerId: _clusterManagerId,
-    onClusterTap: (Cluster cluster) async {
-      final controller = _mapController;
-      if (controller == null) return;
-      final currentZoom = await controller.getZoomLevel();
-      await controller.animateCamera(
-        CameraUpdate.newLatLngZoom(cluster.position, currentZoom + 2),
-      );
-    },
-  );
+  void _markersChanged() {
+    if (mounted) setState(() => _markers = _plantLayer.markers);
+  }
 
   @override
   void initState() {
     super.initState();
+    _plantLayer.addListener(_markersChanged);
     unawaited(_loadPlantMarkerIcon());
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final vm = _effectiveViewModel;
       final scope = AppScope.maybeOf(context);
       if (scope?.zonesRepository != null && vm.zones.isEmpty) {
@@ -94,11 +88,14 @@ class _InspectionViewState extends State<InspectionView> {
 
   InspectionViewModel get _effectiveViewModel {
     final scope = AppScope.maybeOf(context);
-    final vm = widget.viewModel ??
+    final vm =
+        widget.viewModel ??
         scope?.inspectionViewModel ??
         (_fallbackVm ??= InspectionViewModel(
           repository: DefaultInspectionRepository(
-            localStore: InspectionLocalStore(InspectionDatabase(projectUrl: '')),
+            localStore: InspectionLocalStore(
+              InspectionDatabase(projectUrl: ''),
+            ),
             remoteDataSource: const _DummyRemoteDataSource(),
           ),
           zonesRepository: scope?.zonesRepository,
@@ -112,7 +109,9 @@ class _InspectionViewState extends State<InspectionView> {
 
   @override
   void dispose() {
-    _mapController?.dispose();
+    _plantLayer.dispose();
+    _mapController = null;
+    _fallbackVm?.dispose();
     super.dispose();
   }
 
@@ -131,8 +130,11 @@ class _InspectionViewState extends State<InspectionView> {
       Paint()..color = const Color(0xFF66BB6A),
     );
 
-    final image = await recorder.endRecording().toImage(size, size);
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size, size);
+    picture.dispose();
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
     if (!mounted) return;
     setState(() {
       _plantMarkerIcon = BitmapDescriptor.bytes(
@@ -144,31 +146,43 @@ class _InspectionViewState extends State<InspectionView> {
   }
 
   void _updateMarkers(InspectionViewModel vm) {
-    final plants = vm.plants.where((p) => p.hasValidCoordinates).toList();
-    final signature =
-        '${vm.selectedOccurrenceFilterId}_${vm.selectedZoneFilterId}_${plants.length}_${_plantMarkerIcon != null}';
-    if (_lastMarkerSignature == signature) return;
-    _lastMarkerSignature = signature;
+    if (widget.mapBuilder != null) return;
+    final icon =
+        _plantMarkerIcon ??
+        BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+    void select(String id) {
+      if (!mounted) return;
+      vm.selectPlantById(id);
+      PlantEditorModal.show(context, vm);
+    }
 
-    final defaultGreen = BitmapDescriptor.defaultMarkerWithHue(
-      BitmapDescriptor.hueGreen,
-    );
-    final icon = _plantMarkerIcon ?? defaultGreen;
-
-    _markers = plants.map((plant) {
-      return Marker(
-        markerId: MarkerId(plant.id),
-        position: LatLng(plant.latitude!, plant.longitude!),
-        infoWindow: InfoWindow(title: plant.label),
-        clusterManagerId: _clusterManagerId,
+    _plantLayer.update(
+      revision: (
+        vm.allPlants,
+        vm.selectedOccurrenceFilterId,
+        vm.selectedZoneFilterId,
+        _plantMarkerIcon,
+      ),
+      plants: () => vm.plants
+          .where((p) => p.hasValidCoordinates)
+          .map((p) => SpatialPlant(p.id, p.latitude!, p.longitude!))
+          .toList(growable: false),
+      markerFor: (node) => Marker(
+        markerId: MarkerId(node.plantId!),
+        position: LatLng(node.latitude, node.longitude),
         icon: icon,
+        infoWindow: InfoWindow(title: vm.plantById(node.plantId!)?.label),
         anchor: const Offset(0.5, 0.5),
-        onTap: () {
-          vm.selectPlantById(plant.id);
-          PlantEditorModal.show(context, vm);
-        },
-      );
-    }).toSet();
+        onTap: () => select(node.plantId!),
+      ),
+      onClusterTap: (node) => showPlantClusterMembers(
+        context,
+        layer: _plantLayer,
+        node: node,
+        labelFor: (id) => vm.plantById(id)?.label ?? id,
+        onSelect: select,
+      ),
+    );
   }
 
   Future<void> _fitCamera(InspectionViewModel vm) async {
@@ -176,7 +190,9 @@ class _InspectionViewState extends State<InspectionView> {
     if (controller == null) return;
 
     final currentSignature =
-        '${vm.selectedOccurrenceFilterId}_${vm.selectedZoneFilterId}_${vm.selectedZonePoints.length}';
+        '${vm.selectedOccurrenceFilterId}_${vm.selectedZoneFilterId}_${vm.selectedZonePoints.length}_'
+        '${_plantLayer.bounds?.south}_${_plantLayer.bounds?.west}_'
+        '${_plantLayer.bounds?.north}_${_plantLayer.bounds?.east}';
     final filterChanged = _lastFittedFilterSignature != currentSignature;
 
     if (!filterChanged && (_hasSetInitialCamera || _userHasInteractedWithMap)) {
@@ -187,12 +203,12 @@ class _InspectionViewState extends State<InspectionView> {
     _lastFittedFilterSignature = currentSignature;
 
     final userLoc = vm.userLocation;
-    final validPlants = vm.plants.where((p) => p.hasValidCoordinates);
     final zonePoints = vm.selectedZonePoints;
 
     if (userLoc != null && !filterChanged) {
       _hasSetInitialCamera = true;
-      await controller.animateCamera(
+      await animateMapCamera(
+        controller,
         CameraUpdate.newLatLngZoom(
           LatLng(userLoc.latitude, userLoc.longitude),
           17,
@@ -201,20 +217,51 @@ class _InspectionViewState extends State<InspectionView> {
       return;
     }
 
-    final plantCoordinates = validPlants.map((p) => LatLng(p.latitude!, p.longitude!));
-    final zoneCoordinates = zonePoints.map((p) => LatLng(p.latitude, p.longitude));
-    final coordinates = [...plantCoordinates, ...zoneCoordinates];
+    final zoneCoordinates = zonePoints.map(
+      (p) => LatLng(p.latitude, p.longitude),
+    );
+    final plantBounds = _plantLayer.bounds;
+    if (zoneCoordinates.isEmpty && plantBounds != null) {
+      _hasSetInitialCamera = true;
+      await animateMapCamera(
+        controller,
+        _cameraUpdateForSpatialBounds(plantBounds),
+      );
+      return;
+    }
+
+    final coordinates = [...zoneCoordinates];
 
     if (coordinates.isNotEmpty) {
       _hasSetInitialCamera = true;
-      final viewport = calculateMapCameraViewport(coordinates, fallback: _fallbackPosition);
+      final viewport = calculateMapCameraViewport(
+        coordinates,
+        fallback: _fallbackPosition,
+      );
       final bounds = viewport.bounds;
-      await controller.animateCamera(
+      await animateMapCamera(
+        controller,
         bounds == null
             ? CameraUpdate.newLatLngZoom(viewport.target, 17)
             : CameraUpdate.newLatLngBounds(bounds, 64),
       );
     }
+  }
+
+  CameraUpdate _cameraUpdateForSpatialBounds(SpatialBounds bounds) {
+    if (!bounds.hasArea) {
+      return CameraUpdate.newLatLngZoom(
+        LatLng(bounds.centerLatitude, bounds.centerLongitude),
+        17,
+      );
+    }
+    return CameraUpdate.newLatLngBounds(
+      LatLngBounds(
+        southwest: LatLng(bounds.south, bounds.west),
+        northeast: LatLng(bounds.north, bounds.east),
+      ),
+      64,
+    );
   }
 
   String _buildFilterBadgeLabel(InspectionViewModel vm) {
@@ -271,22 +318,38 @@ class _InspectionViewState extends State<InspectionView> {
                     else
                       Listener(
                         onPointerDown: (_) => _userHasInteractedWithMap = true,
-                        child: GoogleMap(
-                          key: const ValueKey('inspection-google-map'),
-                          mapType: MapType.satellite,
-                          initialCameraPosition: const CameraPosition(
-                            target: _fallbackPosition,
-                            zoom: 17,
-                          ),
-                          clusterManagers: {_clusterManager},
-                          markers: _markers,
-                          polygons: vm.polygons,
-                          myLocationEnabled: vm.canShowUserLocation,
-                          myLocationButtonEnabled: vm.canShowUserLocation,
-                          onMapCreated: (controller) {
-                            _mapController = controller;
-                            unawaited(_fitCamera(vm));
+                        child: ActiveMapSurface(
+                          onActivityChanged: (active) {
+                            if (active) {
+                              vm.resumeLocation();
+                            } else {
+                              vm.pauseLocation();
+                              _mapController = null;
+                              _plantLayer.controller = null;
+                            }
                           },
+                          builder: (_) => GoogleMap(
+                            key: const ValueKey('inspection-google-map'),
+                            mapType: MapType.satellite,
+                            initialCameraPosition:
+                                _savedCamera ??
+                                const CameraPosition(
+                                  target: _fallbackPosition,
+                                  zoom: 17,
+                                ),
+                            onCameraIdle: _plantLayer.cameraIdle,
+                            onCameraMove: (position) => _savedCamera = position,
+                            markers: _markers,
+                            polygons: vm.polygons,
+                            myLocationEnabled: vm.canShowUserLocation,
+                            myLocationButtonEnabled: vm.canShowUserLocation,
+                            onMapCreated: (controller) {
+                              _mapController = controller;
+                              _plantLayer.controller = controller;
+                              _plantLayer.cameraIdle();
+                              unawaited(_fitCamera(vm));
+                            },
+                          ),
                         ),
                       ),
 
@@ -328,7 +391,10 @@ class _InspectionViewState extends State<InspectionView> {
                             borderRadius: BorderRadius.circular(20),
                             color: Theme.of(context).colorScheme.surface,
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -337,21 +403,28 @@ class _InspectionViewState extends State<InspectionView> {
                                         ? Icons.pest_control_outlined
                                         : Icons.grid_view_rounded,
                                     size: 18,
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary,
                                   ),
                                   const SizedBox(width: 8),
                                   Flexible(
                                     child: Text(
                                       _buildFilterBadgeLabel(vm),
-                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   InkWell(
-                                    key: const ValueKey('clear-occurrence-filter-button'),
+                                    key: const ValueKey(
+                                      'clear-occurrence-filter-button',
+                                    ),
                                     borderRadius: BorderRadius.circular(12),
                                     onTap: () => vm.clearAllFilters(),
                                     child: Padding(
@@ -359,7 +432,9 @@ class _InspectionViewState extends State<InspectionView> {
                                       child: Icon(
                                         Icons.close,
                                         size: 18,
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
                                       ),
                                     ),
                                   ),
@@ -371,7 +446,9 @@ class _InspectionViewState extends State<InspectionView> {
                       ),
 
                     // Empty filter banner
-                    if (vm.loadStatus == InspectionLoadStatus.success && vm.isFiltered && vm.plants.isEmpty)
+                    if (vm.loadStatus == InspectionLoadStatus.success &&
+                        vm.isFiltered &&
+                        vm.plants.isEmpty)
                       _StatusBanner(
                         key: const ValueKey('inspection-empty-filter-banner'),
                         message: 'Nenhuma planta encontrada com os filtros selecionados.',
@@ -447,10 +524,7 @@ class _StatusBanner extends StatelessWidget {
                 ),
                 if (actionLabel != null) ...[
                   const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: onAction,
-                    child: Text(actionLabel!),
-                  ),
+                  TextButton(onPressed: onAction, child: Text(actionLabel!)),
                 ],
               ],
             ),
@@ -479,7 +553,8 @@ class _DummyRemoteDataSource implements InspectionRemoteDataSource {
   Future<List<OccurrenceType>> fetchOccurrenceTypes() async => const [];
 
   @override
-  Future<List<InspectionPlant>> fetchPlants({int pageSize = 1000}) async => const [];
+  Future<List<InspectionPlant>> fetchPlants({int pageSize = 1000}) async =>
+      const [];
 
   @override
   Future<Map<String, Set<String>>> fetchOpenOccurrences(
@@ -489,9 +564,19 @@ class _DummyRemoteDataSource implements InspectionRemoteDataSource {
 
   @override
   Future<InspectionSnapshot> fetchSnapshot({int pageSize = 1000}) async =>
-      InspectionSnapshot(plants: const [], types: const [], loadedAt: DateTime.now());
+      InspectionSnapshot(
+        plants: const [],
+        types: const [],
+        loadedAt: DateTime.now(),
+      );
 
   @override
-  Future<InspectionSyncResult> syncInspection(Map<String, dynamic> payload) async =>
-      const InspectionSyncResult(operationId: '', created: 0, updated: 0, resolved: 0);
+  Future<InspectionSyncResult> syncInspection(
+    Map<String, dynamic> payload,
+  ) async => const InspectionSyncResult(
+    operationId: '',
+    created: 0,
+    updated: 0,
+    resolved: 0,
+  );
 }

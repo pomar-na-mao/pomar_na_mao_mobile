@@ -7,6 +7,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../domain/zone.dart';
 import 'farm_map_geometry.dart';
 import 'farm_map_view_model.dart';
+import 'bounded_plant_markers.dart';
+import 'plant_spatial_index.dart';
+import '../../../core/ui/map_activity.dart';
+import '../../../core/ui/map_camera.dart';
 
 List<Zone> sortZonesByCode(Iterable<Zone> zones) {
   final sortedZones = zones.toList();
@@ -43,9 +47,9 @@ class FarmMapView extends StatefulWidget {
 class _FarmMapViewState extends State<FarmMapView> {
   static const _fallbackPosition = defaultFarmMapPosition;
   static const _allZonesValue = '';
-  static const _clusterManagerId = ClusterManagerId('plants');
 
   GoogleMapController? _mapController;
+  CameraPosition? _savedCamera;
   String? _lastCameraSignature;
   String? _lastCameraZoneId;
   var _hasSetInitialCamera = false;
@@ -53,23 +57,16 @@ class _FarmMapViewState extends State<FarmMapView> {
   BitmapDescriptor? _nonExistentPlantMarkerIcon;
 
   Set<Marker> _cachedMarkers = const {};
-  String? _lastMarkerSignature;
+  final _plantLayer = BoundedPlantMarkers();
 
-  late final _clusterManager = ClusterManager(
-    clusterManagerId: _clusterManagerId,
-    onClusterTap: (Cluster cluster) async {
-      final controller = _mapController;
-      if (controller == null) return;
-      final currentZoom = await controller.getZoomLevel();
-      await controller.animateCamera(
-        CameraUpdate.newLatLngZoom(cluster.position, currentZoom + 2),
-      );
-    },
-  );
+  void _markersChanged() {
+    if (mounted) setState(() => _cachedMarkers = _plantLayer.markers);
+  }
 
   @override
   void initState() {
     super.initState();
+    _plantLayer.addListener(_markersChanged);
     unawaited(_loadPlantMarkerIcon());
     unawaited(widget.viewModel.initialize());
   }
@@ -84,43 +81,66 @@ class _FarmMapViewState extends State<FarmMapView> {
 
   @override
   void dispose() {
-    _mapController?.dispose();
+    _plantLayer.dispose();
+    _mapController = null;
     super.dispose();
   }
 
   void _updateMarkersIfNeeded() {
-    final plants = widget.viewModel.plants;
-    final signature =
-        '${widget.viewModel.selectedZoneId}_'
-        '${plants.length}_'
-        '${_plantMarkerIcon != null}_'
-        '${_nonExistentPlantMarkerIcon != null}';
-
-    if (_lastMarkerSignature == signature) return;
-    _lastMarkerSignature = signature;
-
-    final defaultGreen = BitmapDescriptor.defaultMarkerWithHue(
-      BitmapDescriptor.hueGreen,
+    final vm = widget.viewModel;
+    final regularIcon =
+        _plantMarkerIcon ??
+        BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+    final nonExistentIcon =
+        _nonExistentPlantMarkerIcon ??
+        BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow);
+    _plantLayer.update(
+      revision: (
+        vm.allPlants,
+        vm.selectedZoneId,
+        _plantMarkerIcon,
+        _nonExistentPlantMarkerIcon,
+      ),
+      plants: () => vm.plants
+          .map((p) => SpatialPlant(p.id, p.latitude, p.longitude))
+          .toList(growable: false),
+      markerFor: (node) {
+        final plant = vm.plantById(node.plantId!)!;
+        return Marker(
+          markerId: MarkerId(plant.id),
+          position: LatLng(node.latitude, node.longitude),
+          infoWindow: InfoWindow(title: 'Planta ${plant.id}'),
+          icon: plant.nonExistent ? nonExistentIcon : regularIcon,
+          anchor: const Offset(0.5, 0.5),
+        );
+      },
+      onClusterTap: (node) => showPlantClusterMembers(
+        context,
+        layer: _plantLayer,
+        node: node,
+        labelFor: (id) => 'Planta $id',
+        onSelect: (id) {
+          final plant = vm.plantById(id);
+          if (plant == null) return;
+          final controller = _mapController;
+          if (controller != null) {
+            unawaited(
+              animateMapCamera(
+                controller,
+                CameraUpdate.newLatLngZoom(
+                  LatLng(plant.latitude, plant.longitude),
+                  21,
+                ),
+              ),
+            );
+          }
+          if (mounted) {
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text('Planta $id')));
+          }
+        },
+      ),
     );
-    final defaultYellow = BitmapDescriptor.defaultMarkerWithHue(
-      BitmapDescriptor.hueYellow,
-    );
-
-    final regularIcon = _plantMarkerIcon ?? defaultGreen;
-    final nonExistentIcon = _nonExistentPlantMarkerIcon ?? defaultYellow;
-
-    _cachedMarkers = plants
-        .map(
-          (plant) => Marker(
-            markerId: MarkerId(plant.id),
-            position: LatLng(plant.latitude, plant.longitude),
-            infoWindow: InfoWindow(title: 'Planta ${plant.id}'),
-            clusterManagerId: _clusterManagerId,
-            icon: plant.nonExistent ? nonExistentIcon : regularIcon,
-            anchor: const Offset(0.5, 0.5),
-          ),
-        )
-        .toSet();
   }
 
   Future<void> _loadPlantMarkerIcon() async {
@@ -159,8 +179,11 @@ class _FarmMapViewState extends State<FarmMapView> {
       Paint()..color = highlightColor,
     );
 
-    final image = await recorder.endRecording().toImage(size, size);
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size, size);
+    picture.dispose();
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
     return BitmapDescriptor.bytes(
       bytes!.buffer.asUint8List(),
       width: 28,
@@ -179,11 +202,17 @@ class _FarmMapViewState extends State<FarmMapView> {
   Future<void> _fitCameraToAvailableCoordinates() async {
     final controller = _mapController;
     if (controller == null) return;
+    final dataSignature = (
+      widget.viewModel.allPlants,
+      widget.viewModel.selectedZoneId,
+      widget.viewModel.selectedZonePoints,
+      widget.viewModel.farmBoundaryPoints,
+      _plantLayer.bounds,
+    );
+    if (_cameraDataSignature == dataSignature) return;
+    _cameraDataSignature = dataSignature;
     final zoneCoordinates = widget.viewModel.selectedZonePoints
         .map((point) => LatLng(point.latitude, point.longitude))
-        .toList(growable: false);
-    final plantCoordinates = widget.viewModel.plants
-        .map((plant) => LatLng(plant.latitude, plant.longitude))
         .toList(growable: false);
     final farmBoundaryCoordinates = widget.viewModel.farmBoundaryPoints
         .map((point) => LatLng(point.latitude, point.longitude))
@@ -211,12 +240,14 @@ class _FarmMapViewState extends State<FarmMapView> {
     final signature = [
       widget.viewModel.selectedZoneId ?? _allZonesValue,
       zoneCoordinates.length.toString(),
-      plantCoordinates.length.toString(),
+      widget.viewModel.plants.length.toString(),
+      _plantLayer.bounds?.south.toStringAsFixed(5) ?? '',
+      _plantLayer.bounds?.west.toStringAsFixed(5) ?? '',
+      _plantLayer.bounds?.north.toStringAsFixed(5) ?? '',
+      _plantLayer.bounds?.east.toStringAsFixed(5) ?? '',
       farmBoundaryCoordinates.length.toString(),
       zoneCoordinates.firstOrNull?.latitude.toStringAsFixed(5) ?? '',
       zoneCoordinates.lastOrNull?.longitude.toStringAsFixed(5) ?? '',
-      plantCoordinates.firstOrNull?.latitude.toStringAsFixed(5) ?? '',
-      plantCoordinates.lastOrNull?.longitude.toStringAsFixed(5) ?? '',
       farmBoundaryCoordinates.firstOrNull?.latitude.toStringAsFixed(5) ?? '',
       farmBoundaryCoordinates.lastOrNull?.longitude.toStringAsFixed(5) ?? '',
     ].join('_');
@@ -225,21 +256,21 @@ class _FarmMapViewState extends State<FarmMapView> {
 
     final List<LatLng> cameraCoordinates;
     final double padding;
+    final plantBounds = _plantLayer.bounds;
     if (zoneCoordinates.length > 1) {
       cameraCoordinates = zoneCoordinates;
       padding = 64;
-    } else if (plantCoordinates.length > 1) {
-      cameraCoordinates = plantCoordinates;
-      padding = 72;
+    } else if (plantBounds != null) {
+      await animateMapCamera(
+        controller,
+        _cameraUpdateForSpatialBounds(plantBounds, 72),
+      );
+      return;
     } else if (farmBoundaryCoordinates.length > 1) {
       cameraCoordinates = farmBoundaryCoordinates;
       padding = 64;
     } else {
-      cameraCoordinates = [
-        ...zoneCoordinates,
-        ...plantCoordinates,
-        ...farmBoundaryCoordinates,
-      ];
+      cameraCoordinates = [...zoneCoordinates, ...farmBoundaryCoordinates];
       padding = 64;
     }
 
@@ -248,10 +279,32 @@ class _FarmMapViewState extends State<FarmMapView> {
       fallback: userPosition ?? _fallbackPosition,
     );
     final bounds = viewport.bounds;
-    await controller.animateCamera(
+    await animateMapCamera(
+      controller,
       bounds == null
           ? CameraUpdate.newLatLngZoom(viewport.target, 17)
           : CameraUpdate.newLatLngBounds(bounds, padding),
+    );
+  }
+
+  Object? _cameraDataSignature;
+
+  CameraUpdate _cameraUpdateForSpatialBounds(
+    SpatialBounds bounds,
+    double padding,
+  ) {
+    if (!bounds.hasArea) {
+      return CameraUpdate.newLatLngZoom(
+        LatLng(bounds.centerLatitude, bounds.centerLongitude),
+        17,
+      );
+    }
+    return CameraUpdate.newLatLngBounds(
+      LatLngBounds(
+        southwest: LatLng(bounds.south, bounds.west),
+        northeast: LatLng(bounds.north, bounds.east),
+      ),
+      padding,
     );
   }
 
@@ -280,21 +333,34 @@ class _FarmMapViewState extends State<FarmMapView> {
           ),
           body: Stack(
             children: [
-              GoogleMap(
-                mapType: MapType.satellite,
-                initialCameraPosition: const CameraPosition(
-                  target: _fallbackPosition,
-                  zoom: 17,
-                ),
-                clusterManagers: {_clusterManager},
-                markers: _cachedMarkers,
-                polygons: _polygons,
-                myLocationEnabled: widget.viewModel.canShowUserLocation,
-                myLocationButtonEnabled: widget.viewModel.canShowUserLocation,
-                onMapCreated: (controller) {
-                  _mapController = controller;
-                  unawaited(_fitCameraToAvailableCoordinates());
+              ActiveMapSurface(
+                onActivityChanged: (active) {
+                  if (active) {
+                    unawaited(widget.viewModel.loadUserLocation());
+                  } else {
+                    widget.viewModel.pauseLocation();
+                    _mapController = null;
+                    _plantLayer.controller = null;
+                  }
                 },
+                builder: (_) => GoogleMap(
+                  mapType: MapType.satellite,
+                  initialCameraPosition:
+                      _savedCamera ??
+                      const CameraPosition(target: _fallbackPosition, zoom: 17),
+                  onCameraIdle: _plantLayer.cameraIdle,
+                  onCameraMove: (position) => _savedCamera = position,
+                  markers: _cachedMarkers,
+                  polygons: _polygons,
+                  myLocationEnabled: widget.viewModel.canShowUserLocation,
+                  myLocationButtonEnabled: widget.viewModel.canShowUserLocation,
+                  onMapCreated: (controller) {
+                    _mapController = controller;
+                    _plantLayer.controller = controller;
+                    _plantLayer.cameraIdle();
+                    unawaited(_fitCameraToAvailableCoordinates());
+                  },
+                ),
               ),
               _ZoneFilterCard(
                 zones: widget.viewModel.zones,
