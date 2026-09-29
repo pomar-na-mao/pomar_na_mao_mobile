@@ -47,7 +47,7 @@ class InspectionDatabase {
     final db = await resolvedFactory.openDatabase(
       p.join(root, 'inspections_$fileId.db'),
       options: OpenDatabaseOptions(
-        version: 4,
+        version: 5,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) => _migrate(db, 0, version),
         onUpgrade: _migrate,
@@ -70,6 +70,12 @@ class InspectionDatabase {
         }, where: "sync_status = 'syncing'");
         await txn.delete('staged_plants');
         await txn.delete('cache_generations');
+        await txn.execute('''CREATE TABLE IF NOT EXISTS local_inspection_plant_status (
+          inspection_local_id TEXT NOT NULL REFERENCES local_inspections(local_id) ON DELETE CASCADE,
+          plant_id TEXT NOT NULL,
+          non_existent INTEGER NOT NULL DEFAULT 0,
+          initial_non_existent INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY(inspection_local_id, plant_id))''');
       });
       return db;
     } catch (_) {
@@ -106,6 +112,11 @@ class InspectionDatabase {
     }
     if (oldVersion < 4) {
       for (final sql in _versionFour) {
+        await db.execute(sql);
+      }
+    }
+    if (oldVersion < 5) {
+      for (final sql in _versionFive) {
         await db.execute(sql);
       }
     }
@@ -199,6 +210,15 @@ class InspectionDatabase {
       snapshot TEXT NOT NULL,
       PRIMARY KEY(generation_id, id))''',
     'CREATE INDEX staged_plants_generation ON staged_plants(generation_id)',
+  ];
+
+  static const _versionFive = [
+    '''CREATE TABLE IF NOT EXISTS local_inspection_plant_status (
+      inspection_local_id TEXT NOT NULL REFERENCES local_inspections(local_id) ON DELETE CASCADE,
+      plant_id TEXT NOT NULL,
+      non_existent INTEGER NOT NULL DEFAULT 0,
+      initial_non_existent INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(inspection_local_id, plant_id))''',
   ];
 }
 

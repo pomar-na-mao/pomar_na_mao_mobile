@@ -134,6 +134,27 @@ class FakeWidgetInspectionRepository implements InspectionRepository {
   ];
 
   int removePlantCalls = 0;
+  int setNonExistentCalls = 0;
+
+  @override
+  Future<void> setPlantNonExistent(String plantId, bool nonExistent) async {
+    setNonExistentCalls++;
+    final updated = snapshot.plants.map((p) {
+      if (p.id == plantId) {
+        return p.withState(
+          p.openTypeIds,
+          eligible: true,
+          nonExistent: nonExistent,
+        );
+      }
+      return p;
+    }).toList();
+    snapshot = InspectionSnapshot(
+      plants: updated,
+      types: snapshot.types,
+      loadedAt: snapshot.loadedAt,
+    );
+  }
 
   @override
   Future<void> removePlantFromInspection(String inspectionId, String plantId) async {
@@ -510,4 +531,101 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.syncCalls, 1);
   });
+
+  testWidgets('PlantEditorModal renders Planta Inexistente toggle and enables update when toggled', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(buildTestWidget(viewModel: viewModel));
+    await tester.pumpAndSettle();
+
+    await viewModel.loadPlants();
+    await tester.pumpAndSettle();
+
+    // Tap plant 1 from fake map
+    await tester.tap(find.byKey(const ValueKey('map-plant-plant-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PlantEditorModal), findsOneWidget);
+
+    final toggleFinder = find.byKey(const ValueKey('plant-non-existent-toggle'));
+    expect(toggleFinder, findsOneWidget);
+    expect(find.text('Planta Inexistente'), findsOneWidget);
+
+    // Initial state is false
+    final switchWidgetBefore = tester.widget<SwitchListTile>(toggleFinder);
+    expect(switchWidgetBefore.value, isFalse);
+
+    // Update button should be disabled before any changes
+    final updateButtonFinder = find.byKey(const ValueKey('plant-editor-update-button'));
+    final updateButtonBefore = tester.widget<FilledButton>(updateButtonFinder);
+    expect(updateButtonBefore.onPressed, isNull);
+
+    // Tap the toggle
+    await tester.tap(toggleFinder);
+    await tester.pumpAndSettle();
+
+    // Toggle is now true
+    final switchWidgetAfter = tester.widget<SwitchListTile>(toggleFinder);
+    expect(switchWidgetAfter.value, isTrue);
+
+    // Update button is now enabled
+    final updateButtonAfter = tester.widget<FilledButton>(updateButtonFinder);
+    expect(updateButtonAfter.onPressed, isNotNull);
+
+    // Tap update button to save
+    await tester.tap(updateButtonFinder);
+    await tester.pumpAndSettle();
+
+    expect(repo.setNonExistentCalls, 1);
+    expect(find.byType(PlantEditorModal), findsNothing);
+  });
+
+  testWidgets('nonExistent plants appear on map and toggle starts active when opened', (tester) async {
+    repo.snapshot = InspectionSnapshot(
+      plants: [
+        InspectionPlant(
+          id: 'plant-non-exist',
+          latitude: -23.1,
+          longitude: -46.1,
+          description: 'Planta Inexistente Teste',
+          nonExistent: true,
+        ),
+      ],
+      types: repo.snapshot.types,
+      loadedAt: DateTime.now(),
+    );
+
+    await tester.pumpWidget(buildTestWidget(viewModel: viewModel));
+    await tester.pumpAndSettle();
+
+    await viewModel.loadPlants();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('map-plant-plant-non-exist')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('map-plant-plant-non-exist')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PlantEditorModal), findsOneWidget);
+
+    final toggleFinder = find.byKey(const ValueKey('plant-non-existent-toggle'));
+    expect(toggleFinder, findsOneWidget);
+    final switchWidget = tester.widget<SwitchListTile>(toggleFinder);
+    expect(switchWidget.value, isTrue);
+
+    // Can turn it back to false
+    await tester.tap(toggleFinder);
+    await tester.pumpAndSettle();
+
+    final switchWidgetAfter = tester.widget<SwitchListTile>(toggleFinder);
+    expect(switchWidgetAfter.value, isFalse);
+
+    final updateButtonFinder = find.byKey(const ValueKey('plant-editor-update-button'));
+    await tester.tap(updateButtonFinder);
+    await tester.pumpAndSettle();
+
+    expect(repo.setNonExistentCalls, 1);
+  });
 }
+

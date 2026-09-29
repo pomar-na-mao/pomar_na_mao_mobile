@@ -46,7 +46,11 @@ class InspectionPlant {
   String get label => description?.trim().isNotEmpty == true
       ? description!
       : 'Planta ${id.substring(0, id.length < 8 ? id.length : 8)}';
-  InspectionPlant withState(Set<String> types, {bool? eligible}) =>
+  InspectionPlant withState(
+    Set<String> types, {
+    bool? eligible,
+    bool? nonExistent,
+  }) =>
       InspectionPlant(
         id: id,
         latitude: latitude,
@@ -55,7 +59,7 @@ class InspectionPlant {
         zoneId: zoneId,
         openTypeIds: types,
         eligible: eligible ?? this.eligible,
-        nonExistent: nonExistent,
+        nonExistent: nonExistent ?? this.nonExistent,
       );
   factory InspectionPlant.fromJson(Map<String, dynamic> json) =>
       InspectionPlant(
@@ -65,7 +69,7 @@ class InspectionPlant {
         description: json['description'] as String?,
         zoneId: json['zone_id'] as String?,
         eligible: json['eligible'] as bool? ?? true,
-        nonExistent: json['non_existent'] as bool? ?? false,
+        nonExistent: (json['non_existent'] ?? json['nonExistent']) as bool? ?? false,
         openTypeIds: (json['openTypeIds'] as List<dynamic>? ?? [])
             .cast<String>()
             .toSet(),

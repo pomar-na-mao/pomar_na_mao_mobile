@@ -110,6 +110,34 @@ class FakeInspectionRepo implements InspectionRepository {
   String? lastRemovedInspectionId;
   String? lastRemovedPlantId;
 
+  int setPlantNonExistentCallCount = 0;
+  String? lastNonExistentPlantId;
+  bool? lastNonExistentValue;
+
+  @override
+  Future<void> setPlantNonExistent(String plantId, bool nonExistent) async {
+    setPlantNonExistentCallCount++;
+    lastNonExistentPlantId = plantId;
+    lastNonExistentValue = nonExistent;
+    if (currentSnapshot != null) {
+      final plants = currentSnapshot!.plants.map((p) {
+        if (p.id == plantId) {
+          return p.withState(
+            p.openTypeIds,
+            eligible: true,
+            nonExistent: nonExistent,
+          );
+        }
+        return p;
+      }).toList();
+      currentSnapshot = InspectionSnapshot(
+        plants: plants,
+        types: currentSnapshot!.types,
+        loadedAt: currentSnapshot!.loadedAt,
+      );
+    }
+  }
+
   @override
   Future<void> removePlantFromInspection(
     String inspectionId,
@@ -488,4 +516,58 @@ void main() {
       expect(viewModel.polygons, isEmpty);
     },
   );
+
+  test('stagedNonExistent is initialized from plant and toggles correctly', () async {
+    final plant = InspectionPlant(
+      id: 'p-toggle',
+      latitude: -23.1,
+      longitude: -46.1,
+      nonExistent: false,
+    );
+    repo.currentSnapshot = InspectionSnapshot(
+      plants: [plant],
+      types: const [],
+      loadedAt: DateTime.now(),
+    );
+    await viewModel.loadPlants(forceRemote: false);
+
+    viewModel.selectPlant(plant);
+    expect(viewModel.stagedNonExistent, isFalse);
+    expect(viewModel.hasStagedChanges, isFalse);
+
+    viewModel.toggleStagedNonExistent(true);
+    expect(viewModel.stagedNonExistent, isTrue);
+    expect(viewModel.hasStagedChanges, isTrue);
+
+    viewModel.toggleStagedNonExistent();
+    expect(viewModel.stagedNonExistent, isFalse);
+    expect(viewModel.hasStagedChanges, isFalse);
+  });
+
+  test('savePlantChanges persists nonExistent flag when changed', () async {
+    final plant = InspectionPlant(
+      id: 'p-save-non-existent',
+      latitude: -23.1,
+      longitude: -46.1,
+      nonExistent: false,
+    );
+    repo.currentSnapshot = InspectionSnapshot(
+      plants: [plant],
+      types: const [],
+      loadedAt: DateTime.now(),
+    );
+    await viewModel.loadPlants(forceRemote: false);
+
+    viewModel.selectPlant(plant);
+    viewModel.toggleStagedNonExistent(true);
+    expect(viewModel.hasStagedChanges, isTrue);
+
+    await viewModel.savePlantChanges();
+
+    expect(repo.setPlantNonExistentCallCount, 1);
+    expect(repo.lastNonExistentPlantId, 'p-save-non-existent');
+    expect(repo.lastNonExistentValue, isTrue);
+    expect(viewModel.selectedPlant?.nonExistent, isTrue);
+    expect(viewModel.hasStagedChanges, isFalse);
+  });
 }

@@ -57,6 +57,7 @@ class _InspectionViewState extends State<InspectionView> {
   GoogleMapController? _mapController;
   CameraPosition? _savedCamera;
   BitmapDescriptor? _plantMarkerIcon;
+  BitmapDescriptor? _nonExistentPlantMarkerIcon;
   Set<Marker> _markers = const {};
   final _plantLayer = BoundedPlantMarkers();
   String? _lastFittedFilterSignature;
@@ -116,6 +117,27 @@ class _InspectionViewState extends State<InspectionView> {
   }
 
   Future<void> _loadPlantMarkerIcon() async {
+    final icons = await Future.wait([
+      _createPlantMarkerIcon(
+        color: const Color(0xFF2E7D32),
+        highlightColor: const Color(0xFF66BB6A),
+      ),
+      _createPlantMarkerIcon(
+        color: const Color(0xFFF9A825),
+        highlightColor: const Color(0xFFFFD54F),
+      ),
+    ]);
+    if (!mounted) return;
+    _plantMarkerIcon = icons[0];
+    _nonExistentPlantMarkerIcon = icons[1];
+    _updateMarkers(_effectiveViewModel);
+    setState(() {});
+  }
+
+  Future<BitmapDescriptor> _createPlantMarkerIcon({
+    required Color color,
+    required Color highlightColor,
+  }) async {
     const size = 64;
     const center = Offset(size / 2, size / 2);
     const radius = 22.0;
@@ -123,11 +145,11 @@ class _InspectionViewState extends State<InspectionView> {
     final canvas = Canvas(recorder);
 
     canvas.drawCircle(center, radius + 5, Paint()..color = Colors.white);
-    canvas.drawCircle(center, radius, Paint()..color = const Color(0xFF2E7D32));
+    canvas.drawCircle(center, radius, Paint()..color = color);
     canvas.drawCircle(
       center.translate(-7, -7),
       6,
-      Paint()..color = const Color(0xFF66BB6A),
+      Paint()..color = highlightColor,
     );
 
     final picture = recorder.endRecording();
@@ -135,21 +157,21 @@ class _InspectionViewState extends State<InspectionView> {
     picture.dispose();
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
-    if (!mounted) return;
-    setState(() {
-      _plantMarkerIcon = BitmapDescriptor.bytes(
-        bytes!.buffer.asUint8List(),
-        width: 28,
-        height: 28,
-      );
-    });
+    return BitmapDescriptor.bytes(
+      bytes!.buffer.asUint8List(),
+      width: 28,
+      height: 28,
+    );
   }
 
   void _updateMarkers(InspectionViewModel vm) {
     if (widget.mapBuilder != null) return;
-    final icon =
+    final regularIcon =
         _plantMarkerIcon ??
         BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+    final nonExistentIcon =
+        _nonExistentPlantMarkerIcon ??
+        BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow);
     void select(String id) {
       if (!mounted) return;
       vm.selectPlantById(id);
@@ -162,19 +184,24 @@ class _InspectionViewState extends State<InspectionView> {
         vm.selectedOccurrenceFilterId,
         vm.selectedZoneFilterId,
         _plantMarkerIcon,
+        _nonExistentPlantMarkerIcon,
       ),
       plants: () => vm.plants
           .where((p) => p.hasValidCoordinates)
           .map((p) => SpatialPlant(p.id, p.latitude!, p.longitude!))
           .toList(growable: false),
-      markerFor: (node) => Marker(
-        markerId: MarkerId(node.plantId!),
-        position: LatLng(node.latitude, node.longitude),
-        icon: icon,
-        infoWindow: InfoWindow(title: vm.plantById(node.plantId!)?.label),
-        anchor: const Offset(0.5, 0.5),
-        onTap: () => select(node.plantId!),
-      ),
+      markerFor: (node) {
+        final plant = vm.plantById(node.plantId!);
+        final isNonExistent = plant?.nonExistent ?? false;
+        return Marker(
+          markerId: MarkerId(node.plantId!),
+          position: LatLng(node.latitude, node.longitude),
+          icon: isNonExistent ? nonExistentIcon : regularIcon,
+          infoWindow: InfoWindow(title: plant?.label),
+          anchor: const Offset(0.5, 0.5),
+          onTap: () => select(node.plantId!),
+        );
+      },
       onClusterTap: (node) => showPlantClusterMembers(
         context,
         layer: _plantLayer,
