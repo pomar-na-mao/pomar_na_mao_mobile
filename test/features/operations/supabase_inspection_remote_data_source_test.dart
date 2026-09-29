@@ -4,7 +4,9 @@ import 'package:pomar_na_mao_mobile/features/operations/data/inspection_remote_d
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
-  test('fetchOccurrenceTypes and fetchPlants from Supabase', () async {
+  test(
+    'fetchOccurrenceTypes and fetchPlants from Supabase',
+    () async {
     final client = SupabaseClient(
       AppConfig.supabaseUrl,
       AppConfig.supabasePublishableKey,
@@ -19,5 +21,5 @@ void main() {
     final plants = await remoteDataSource.fetchPlants(pageSize: 50);
     expect(plants, isNotEmpty);
     expect(plants.any((p) => p.hasValidCoordinates), isTrue);
-  });
+  }, timeout: const Timeout(Duration(seconds: 90)));
 }

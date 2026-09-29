@@ -16,6 +16,7 @@ abstract interface class InspectionRepository {
     UserLocation? location,
     double? distance,
   });
+  Future<void> setPlantNonExistent(String plantId, bool nonExistent);
   Future<LocalInspection?> finalizeInspection();
   Future<bool> syncPending();
   Future<List<LocalInspection>> listLocalInspections();
@@ -122,6 +123,11 @@ class DefaultInspectionRepository implements InspectionRepository {
   }
 
   @override
+  Future<void> setPlantNonExistent(String plantId, bool nonExistent) {
+    return localStore.setPlantNonExistent(plantId, nonExistent);
+  }
+
+  @override
   Future<LocalInspection?> finalizeInspection() async {
     final finalized = await localStore.finalize();
     if (finalized != null) {
@@ -155,6 +161,7 @@ class DefaultInspectionRepository implements InspectionRepository {
       final allPendingIds = pending.map((i) => i.id).toList();
 
       final groupedPlants = <String, List<Map<String, dynamic>>>{};
+      final plantNonExistent = <String, bool>{};
       DateTime? earliestStartedAt;
       DateTime? latestFinishedAt;
 
@@ -173,6 +180,10 @@ class DefaultInspectionRepository implements InspectionRepository {
         for (final p in plantsList) {
           final map = Map<String, dynamic>.from(p as Map);
           final plantId = map['plantId'] as String;
+          if (map.containsKey('nonExistent') || map.containsKey('non_existent')) {
+            plantNonExistent[plantId] =
+                (map['nonExistent'] ?? map['non_existent']) as bool? ?? false;
+          }
           final changes = (map['changes'] as List<dynamic>? ?? [])
               .map((c) => Map<String, dynamic>.from(c as Map))
               .toList();
@@ -180,9 +191,15 @@ class DefaultInspectionRepository implements InspectionRepository {
         }
       }
 
+      final allPlantIds = {...groupedPlants.keys, ...plantNonExistent.keys};
       final mergedPlantsChanged = [
-        for (final entry in groupedPlants.entries)
-          {'plantId': entry.key, 'changes': entry.value},
+        for (final plantId in allPlantIds)
+          {
+            'plantId': plantId,
+            if (plantNonExistent.containsKey(plantId))
+              'nonExistent': plantNonExistent[plantId]!,
+            'changes': groupedPlants[plantId] ?? const <Map<String, dynamic>>[],
+          },
       ];
 
       final mergedPayload = <String, dynamic>{

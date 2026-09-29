@@ -197,7 +197,7 @@ void main() {
     );
     final raw = await migrated.database;
 
-    expect(await raw.getVersion(), 4);
+    expect(await raw.getVersion(), 5);
     expect(await migrated.deviceId, 'legacy-device');
     expect(await raw.query('local_inspections'), hasLength(1));
     expect(await raw.query('local_inspection_changes'), hasLength(1));
@@ -295,7 +295,7 @@ void main() {
           row['local_id'] as String: row,
       };
 
-      expect(await raw.getVersion(), 4);
+      expect(await raw.getVersion(), 5);
       expect(inspections['pending-1']!['sync_status'], 'pending');
       expect(inspections['error-1']!['sync_status'], 'error');
       expect(inspections['syncing-1']!['sync_status'], 'pending');

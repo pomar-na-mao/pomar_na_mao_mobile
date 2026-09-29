@@ -229,4 +229,46 @@ void main() {
     final finalChanges = await store.changes(finalized.id);
     expect(finalChanges, isEmpty);
   });
+
+  test('setPlantNonExistent updates plant and finalize includes nonExistent in plantsChanged', () async {
+    await store.replaceSnapshot(
+      InspectionSnapshot(plants: samplePlants, types: sampleTypes, loadedAt: currentTime),
+    );
+
+    // Set p-1 as non_existent
+    await store.setPlantNonExistent('p-1', true);
+
+    final snapshot = await store.readSnapshot();
+    expect(snapshot!.plants.any((p) => p.id == 'p-1'), isTrue);
+    expect(snapshot.plants.firstWhere((p) => p.id == 'p-1').nonExistent, isTrue);
+
+    final finalized = await store.finalize();
+    expect(finalized, isNotNull);
+    final payload = finalized!.payload;
+    final plantsChanged = (payload['plantsChanged'] as List).cast<Map<String, dynamic>>();
+    expect(plantsChanged.length, 1);
+    expect(plantsChanged.first['plantId'], 'p-1');
+    expect(plantsChanged.first['nonExistent'], isTrue);
+  });
+
+  test('appendStagedPlantRows preserves non_existent plants and publish makes them available in snapshot', () async {
+    await store.saveCatalog(sampleTypes);
+    final genId = await store.beginPlantStaging(loadedAt: currentTime);
+    await store.appendStagedPlantRows(genId, [
+      {'id': 'p-exist', 'latitude': -23.1, 'longitude': -46.1, 'non_existent': false},
+      {'id': 'p-non-exist', 'latitude': -23.2, 'longitude': -46.2, 'non_existent': true},
+    ]);
+    await store.publishPlantStaging(genId);
+
+    final snapshot = await store.readSnapshot();
+    expect(snapshot, isNotNull);
+    expect(snapshot!.plants.length, 2);
+
+    final pExist = snapshot.plants.firstWhere((p) => p.id == 'p-exist');
+    expect(pExist.nonExistent, isFalse);
+
+    final pNonExist = snapshot.plants.firstWhere((p) => p.id == 'p-non-exist');
+    expect(pNonExist.nonExistent, isTrue);
+  });
 }
+

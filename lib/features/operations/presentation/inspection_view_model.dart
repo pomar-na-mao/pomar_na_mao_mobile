@@ -184,12 +184,16 @@ class InspectionViewModel extends ChangeNotifier {
   Set<String> _stagedOccurrenceTypeIds = const {};
   Set<String> get stagedOccurrenceTypeIds => _stagedOccurrenceTypeIds;
 
+  bool _stagedNonExistent = false;
+  bool get stagedNonExistent => _stagedNonExistent;
+
   bool isOccurrenceChecked(String typeId) =>
       _stagedOccurrenceTypeIds.contains(typeId);
 
   bool get hasStagedChanges {
     if (_selectedPlant == null) return false;
-    return !setEquals(_stagedOccurrenceTypeIds, _selectedPlant!.openTypeIds);
+    return !setEquals(_stagedOccurrenceTypeIds, _selectedPlant!.openTypeIds) ||
+        _stagedNonExistent != _selectedPlant!.nonExistent;
   }
 
   List<LocalInspection> _localInspections = const [];
@@ -277,12 +281,14 @@ class InspectionViewModel extends ChangeNotifier {
     if (plant == null) {
       _selectedPlant = null;
       _stagedOccurrenceTypeIds = const {};
+      _stagedNonExistent = false;
     } else {
       _selectedPlant = _plants.firstWhere(
         (p) => p.id == plant.id,
         orElse: () => plant,
       );
       _stagedOccurrenceTypeIds = Set<String>.from(_selectedPlant!.openTypeIds);
+      _stagedNonExistent = _selectedPlant!.nonExistent;
     }
     notifyListeners();
   }
@@ -293,6 +299,13 @@ class InspectionViewModel extends ChangeNotifier {
       orElse: () => InspectionPlant(id: id),
     );
     _stagedOccurrenceTypeIds = Set<String>.from(_selectedPlant!.openTypeIds);
+    _stagedNonExistent = _selectedPlant!.nonExistent;
+    notifyListeners();
+  }
+
+  void toggleStagedNonExistent([bool? value]) {
+    if (_selectedPlant == null) return;
+    _stagedNonExistent = value ?? !_stagedNonExistent;
     notifyListeners();
   }
 
@@ -406,14 +419,23 @@ class InspectionViewModel extends ChangeNotifier {
         distance: distance,
       );
 
-      final snapshot = await repository.loadSnapshot(forceRemote: false);
-      if (snapshot != null) {
-        _plants = snapshot.plants;
-        _selectedPlant = _plants.firstWhere(
-          (p) => p.id == plant.id,
-          orElse: () => plant,
-        );
+      final openTypes = Set<String>.from(plant.openTypeIds);
+      if (openTypes.contains(typeId)) {
+        openTypes.remove(typeId);
+      } else {
+        openTypes.add(typeId);
       }
+      final updatedPlant = plant.withState(openTypes);
+      final plantIndex = _plants.indexWhere((p) => p.id == plant.id);
+      if (plantIndex != -1) {
+        final newPlants = List<InspectionPlant>.from(_plants);
+        newPlants[plantIndex] = updatedPlant;
+        _plants = newPlants;
+        _indexedPlants = null;
+      }
+      _selectedPlant = updatedPlant;
+      _stagedOccurrenceTypeIds = Set<String>.from(updatedPlant.openTypeIds);
+      _stagedNonExistent = updatedPlant.nonExistent;
       _feedbackMessage = 'Salvo no dispositivo';
       await refreshLocalInspections();
     } catch (e) {
@@ -433,14 +455,19 @@ class InspectionViewModel extends ChangeNotifier {
 
     final addedTypes = stagedTypes.difference(initialTypes);
     final removedTypes = initialTypes.difference(stagedTypes);
+    final nonExistentChanged = _stagedNonExistent != plant.nonExistent;
 
-    if (addedTypes.isEmpty && removedTypes.isEmpty) return;
+    if (addedTypes.isEmpty && removedTypes.isEmpty && !nonExistentChanged) return;
 
     _isSavingLocal = true;
     _feedbackMessage = null;
     notifyListeners();
 
     try {
+      if (nonExistentChanged) {
+        await repository.setPlantNonExistent(plant.id, _stagedNonExistent);
+      }
+
       double? distance;
       if (userLocation != null && plant.hasValidCoordinates) {
         distance = Geolocator.distanceBetween(
@@ -469,17 +496,21 @@ class InspectionViewModel extends ChangeNotifier {
         );
       }
 
-      final snapshot = await repository.loadSnapshot(forceRemote: false);
-      if (snapshot != null) {
-        _plants = snapshot.plants;
-        _selectedPlant = _plants.firstWhere(
-          (p) => p.id == plant.id,
-          orElse: () => plant,
-        );
-        _stagedOccurrenceTypeIds = Set<String>.from(
-          _selectedPlant!.openTypeIds,
-        );
+      final updatedPlant = plant.withState(
+        stagedTypes,
+        eligible: true,
+        nonExistent: _stagedNonExistent,
+      );
+      final plantIndex = _plants.indexWhere((p) => p.id == plant.id);
+      if (plantIndex != -1) {
+        final newPlants = List<InspectionPlant>.from(_plants);
+        newPlants[plantIndex] = updatedPlant;
+        _plants = newPlants;
+        _indexedPlants = null;
       }
+      _selectedPlant = updatedPlant;
+      _stagedOccurrenceTypeIds = Set<String>.from(updatedPlant.openTypeIds);
+      _stagedNonExistent = updatedPlant.nonExistent;
       _feedbackMessage = 'Salvo no dispositivo';
       await refreshLocalInspections();
     } catch (e) {

@@ -128,6 +128,54 @@ class PlantEditorModal extends StatelessWidget {
                       ),
                     ),
 
+                  // Planta Inexistente Toggle
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Material(
+                      color: viewModel.stagedNonExistent
+                          ? colorScheme.errorContainer.withValues(alpha: 0.25)
+                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                          color: viewModel.stagedNonExistent
+                              ? colorScheme.error.withValues(alpha: 0.5)
+                              : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                          width: viewModel.stagedNonExistent ? 1.5 : 1,
+                        ),
+                      ),
+                      child: SwitchListTile.adaptive(
+                        key: const ValueKey('plant-non-existent-toggle'),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 2,
+                        ),
+                        title: Text(
+                          'Planta Inexistente',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                            color: viewModel.stagedNonExistent
+                                ? colorScheme.error
+                                : colorScheme.onSurface,
+                          ),
+                        ),
+                        secondary: Icon(
+                          viewModel.stagedNonExistent
+                              ? Icons.cancel_outlined
+                              : Icons.check_circle_outline,
+                          color: viewModel.stagedNonExistent
+                              ? colorScheme.error
+                              : colorScheme.primary,
+                        ),
+                        value: viewModel.stagedNonExistent,
+                        onChanged: viewModel.isSavingLocal
+                            ? null
+                            : (val) => viewModel.toggleStagedNonExistent(val),
+                      ),
+                    ),
+                  ),
+
                   // Occurrence items list
                   Expanded(
                     child: catalog.isEmpty

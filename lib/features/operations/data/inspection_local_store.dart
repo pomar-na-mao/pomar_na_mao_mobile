@@ -155,7 +155,7 @@ class InspectionLocalStore {
         description: row['description'] as String?,
         zoneId: row['zone_id'] as String?,
         openTypeIds: openOccurrences[id] ?? const <String>{},
-        eligible: !nonExistent,
+        eligible: true,
         nonExistent: nonExistent,
       );
     }
@@ -457,7 +457,7 @@ class InspectionLocalStore {
               (r) =>
                   InspectionPlant.fromJson(decodeInspectionJson(r['snapshot'])),
             )
-            .where((plant) => plant.eligible && !plant.nonExistent)
+            .where((plant) => plant.eligible || plant.nonExistent)
             .toList(),
         types: (await txn.query(
           'occurrence_types',
@@ -555,6 +555,22 @@ class InspectionLocalStore {
       }
       effective[id] = plant.withState(types);
     }
+    final pendingStatus = await txn.rawQuery(
+      '''SELECT s.* FROM local_inspection_plant_status s
+      JOIN local_inspections i ON i.local_id = s.inspection_local_id
+      WHERE i.sync_status != 'synced' AND s.non_existent != s.initial_non_existent''',
+    );
+    for (final s in pendingStatus) {
+      final id = s['plant_id'] as String;
+      final plant = effective[id] ?? previous[id]?.withState({}, eligible: false);
+      if (plant != null) {
+        effective[id] = plant.withState(
+          plant.openTypeIds,
+          eligible: true,
+          nonExistent: (s['non_existent'] as int) == 1,
+        );
+      }
+    }
   }
 
   Future<void> _replacePlants(
@@ -608,7 +624,7 @@ class InspectionLocalStore {
       final plant = InspectionPlant.fromJson(
         decodeInspectionJson(row['snapshot']),
       );
-      if (!plant.eligible || plant.nonExistent) continue;
+      if (!plant.eligible && !plant.nonExistent) continue;
       batch.insert('local_inspection_loaded_plants', {
         'inspection_local_id': id,
         'plant_id': plant.id,
@@ -645,7 +661,7 @@ class InspectionLocalStore {
       final plant = InspectionPlant.fromJson(
         decodeInspectionJson(rows.single['snapshot']),
       );
-      if (!plant.eligible || plant.nonExistent) {
+      if (!plant.eligible && !plant.nonExistent) {
         throw StateError('Planta indisponível para inspeção.');
       }
       final draftId = await _ensureDraft(txn);
@@ -697,6 +713,110 @@ class InspectionLocalStore {
     database.publishCommit();
   }
 
+  Future<void> setPlantNonExistent(
+    String plantId,
+    bool nonExistent,
+  ) async {
+    final db = await database.database;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'cached_plants',
+        where: 'id = ?',
+        whereArgs: [plantId],
+      );
+      if (rows.isEmpty) {
+        throw StateError('Carregue o estado da planta antes de editar.');
+      }
+      final plant = InspectionPlant.fromJson(
+        decodeInspectionJson(rows.single['snapshot']),
+      );
+      if (plant.nonExistent == nonExistent) return;
+
+      final draftId = await _ensureDraft(txn);
+      final draft = (await txn.query(
+        'local_inspections',
+        where: 'local_id = ?',
+        whereArgs: [draftId],
+      )).single;
+
+      final statusRows = await txn.query(
+        'local_inspection_plant_status',
+        where: 'inspection_local_id = ? AND plant_id = ?',
+        whereArgs: [draftId, plantId],
+      );
+      final bool initialNonExistent;
+      if (statusRows.isNotEmpty) {
+        initialNonExistent =
+            (statusRows.single['initial_non_existent'] as int) == 1;
+        await txn.update(
+          'local_inspection_plant_status',
+          {'non_existent': nonExistent ? 1 : 0},
+          where: 'inspection_local_id = ? AND plant_id = ?',
+          whereArgs: [draftId, plantId],
+        );
+      } else {
+        initialNonExistent = plant.nonExistent;
+        await txn.insert('local_inspection_plant_status', {
+          'inspection_local_id': draftId,
+          'plant_id': plantId,
+          'non_existent': nonExistent ? 1 : 0,
+          'initial_non_existent': initialNonExistent ? 1 : 0,
+        });
+      }
+
+      final loaded = await txn.query(
+        'local_inspection_loaded_plants',
+        where: 'inspection_local_id = ? AND plant_id = ?',
+        whereArgs: [draftId, plantId],
+      );
+      if (loaded.isEmpty) {
+        await txn.insert('local_inspection_loaded_plants', {
+          'inspection_local_id': draftId,
+          'plant_id': plantId,
+          'snapshot': rows.single['snapshot'],
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+
+      var time = clock().toUtc();
+      final last = draft['last_changed_at'] as String?;
+      if (last != null && !time.isAfter(DateTime.parse(last))) {
+        time = DateTime.parse(last).add(const Duration(microseconds: 1));
+      }
+
+      final updatedPlant = plant.withState(
+        plant.openTypeIds,
+        eligible: true,
+        nonExistent: nonExistent,
+      );
+      await txn.update(
+        'cached_plants',
+        {'snapshot': jsonEncode(updatedPlant.toJson())},
+        where: 'id = ?',
+        whereArgs: [plantId],
+      );
+
+      final countRes = await txn.rawQuery(
+        '''SELECT COUNT(DISTINCT plant_id) as count FROM (
+          SELECT plant_id FROM local_inspection_changes WHERE inspection_local_id = ?
+          UNION
+          SELECT plant_id FROM local_inspection_plant_status
+          WHERE inspection_local_id = ? AND non_existent != initial_non_existent
+        )''',
+        [draftId, draftId],
+      );
+      final modifiedPlantsCount = (countRes.single['count'] as int?) ?? 0;
+
+      await txn.rawUpdate(
+        '''UPDATE local_inspections SET last_changed_at = ?,
+        changes_count = changes_count + 1,
+        plants_count = ?
+        WHERE local_id = ?''',
+        [time.toIso8601String(), modifiedPlantsCount, draftId],
+      );
+    });
+    database.publishCommit();
+  }
+
   Future<LocalInspection?> finalize() async {
     final db = await database.database;
     return db.transaction((txn) async {
@@ -704,7 +824,7 @@ class InspectionLocalStore {
         'local_inspections',
         where: "state = 'in_progress'",
       );
-      if (drafts.isEmpty || drafts.single['changes_count'] == 0) return null;
+      if (drafts.isEmpty) return null;
       final draft = drafts.single;
       final id = draft['local_id'] as String;
       final rows = await txn.query(
@@ -718,9 +838,48 @@ class InspectionLocalStore {
         final change = _change(row);
         (grouped[change.plantId] ??= []).add(change.toPayload());
       }
+
+      final statusRows = await txn.query(
+        'local_inspection_plant_status',
+        where: 'inspection_local_id = ? AND non_existent != initial_non_existent',
+        whereArgs: [id],
+      );
+      final nonExistentChangedIds = {
+        for (final r in statusRows) r['plant_id'] as String,
+      };
+
+      final allChangedPlantIds = <String>{...grouped.keys, ...nonExistentChangedIds};
+      if (allChangedPlantIds.isEmpty) return null;
+
+      final plantNonExistentMap = <String, bool>{
+        for (final r in statusRows)
+          r['plant_id'] as String: (r['non_existent'] as int) == 1,
+      };
+
+      for (final pId in grouped.keys) {
+        if (!plantNonExistentMap.containsKey(pId)) {
+          final cached = await txn.query(
+            'cached_plants',
+            where: 'id = ?',
+            whereArgs: [pId],
+          );
+          if (cached.isNotEmpty) {
+            final currP = InspectionPlant.fromJson(
+              decodeInspectionJson(cached.single['snapshot']),
+            );
+            plantNonExistentMap[pId] = currP.nonExistent;
+          } else {
+            plantNonExistentMap[pId] = false;
+          }
+        }
+      }
+
       var finished = clock().toUtc();
-      final last = DateTime.parse(draft['last_changed_at'] as String);
-      if (finished.isBefore(last)) finished = last;
+      final lastStr = draft['last_changed_at'] as String?;
+      if (lastStr != null) {
+        final last = DateTime.parse(lastStr);
+        if (finished.isBefore(last)) finished = last;
+      }
       final previous = await txn.rawQuery(
         'SELECT finished_at FROM local_inspections WHERE finished_at IS NOT NULL ORDER BY rowid DESC LIMIT 1',
       );
@@ -741,8 +900,12 @@ class InspectionLocalStore {
         'zoneId': null,
         'occurrenceTypeId': null,
         'plantsChanged': [
-          for (final entry in grouped.entries)
-            {'plantId': entry.key, 'changes': entry.value},
+          for (final pId in allChangedPlantIds)
+            {
+              'plantId': pId,
+              'nonExistent': plantNonExistentMap[pId] ?? false,
+              'changes': grouped[pId] ?? const <Map<String, dynamic>>[],
+            },
         ],
       });
       await txn.update(
@@ -867,6 +1030,11 @@ class InspectionLocalStore {
         where: 'inspection_local_id = ? AND plant_id = ?',
         whereArgs: [inspectionId, plantId],
       );
+      await txn.delete(
+        'local_inspection_plant_status',
+        where: 'inspection_local_id = ? AND plant_id = ?',
+        whereArgs: [inspectionId, plantId],
+      );
 
       // 2. Recompute cached_plants for this plantId
       final loaded = await txn.query(
@@ -912,16 +1080,27 @@ class InspectionLocalStore {
         orderBy: 'sequence',
       );
 
-      final distinctPlants = remainingRows
-          .map((r) => r['plant_id'] as String)
-          .toSet();
+      final countRes = await txn.rawQuery(
+        '''SELECT COUNT(DISTINCT plant_id) as count FROM (
+          SELECT plant_id FROM local_inspection_changes WHERE inspection_local_id = ?
+          UNION
+          SELECT plant_id FROM local_inspection_plant_status
+          WHERE inspection_local_id = ? AND non_existent != initial_non_existent
+        )''',
+        [inspectionId, inspectionId],
+      );
       final remainingChangesCount = remainingRows.length;
-      final remainingPlantsCount = distinctPlants.length;
+      final remainingPlantsCount = (countRes.single['count'] as int?) ?? 0;
 
       if (remainingPlantsCount == 0) {
         // Remove all traces of the inspection if no plants remain
         await txn.delete(
           'local_inspection_changes',
+          where: 'inspection_local_id = ?',
+          whereArgs: [inspectionId],
+        );
+        await txn.delete(
+          'local_inspection_plant_status',
           where: 'inspection_local_id = ?',
           whereArgs: [inspectionId],
         );
