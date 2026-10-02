@@ -18,12 +18,24 @@ class FakeInventoryRepository implements InventoryRepository {
   Exception? error;
   Completer<InventorySummary>? completer;
   int calls = 0;
+  int refreshCacheCalls = 0;
+  Exception? refreshCacheError;
+  Completer<void>? refreshCacheCompleter;
 
   @override
   Future<InventorySummary> fetchSummary() async {
     calls += 1;
     if (error case final error?) throw error;
     return completer?.future ?? result;
+  }
+
+  @override
+  Future<void> refreshCache() async {
+    refreshCacheCalls += 1;
+    if (refreshCacheError case final error?) throw error;
+    if (refreshCacheCompleter case final completer?) {
+      await completer.future;
+    }
   }
 }
 
@@ -259,5 +271,48 @@ void main() {
     expect(viewModel.summary?.existingPlants, 120);
     expect(inventoryRepository.calls, 2);
     await changes.close();
+  });
+
+  group('refreshCache', () {
+    test('calls repository refreshCache and updates summary and map data', () async {
+      await viewModel.initialize();
+      expect(inventoryRepository.calls, 1);
+      expect(farmRepository.calls, 1);
+      expect(inventoryRepository.refreshCacheCalls, 0);
+
+      inventoryRepository.result = const InventorySummary(
+        existingPlants: 250,
+        availablePlantingSpots: 10,
+      );
+
+      await viewModel.refreshCache();
+
+      expect(inventoryRepository.refreshCacheCalls, 1);
+      expect(inventoryRepository.calls, 2);
+      expect(farmRepository.calls, 2);
+      expect(viewModel.summary?.existingPlants, 250);
+      expect(viewModel.isRefreshingCache, isFalse);
+    });
+
+    test('sets isRefreshingCache while refresh is in flight', () async {
+      final completer = Completer<void>();
+      inventoryRepository.refreshCacheCompleter = completer;
+
+      expect(viewModel.isRefreshingCache, isFalse);
+      final future = viewModel.refreshCache();
+      expect(viewModel.isRefreshingCache, isTrue);
+
+      completer.complete();
+      await future;
+      expect(viewModel.isRefreshingCache, isFalse);
+    });
+
+    test('rethrows error and resets isRefreshingCache on failure', () async {
+      inventoryRepository.refreshCacheError = Exception('network failure');
+
+      expect(viewModel.isRefreshingCache, isFalse);
+      await expectLater(viewModel.refreshCache(), throwsA(isA<Exception>()));
+      expect(viewModel.isRefreshingCache, isFalse);
+    });
   });
 }

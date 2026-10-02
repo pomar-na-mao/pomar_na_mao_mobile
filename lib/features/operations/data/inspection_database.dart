@@ -47,7 +47,7 @@ class InspectionDatabase {
     final db = await resolvedFactory.openDatabase(
       p.join(root, 'inspections_$fileId.db'),
       options: OpenDatabaseOptions(
-        version: 5,
+        version: 7,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) => _migrate(db, 0, version),
         onUpgrade: _migrate,
@@ -68,6 +68,9 @@ class InspectionDatabase {
         await txn.update('local_inspections', {
           'sync_status': 'pending',
         }, where: "sync_status = 'syncing'");
+        await txn.update('local_added_plants', {
+          'sync_status': 'pending',
+        }, where: "sync_status = 'syncing'");
         await txn.delete('staged_plants');
         await txn.delete('cache_generations');
         await txn.execute('''CREATE TABLE IF NOT EXISTS local_inspection_plant_status (
@@ -76,6 +79,8 @@ class InspectionDatabase {
           non_existent INTEGER NOT NULL DEFAULT 0,
           initial_non_existent INTEGER NOT NULL DEFAULT 0,
           PRIMARY KEY(inspection_local_id, plant_id))''');
+        await txn.execute(_createLocalAddedPlants);
+        await txn.execute(_createLocalAddedPlantsQueueIndex);
       });
       return db;
     } catch (_) {
@@ -117,6 +122,16 @@ class InspectionDatabase {
     }
     if (oldVersion < 5) {
       for (final sql in _versionFive) {
+        await db.execute(sql);
+      }
+    }
+    if (oldVersion < 6) {
+      for (final sql in _versionSix) {
+        await db.execute(sql);
+      }
+    }
+    if (oldVersion < 7) {
+      for (final sql in _versionSeven) {
         await db.execute(sql);
       }
     }
@@ -220,6 +235,43 @@ class InspectionDatabase {
       initial_non_existent INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY(inspection_local_id, plant_id))''',
   ];
+
+  static const _versionSix = [
+    _createLocalAddedPlantsV6,
+    _createLocalAddedPlantsQueueIndex,
+  ];
+
+  static const _versionSeven = [
+    'ALTER TABLE local_added_plants ADD COLUMN zone_id TEXT',
+  ];
+
+  static const _createLocalAddedPlantsV6 =
+      '''CREATE TABLE IF NOT EXISTS local_added_plants (
+      local_id TEXT PRIMARY KEY,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      non_existent INTEGER NOT NULL DEFAULT 0 CHECK(non_existent IN (0, 1)),
+      sync_status TEXT NOT NULL DEFAULT 'pending' CHECK(sync_status IN ('pending','syncing','error','synced')),
+      error TEXT,
+      remote_plant_id TEXT,
+      created_at TEXT NOT NULL,
+      synced_at TEXT)''';
+
+  static const _createLocalAddedPlants =
+      '''CREATE TABLE IF NOT EXISTS local_added_plants (
+      local_id TEXT PRIMARY KEY,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      non_existent INTEGER NOT NULL DEFAULT 0 CHECK(non_existent IN (0, 1)),
+      zone_id TEXT,
+      sync_status TEXT NOT NULL DEFAULT 'pending' CHECK(sync_status IN ('pending','syncing','error','synced')),
+      error TEXT,
+      remote_plant_id TEXT,
+      created_at TEXT NOT NULL,
+      synced_at TEXT)''';
+
+  static const _createLocalAddedPlantsQueueIndex =
+      'CREATE INDEX IF NOT EXISTS local_added_plants_queue ON local_added_plants(sync_status, created_at)';
 }
 
 Map<String, dynamic> decodeInspectionJson(Object? value) =>

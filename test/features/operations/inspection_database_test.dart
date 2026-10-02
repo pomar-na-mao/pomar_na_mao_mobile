@@ -55,6 +55,7 @@ void main() {
           'local_inspections',
           'local_inspection_loaded_plants',
           'local_inspection_changes',
+          'local_added_plants',
         }),
       );
 
@@ -107,6 +108,48 @@ void main() {
       'local_inspections',
       where: 'local_id = ?',
       whereArgs: ['inspect-1'],
+    )).single;
+
+    expect(row['sync_status'], 'pending');
+    final addedPlantColumns = await (await reopened.database).rawQuery(
+      'PRAGMA table_info(local_added_plants)',
+    );
+    expect(
+      addedPlantColumns.map((column) => column['name']),
+      contains('zone_id'),
+    );
+    await reopened.close();
+  });
+
+  test('recovers added plant syncing state to pending upon reopening', () async {
+    final db = InspectionDatabase(
+      projectUrl: 'https://uxschjkypkkzprbwuhxm.supabase.co',
+      factory: ffiFactory,
+      directory: tempDir.path,
+    );
+
+    final rawDb = await db.database;
+    await rawDb.insert('local_added_plants', {
+      'local_id': 'added-1',
+      'latitude': -23.1,
+      'longitude': -46.1,
+      'non_existent': 0,
+      'sync_status': 'syncing',
+      'created_at': '2026-09-18T20:00:00.000Z',
+    });
+
+    await db.close();
+
+    final reopened = InspectionDatabase(
+      projectUrl: 'https://uxschjkypkkzprbwuhxm.supabase.co',
+      factory: ffiFactory,
+      directory: tempDir.path,
+    );
+
+    final row = (await (await reopened.database).query(
+      'local_added_plants',
+      where: 'local_id = ?',
+      whereArgs: ['added-1'],
     )).single;
 
     expect(row['sync_status'], 'pending');
@@ -197,7 +240,7 @@ void main() {
     );
     final raw = await migrated.database;
 
-    expect(await raw.getVersion(), 5);
+    expect(await raw.getVersion(), 7);
     expect(await migrated.deviceId, 'legacy-device');
     expect(await raw.query('local_inspections'), hasLength(1));
     expect(await raw.query('local_inspection_changes'), hasLength(1));
@@ -230,7 +273,18 @@ void main() {
     );
     expect(
       tables.map((row) => row['name']),
-      containsAll(['cache_generations', 'staged_plants']),
+        containsAll(['cache_generations', 'staged_plants']),
+      );
+    expect(
+      tables.map((row) => row['name']),
+      contains('local_added_plants'),
+    );
+    final addedPlantColumns = await raw.rawQuery(
+      'PRAGMA table_info(local_added_plants)',
+    );
+    expect(
+      addedPlantColumns.map((column) => column['name']),
+      contains('zone_id'),
     );
     await migrated.close();
   });
@@ -295,7 +349,7 @@ void main() {
           row['local_id'] as String: row,
       };
 
-      expect(await raw.getVersion(), 5);
+      expect(await raw.getVersion(), 7);
       expect(inspections['pending-1']!['sync_status'], 'pending');
       expect(inspections['error-1']!['sync_status'], 'error');
       expect(inspections['syncing-1']!['sync_status'], 'pending');
@@ -306,6 +360,12 @@ void main() {
           "SELECT name FROM sqlite_master WHERE type='table'",
         )).map((row) => row['name']),
         containsAll(['cache_generations', 'staged_plants']),
+      );
+      expect(
+        (await raw.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table'",
+        )).map((row) => row['name']),
+        contains('local_added_plants'),
       );
       await migrated.close();
     },

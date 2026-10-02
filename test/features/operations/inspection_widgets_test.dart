@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/region_point.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/user_location.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/zone.dart';
@@ -36,8 +37,11 @@ class FakeWidgetInspectionRepository implements InspectionRepository {
   );
 
   final List<LocalInspection> inspections = [];
+  final List<AddedInspectionPlant> addedPlants = [];
   int finalizeCalls = 0;
   int syncCalls = 0;
+  int syncAddedPlantsCalls = 0;
+  int removeAddedPlantCalls = 0;
 
   @override
   Future<InspectionSnapshot?> loadSnapshot({bool forceRemote = false}) async => snapshot;
@@ -111,7 +115,39 @@ class FakeWidgetInspectionRepository implements InspectionRepository {
   }
 
   @override
+  Future<bool> syncPendingAddedPlants() async {
+    syncAddedPlantsCalls++;
+    for (var i = 0; i < addedPlants.length; i++) {
+      final plant = addedPlants[i];
+      if (plant.status == InspectionSyncStatus.pending ||
+          plant.status == InspectionSyncStatus.error) {
+        addedPlants[i] = AddedInspectionPlant(
+          localId: plant.localId,
+          latitude: plant.latitude,
+          longitude: plant.longitude,
+          nonExistent: plant.nonExistent,
+          status: InspectionSyncStatus.synced,
+          createdAt: plant.createdAt,
+          remotePlantId: 'remote-${plant.localId}',
+          syncedAt: DateTime.now(),
+          zoneId: plant.zoneId,
+        );
+      }
+    }
+    return true;
+  }
+
+  @override
   Future<List<LocalInspection>> listLocalInspections() async => inspections;
+
+  @override
+  Future<List<AddedInspectionPlant>> listAddedPlants() async => addedPlants;
+
+  @override
+  Future<void> removeAddedPlant(String localId) async {
+    removeAddedPlantCalls++;
+    addedPlants.removeWhere((plant) => plant.localId == localId);
+  }
 
   @override
   Future<List<InspectionChange>> getInspectionChanges(String inspectionId) async => [
@@ -154,6 +190,26 @@ class FakeWidgetInspectionRepository implements InspectionRepository {
       types: snapshot.types,
       loadedAt: snapshot.loadedAt,
     );
+  }
+
+  @override
+  Future<AddedInspectionPlant> addPlant({
+    required double latitude,
+    required double longitude,
+    required bool nonExistent,
+    String? zoneId,
+  }) async {
+    final plant = AddedInspectionPlant(
+      localId: 'added-${addedPlants.length + 1}',
+      latitude: latitude,
+      longitude: longitude,
+      nonExistent: nonExistent,
+      status: InspectionSyncStatus.pending,
+      createdAt: DateTime.now(),
+      zoneId: zoneId,
+    );
+    addedPlants.insert(0, plant);
+    return plant;
   }
 
   @override
@@ -238,6 +294,7 @@ void main() {
       for (final key in [
         'action-load-plants',
         'action-occurrences',
+        'action-added-plants',
         'action-saved-inspections',
       ]) {
         final size = tester.getSize(find.byKey(ValueKey(key)));
@@ -245,6 +302,153 @@ void main() {
       }
     }
     await tester.binding.setSurfaceSize(null);
+  });
+
+  testWidgets('map long press opens added plant modal and double tap removes it', (tester) async {
+    viewModel.setZones([
+      const Zone(id: 'zone-1', name: 'Talhao 1', code: 'T1'),
+      const Zone(id: 'zone-2', name: 'Talhao 2', code: 'T2'),
+    ]);
+    viewModel.filterByZone('zone-1');
+    await tester.pumpWidget(
+      buildTestWidget(
+        viewModel: viewModel,
+        mapBuilder: (context, config) {
+          return Column(
+            children: [
+              const SizedBox(height: 120),
+              ElevatedButton(
+                key: const ValueKey('fake-map-long-press-button'),
+                onPressed: () => config.onMapLongPress(
+                  const LatLng(-23.456789, -46.654321),
+                ),
+                child: const Text('Long press map'),
+              ),
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (final plant in config.addedPlants)
+                      GestureDetector(
+                        key: ValueKey('fake-added-marker-${plant.localId}'),
+                        onDoubleTap: () => config.onRemoveAddedPlant(plant),
+                        child: Text(
+                          '${plant.latitude.toStringAsFixed(6)}, ${plant.longitude.toStringAsFixed(6)}',
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('fake-map-long-press-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Adicionar planta'), findsOneWidget);
+    expect(find.text('Talhao 1'), findsOneWidget);
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
+    expect(repo.addedPlants, isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('fake-map-long-press-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Adicionar planta'), findsOneWidget);
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+
+    // Select Talhao 2 from dropdown
+    await tester.tap(find.byKey(const ValueKey('added-plant-zone-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Talhao 2').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('confirm-added-plant-button')));
+    await tester.pumpAndSettle();
+
+    expect(repo.addedPlants, hasLength(1));
+    expect(repo.addedPlants.single.nonExistent, isTrue);
+    expect(repo.addedPlants.single.zoneId, 'zone-2');
+    expect(find.byKey(ValueKey('fake-added-marker-${repo.addedPlants.single.localId}')), findsOneWidget);
+    expect(repo.inspections, isEmpty);
+
+    await tester.tap(find.byKey(ValueKey('fake-added-marker-${repo.addedPlants.single.localId}')));
+    await tester.pump(const Duration(milliseconds: 80));
+    await tester.tap(find.byKey(ValueKey('fake-added-marker-${repo.addedPlants.single.localId}')));
+    await tester.pumpAndSettle();
+
+    expect(repo.removeAddedPlantCalls, 1);
+    expect(repo.addedPlants, isEmpty);
+  });
+
+  testWidgets('added plants modal lists states and syncs separately', (tester) async {
+    repo.addedPlants.addAll([
+      AddedInspectionPlant(
+        localId: 'added-pending',
+        latitude: -23.45,
+        longitude: -46.67,
+        nonExistent: false,
+        status: InspectionSyncStatus.pending,
+        createdAt: DateTime.now(),
+      ),
+      AddedInspectionPlant(
+        localId: 'added-error',
+        latitude: -23.46,
+        longitude: -46.68,
+        nonExistent: true,
+        status: InspectionSyncStatus.error,
+        createdAt: DateTime.now(),
+        error: 'Falha',
+      ),
+      AddedInspectionPlant(
+        localId: 'added-synced',
+        latitude: -23.47,
+        longitude: -46.69,
+        nonExistent: false,
+        status: InspectionSyncStatus.synced,
+        createdAt: DateTime.now(),
+        remotePlantId: 'remote-added-synced',
+        syncedAt: DateTime.now(),
+      ),
+    ]);
+
+    await tester.pumpWidget(buildTestWidget(viewModel: viewModel));
+    await tester.pumpAndSettle();
+    await viewModel.refreshAddedPlants();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('action-added-plants')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Plantas adicionadas'), findsOneWidget);
+    expect(find.byKey(const ValueKey('local-added-plants-list')), findsOneWidget);
+    expect(find.text('Pendente'), findsOneWidget);
+    expect(find.text('Erro no envio'), findsOneWidget);
+    expect(find.text('Sincronizada'), findsOneWidget);
+    expect(find.text('Inexistente'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('sync-added-plants-button')));
+    await tester.pumpAndSettle();
+
+    expect(repo.syncAddedPlantsCalls, 1);
+    expect(repo.addedPlants.map((p) => p.status).toSet(), {
+      InspectionSyncStatus.synced,
+    });
+
+    await tester.tap(find.byKey(const ValueKey('local-added-plant-added-pending')));
+    await tester.pump(const Duration(milliseconds: 80));
+    await tester.tap(find.byKey(const ValueKey('local-added-plant-added-pending')));
+    await tester.pumpAndSettle();
+
+    expect(repo.removeAddedPlantCalls, 1);
+    expect(
+      repo.addedPlants.map((plant) => plant.localId),
+      isNot(contains('added-pending')),
+    );
   });
 
   testWidgets('occurrence catalog opens, filters plants on map, and allows clearing filter with Mostrar todas', (tester) async {
@@ -568,6 +772,20 @@ void main() {
     // Toggle is now true
     final switchWidgetAfter = tester.widget<SwitchListTile>(toggleFinder);
     expect(switchWidgetAfter.value, isTrue);
+
+    // Verify occurrences are disabled when Planta Inexistente is checked
+    final ignorePointerFinder =
+        find.byKey(const ValueKey('plant-occurrences-ignore-pointer'));
+    expect(ignorePointerFinder, findsOneWidget);
+    expect(tester.widget<IgnorePointer>(ignorePointerFinder).ignoring, isTrue);
+
+    // Try tapping an occurrence; it must not be checked
+    final firstOccurrenceFinder = find.byKey(const ValueKey('occurrence-toggle-greening'));
+    if (firstOccurrenceFinder.evaluate().isNotEmpty) {
+      await tester.tap(firstOccurrenceFinder, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(viewModel.isOccurrenceChecked('t-1'), isFalse);
+    }
 
     // Update button is now enabled
     final updateButtonAfter = tester.widget<FilledButton>(updateButtonFinder);

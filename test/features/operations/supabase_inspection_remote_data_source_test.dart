@@ -4,6 +4,20 @@ import 'package:pomar_na_mao_mobile/features/operations/data/inspection_remote_d
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  test('SupabaseInspectionRemoteDataSource exposes dedicated added plants rpc name', () {
+    final client = SupabaseClient(
+      AppConfig.supabaseUrl,
+      AppConfig.supabasePublishableKey,
+    );
+    final remoteDataSource = SupabaseInspectionRemoteDataSource(
+      client,
+      addedPlantsRpcName: 'custom_added_plants_rpc',
+    );
+
+    expect(remoteDataSource.rpcName, 'sync_manual_inspection_v2');
+    expect(remoteDataSource.addedPlantsRpcName, 'custom_added_plants_rpc');
+  });
+
   test(
     'fetchOccurrenceTypes and fetchPlants from Supabase',
     () async {

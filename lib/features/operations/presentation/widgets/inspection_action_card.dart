@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../inspection_view_model.dart';
 import 'inspection_filters_modal.dart';
+import 'local_added_plants_modal.dart';
 import 'local_inspections_modal.dart';
 
 class InspectionActionCard extends StatelessWidget {
@@ -93,6 +94,24 @@ class InspectionActionCard extends StatelessWidget {
                     const SizedBox(width: 10),
 
                     // Button 3: Inspeções salvas (Purple / Violet tone)
+                    Expanded(
+                      child: _ActionButton(
+                        key: const ValueKey('action-added-plants'),
+                        tooltip: 'Plantas adicionadas',
+                        backgroundColor: const Color(0xFFCCFBF1),
+                        borderColor: const Color(0xFF99F6E4),
+                        iconColor: const Color(0xFF0F766E),
+                        icon: Badge(
+                          isLabelVisible: viewModel.addedPlants.isNotEmpty,
+                          smallSize: 8,
+                          backgroundColor: const Color(0xFF0F766E),
+                          child: const Icon(Icons.add_location_alt_outlined, size: 24),
+                        ),
+                        onPressed: () => LocalAddedPlantsModal.show(context, viewModel),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
                     Expanded(
                       child: _ActionButton(
                         key: const ValueKey('action-saved-inspections'),

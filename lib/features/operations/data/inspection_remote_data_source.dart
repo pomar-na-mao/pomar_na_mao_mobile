@@ -12,16 +12,21 @@ abstract interface class InspectionRemoteDataSource {
   });
   Future<InspectionSnapshot> fetchSnapshot({int pageSize = 1000});
   Future<InspectionSyncResult> syncInspection(Map<String, dynamic> payload);
+  Future<List<AddedPlantSyncResult>> syncAddedPlants(
+    Map<String, dynamic> payload,
+  );
 }
 
 class SupabaseInspectionRemoteDataSource implements InspectionRemoteDataSource {
   const SupabaseInspectionRemoteDataSource(
     this._client, {
     this.rpcName = 'sync_manual_inspection_v2',
+    this.addedPlantsRpcName = 'sync_inspection_added_plants',
   });
 
   final SupabaseClient _client;
   final String rpcName;
+  final String addedPlantsRpcName;
 
   @override
   Future<List<OccurrenceType>> fetchOccurrenceTypes() async {
@@ -130,5 +135,16 @@ class SupabaseInspectionRemoteDataSource implements InspectionRemoteDataSource {
   ) async {
     final response = await _client.rpc(rpcName, params: {'p_payload': payload});
     return InspectionSyncResult.fromRpc(response);
+  }
+
+  @override
+  Future<List<AddedPlantSyncResult>> syncAddedPlants(
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _client.rpc(
+      addedPlantsRpcName,
+      params: {'p_payload': payload},
+    );
+    return AddedPlantSyncResult.listFromRpc(response);
   }
 }

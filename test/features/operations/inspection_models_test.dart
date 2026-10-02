@@ -221,4 +221,101 @@ void main() {
       );
     });
   });
+
+  group('AddedInspectionPlant', () {
+    test('serializes and deserializes local queue item', () {
+      final plant = AddedInspectionPlant(
+        localId: 'added-1',
+        latitude: -23.5,
+        longitude: -46.6,
+        nonExistent: true,
+        status: InspectionSyncStatus.error,
+        createdAt: DateTime.parse('2026-09-18T20:00:00-03:00'),
+        zoneId: 'zone-1',
+        error: 'Falha',
+        remotePlantId: 'remote-1',
+        syncedAt: DateTime.parse('2026-09-18T23:10:00Z'),
+      );
+
+      final json = plant.toJson();
+      expect(json['localId'], 'added-1');
+      expect(json['latitude'], -23.5);
+      expect(json['longitude'], -46.6);
+      expect(json['nonExistent'], isTrue);
+      expect(json['status'], 'error');
+      expect(json['createdAt'], '2026-09-18T23:00:00.000Z');
+      expect(json['zoneId'], 'zone-1');
+      expect(json['error'], 'Falha');
+      expect(json['remotePlantId'], 'remote-1');
+      expect(json['syncedAt'], '2026-09-18T23:10:00.000Z');
+
+      final restored = AddedInspectionPlant.fromJson(json);
+      expect(restored.localId, plant.localId);
+      expect(restored.latitude, plant.latitude);
+      expect(restored.longitude, plant.longitude);
+      expect(restored.nonExistent, plant.nonExistent);
+      expect(restored.status, plant.status);
+      expect(restored.createdAt.isUtc, isTrue);
+      expect(restored.zoneId, plant.zoneId);
+      expect(restored.error, plant.error);
+      expect(restored.remotePlantId, plant.remotePlantId);
+      expect(restored.syncedAt!.isUtc, isTrue);
+    });
+
+    test('payload keeps only RPC input fields', () {
+      final plant = AddedInspectionPlant(
+        localId: 'added-1',
+        latitude: -23.5,
+        longitude: -46.6,
+        nonExistent: false,
+        status: InspectionSyncStatus.pending,
+        createdAt: DateTime.utc(2026, 9, 18),
+        zoneId: 'zone-1',
+      );
+
+      expect(plant.toPayload(), {
+        'localId': 'added-1',
+        'latitude': -23.5,
+        'longitude': -46.6,
+        'nonExistent': false,
+        'zoneId': 'zone-1',
+      });
+    });
+  });
+
+  group('AddedPlantSyncResult', () {
+    test('parses rpc response list', () {
+      final results = AddedPlantSyncResult.listFromRpc([
+        {
+          'local_id': 'added-1',
+          'plant_id': 'remote-1',
+          'latitude': -23.5,
+          'longitude': -46.6,
+          'non_existent': true,
+          'sync_status': 'synced',
+          'zone_id': 'zone-1',
+        },
+      ]);
+
+      expect(results, hasLength(1));
+      expect(results.single.localId, 'added-1');
+      expect(results.single.plantId, 'remote-1');
+      expect(results.single.nonExistent, isTrue);
+      expect(results.single.status, InspectionSyncStatus.synced);
+      expect(results.single.zoneId, 'zone-1');
+    });
+
+    test('throws on invalid rpc response', () {
+      expect(
+        () => AddedPlantSyncResult.listFromRpc({}),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => AddedPlantSyncResult.listFromRpc([
+          {'local_id': '', 'plant_id': 'remote-1'},
+        ]),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
 }

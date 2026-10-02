@@ -195,4 +195,9 @@ class FakeEmptyRemoteDataSource implements InspectionRemoteDataSource {
     updated: 0,
     resolved: 0,
   );
+
+  @override
+  Future<List<AddedPlantSyncResult>> syncAddedPlants(
+    Map<String, dynamic> payload,
+  ) async => const [];
 }

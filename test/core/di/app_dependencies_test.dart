@@ -36,6 +36,9 @@ class MockInventoryRepository implements InventoryRepository {
   @override
   Future<InventorySummary> fetchSummary() async =>
       const InventorySummary(existingPlants: 10, availablePlantingSpots: 5);
+
+  @override
+  Future<void> refreshCache() async {}
 }
 
 class MockLocationService implements LocationService {

@@ -30,11 +30,29 @@ class InventoryView extends StatefulWidget {
 
 class _InventoryViewState extends State<InventoryView> {
   static const _backgroundColor = Color(0xFFF4F7F2);
+  final ScrollController _scrollController = ScrollController();
+  bool _isScrolled = false;
 
   @override
   void initState() {
     super.initState();
     unawaited(widget.viewModel.initialize());
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    final scrolled = _scrollController.hasClients && _scrollController.offset > 4;
+    if (scrolled != _isScrolled) {
+      setState(() {
+        _isScrolled = scrolled;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -45,10 +63,28 @@ class _InventoryViewState extends State<InventoryView> {
     }
   }
 
-  Future<void> _refresh() => Future.wait([
-    widget.viewModel.loadSummary(),
-    widget.viewModel.loadMapData(),
-  ]);
+  Future<void> _handleRefreshCache(BuildContext context) async {
+    try {
+      await widget.viewModel.refreshCache();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dados e cache atualizados com sucesso!'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Não foi possível atualizar o cache. Verifique sua conexão.',
+          ),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,57 +103,124 @@ class _InventoryViewState extends State<InventoryView> {
             ),
           ],
         ),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final horizontalPadding = constraints.maxWidth >= 720 ? 28.0 : 16.0;
-            return SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                8,
-                horizontalPadding,
-                32,
-              ),
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 960),
-                  child: ListenableBuilder(
-                    listenable: widget.viewModel,
-                    builder: (context, _) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          InventorySummaryHeader(
-                            key: const ValueKey('inventory-property-hero'),
-                            profile: widget.viewModel.profile,
-                            fruitAssetPath: widget.fruitAssetPath,
+        actions: [
+          ListenableBuilder(
+            listenable: widget.viewModel,
+            builder: (context, _) {
+              final isRefreshing = widget.viewModel.isRefreshingCache;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: IconButton(
+                  key: const ValueKey('inventory-refresh-cache-button'),
+                  tooltip: 'Carregar dados e atualizar',
+                  onPressed: isRefreshing
+                      ? null
+                      : () => _handleRefreshCache(context),
+                  icon: isRefreshing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFF294C35),
                           ),
-                          const SizedBox(height: 18),
-                          InventoryMetricsGrid(viewModel: widget.viewModel),
-                          const SizedBox(height: 18),
-                          InventoryCultivationCard(
-                            key: const ValueKey('inventory-cultivation-card'),
-                            profile: widget.viewModel.profile,
-                          ),
-                          const SizedBox(height: 18),
-                          InventoryMapSection(
-                            key: const ValueKey('inventory-map-card'),
-                            viewModel: widget.viewModel,
-                            mapBuilder: widget.mapBuilder,
-                          ),
-                        ],
-                      );
-                    },
-                  ),
+                        )
+                      : const Icon(
+                          Icons.cloud_download_outlined,
+                          color: Color(0xFF294C35),
+                        ),
                 ),
-              ),
-            );
-          },
-        ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final horizontalPadding = constraints.maxWidth >= 720 ? 28.0 : 16.0;
+          return ListenableBuilder(
+            listenable: widget.viewModel,
+            builder: (context, _) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    decoration: BoxDecoration(
+                      color: _backgroundColor,
+                      boxShadow: _isScrolled
+                          ? [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.06),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      8,
+                      horizontalPadding,
+                      12,
+                    ),
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 960),
+                        child: InventorySummaryHeader(
+                          key: const ValueKey('inventory-property-hero'),
+                          profile: widget.viewModel.profile,
+                          fruitAssetPath: widget.fruitAssetPath,
+                          onRefreshCache: () => _handleRefreshCache(context),
+                          isRefreshing: widget.viewModel.isRefreshingCache,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: () => _handleRefreshCache(context),
+                      child: SingleChildScrollView(
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.fromLTRB(
+                          horizontalPadding,
+                          4,
+                          horizontalPadding,
+                          32,
+                        ),
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 960),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                InventoryMetricsGrid(viewModel: widget.viewModel),
+                                const SizedBox(height: 18),
+                                InventoryCultivationCard(
+                                  key: const ValueKey('inventory-cultivation-card'),
+                                  profile: widget.viewModel.profile,
+                                ),
+                                const SizedBox(height: 18),
+                                InventoryMapSection(
+                                  key: const ValueKey('inventory-map-card'),
+                                  viewModel: widget.viewModel,
+                                  mapBuilder: widget.mapBuilder,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
       ),
     );
   }

@@ -190,90 +190,103 @@ class PlantEditorModal extends StatelessWidget {
                               ),
                             ),
                           )
-                        : ListView.separated(
-                            key: const ValueKey('plant-occurrences-list'),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            itemCount: catalog.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final type = catalog[index];
-                              final isChecked = viewModel.isOccurrenceChecked(type.id);
+                        : AnimatedOpacity(
+                            opacity: viewModel.stagedNonExistent ? 0.38 : 1.0,
+                            duration: const Duration(milliseconds: 200),
+                            child: IgnorePointer(
+                              key: const ValueKey('plant-occurrences-ignore-pointer'),
+                              ignoring: viewModel.stagedNonExistent,
+                              child: ListView.separated(
+                                key: const ValueKey('plant-occurrences-list'),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                itemCount: catalog.length,
+                                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                                itemBuilder: (context, index) {
+                                  final type = catalog[index];
+                                  final isChecked = viewModel.isOccurrenceChecked(type.id);
+                                  final isNonExistent = viewModel.stagedNonExistent;
+                                  final isItemDisabled = viewModel.isSavingLocal || isNonExistent;
 
-                              return Semantics(
-                                label: type.name,
-                                checked: isChecked,
-                                button: true,
-                                hint: isChecked
-                                    ? 'Marcado. Toque para desmarcar'
-                                    : 'Desmarcado. Toque para marcar',
-                                child: Material(
-                                  color: isChecked
-                                      ? colorScheme.primaryContainer.withValues(alpha: 0.25)
-                                      : colorScheme.surface,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                    side: BorderSide(
+                                  return Semantics(
+                                    label: type.name,
+                                    checked: isChecked,
+                                    enabled: !isNonExistent,
+                                    button: true,
+                                    hint: isNonExistent
+                                        ? 'Desabilitado porque a planta está marcada como inexistente'
+                                        : (isChecked
+                                            ? 'Marcado. Toque para desmarcar'
+                                            : 'Desmarcado. Toque para marcar'),
+                                    child: Material(
                                       color: isChecked
-                                          ? colorScheme.primary.withValues(alpha: 0.5)
-                                          : colorScheme.outlineVariant.withValues(alpha: 0.6),
-                                      width: isChecked ? 1.5 : 1,
-                                    ),
-                                  ),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: InkWell(
-                                    key: ValueKey('occurrence-toggle-${type.code}'),
-                                    onTap: viewModel.isSavingLocal
-                                        ? null
-                                        : () => viewModel.toggleStagedOccurrence(type.id),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 14,
+                                          ? colorScheme.primaryContainer.withValues(alpha: 0.25)
+                                          : colorScheme.surface,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                        side: BorderSide(
+                                          color: isChecked
+                                              ? colorScheme.primary.withValues(alpha: 0.5)
+                                              : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                                          width: isChecked ? 1.5 : 1,
+                                        ),
                                       ),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            width: 26,
-                                            height: 26,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: isChecked
-                                                  ? colorScheme.primary
-                                                  : Colors.transparent,
-                                              border: Border.all(
-                                                color: isChecked
-                                                    ? colorScheme.primary
-                                                    : colorScheme.outline,
-                                                width: 2,
-                                              ),
-                                            ),
-                                            child: isChecked
-                                                ? Icon(
-                                                    Icons.check_rounded,
-                                                    size: 16,
-                                                    color: colorScheme.onPrimary,
-                                                  )
-                                                : null,
+                                      clipBehavior: Clip.antiAlias,
+                                      child: InkWell(
+                                        key: ValueKey('occurrence-toggle-${type.code}'),
+                                        onTap: isItemDisabled
+                                            ? null
+                                            : () => viewModel.toggleStagedOccurrence(type.id),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 14,
                                           ),
-                                          const SizedBox(width: 14),
-                                          Expanded(
-                                            child: Text(
-                                              type.name,
-                                              style: theme.textTheme.bodyMedium?.copyWith(
-                                                fontWeight: isChecked
-                                                    ? FontWeight.w600
-                                                    : FontWeight.normal,
-                                                fontSize: 15,
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                width: 26,
+                                                height: 26,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: isChecked
+                                                      ? colorScheme.primary
+                                                      : Colors.transparent,
+                                                  border: Border.all(
+                                                    color: isChecked
+                                                        ? colorScheme.primary
+                                                        : colorScheme.outline,
+                                                    width: 2,
+                                                  ),
+                                                ),
+                                                child: isChecked
+                                                    ? Icon(
+                                                        Icons.check_rounded,
+                                                        size: 16,
+                                                        color: colorScheme.onPrimary,
+                                                      )
+                                                    : null,
                                               ),
-                                            ),
+                                              const SizedBox(width: 14),
+                                              Expanded(
+                                                child: Text(
+                                                  type.name,
+                                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                                    fontWeight: isChecked
+                                                        ? FontWeight.w600
+                                                        : FontWeight.normal,
+                                                    fontSize: 15,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                              );
-                            },
+                                  );
+                                },
+                              ),
+                            ),
                           ),
                   ),
 

@@ -154,58 +154,75 @@ class SharedReadRepository {
   Future<List<Map<String, dynamic>>> getFarmBoundaryRows() async {
     final local = await localStore.readFarmRows();
     if (local != null) return local;
-    return _singleFlight('farm', () async {
-      final cached = await localStore.readFarmRows();
-      if (cached != null) return cached;
-      return _trackRemote(() async {
-        final remote = await farmRemoteDataSource.fetchFarmBoundaryRows();
-        await localStore.replaceFarmRows(remote);
-        return (await localStore.readFarmRows())!;
-      });
-    });
+    return refreshFarmBoundaryRows();
+  }
+
+  Future<List<Map<String, dynamic>>> refreshFarmBoundaryRows() {
+    return _singleFlight('farm', () => _trackRemote(() async {
+      final remote = await farmRemoteDataSource.fetchFarmBoundaryRows();
+      await localStore.replaceFarmRows(remote);
+      return (await localStore.readFarmRows())!;
+    }));
   }
 
   Future<List<Map<String, dynamic>>> getZoneRows() async {
     final local = await localStore.readZoneRows();
     if (local != null) return local;
-    return _singleFlight('zones', () async {
-      final cached = await localStore.readZoneRows();
-      if (cached != null) return cached;
-      return _trackRemote(() async {
-        final remote = await farmRemoteDataSource.fetchZonesRows();
-        await localStore.replaceZoneRows(remote);
-        return (await localStore.readZoneRows())!;
-      });
-    });
+    return refreshZoneRows();
+  }
+
+  Future<List<Map<String, dynamic>>> refreshZoneRows() {
+    return _singleFlight('zones', () => _trackRemote(() async {
+      final remote = await farmRemoteDataSource.fetchZonesRows();
+      await localStore.replaceZoneRows(remote);
+      return (await localStore.readZoneRows())!;
+    }));
   }
 
   Future<List<Map<String, dynamic>>> getRegionRows(String zoneId) async {
     final local = await localStore.readRegionRows(zoneId);
     if (local != null) return local;
+    return refreshRegionRows(zoneId);
+  }
+
+  Future<List<Map<String, dynamic>>> refreshRegionRows(String zoneId) {
     final key = 'regions:$zoneId';
-    return _singleFlight(key, () async {
-      final cached = await localStore.readRegionRows(zoneId);
-      if (cached != null) return cached;
-      return _trackRemote(() async {
-        final remote = await farmRemoteDataSource.fetchRegionsRows(zoneId);
-        await localStore.replaceRegionRows(zoneId, remote);
-        return (await localStore.readRegionRows(zoneId))!;
-      });
-    });
+    return _singleFlight(key, () => _trackRemote(() async {
+      final remote = await farmRemoteDataSource.fetchRegionsRows(zoneId);
+      await localStore.replaceRegionRows(zoneId, remote);
+      return (await localStore.readRegionRows(zoneId))!;
+    }));
   }
 
   Future<List<OccurrenceType>> getOccurrenceTypes() async {
     final local = await localStore.readCachedCatalog();
     if (local != null) return local;
-    return _singleFlight('occurrence_types', () async {
-      final cached = await localStore.readCachedCatalog();
-      if (cached != null) return cached;
-      return _trackRemote(() async {
-        final remote = await inspectionRemoteDataSource.fetchOccurrenceTypes();
-        await localStore.saveCatalog(remote);
-        return (await localStore.readCachedCatalog())!;
-      });
-    });
+    return refreshOccurrenceTypes();
+  }
+
+  Future<List<OccurrenceType>> refreshOccurrenceTypes() {
+    return _singleFlight('occurrence_types', () => _trackRemote(() async {
+      final remote = await inspectionRemoteDataSource.fetchOccurrenceTypes();
+      await localStore.saveCatalog(remote);
+      return (await localStore.readCachedCatalog())!;
+    }));
+  }
+
+  /// Carrega os dados remotamente e atualiza o cache local (banco SQLite).
+  Future<void> refreshCache() async {
+    if (_disposed) throw StateError('Cache compartilhado encerrado');
+    await refreshFarmBoundaryRows();
+    final zones = await refreshZoneRows();
+    await Future.wait(
+      zones
+          .map((zone) => zone['id'])
+          .whereType<String>()
+          .map((zoneId) => refreshRegionRows(zoneId)),
+    );
+    try {
+      await refreshOccurrenceTypes();
+    } catch (_) {}
+    await refreshPlantRows();
   }
 
   Future<T> _trackRemote<T>(Future<T> Function() action) {

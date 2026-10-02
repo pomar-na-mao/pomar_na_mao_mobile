@@ -22,11 +22,19 @@ class ViewTestInventoryRepository implements InventoryRepository {
     farmBoundaryPoints: 18,
   );
   Exception? error;
+  int refreshCacheCalls = 0;
+  Exception? refreshCacheError;
 
   @override
   Future<InventorySummary> fetchSummary() async {
     if (error case final error?) throw error;
     return result;
+  }
+
+  @override
+  Future<void> refreshCache() async {
+    refreshCacheCalls += 1;
+    if (refreshCacheError case final error?) throw error;
   }
 }
 
@@ -441,5 +449,54 @@ void main() {
     expect(find.text('21.809'), findsOneWidget);
     expect(find.byKey(const ValueKey('test-map')), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  group('Refresh cache button', () {
+    testWidgets('renders refresh cache button in AppBar and refreshes on tap', (
+      tester,
+    ) async {
+      final inventoryRepo = ViewTestInventoryRepository();
+      final viewModel = buildViewModel(inventoryRepository: inventoryRepo);
+
+      await tester.pumpWidget(buildSubject(viewModel));
+      await tester.pumpAndSettle();
+
+      final buttonFinder = find.byKey(
+        const ValueKey('inventory-refresh-cache-button'),
+      );
+      expect(buttonFinder, findsOneWidget);
+      expect(find.byType(IconButton), findsWidgets);
+      expect(find.byTooltip('Carregar dados e atualizar'), findsOneWidget);
+
+      await tester.tap(buttonFinder);
+      await tester.pumpAndSettle();
+
+      expect(inventoryRepo.refreshCacheCalls, 1);
+      expect(
+        find.text('Dados e cache atualizados com sucesso!'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('shows error SnackBar when refreshCache fails', (tester) async {
+      final inventoryRepo = ViewTestInventoryRepository()
+        ..refreshCacheError = Exception('network error');
+      final viewModel = buildViewModel(inventoryRepository: inventoryRepo);
+
+      await tester.pumpWidget(buildSubject(viewModel));
+      await tester.pumpAndSettle();
+
+      final buttonFinder = find.byKey(
+        const ValueKey('inventory-refresh-cache-button'),
+      );
+      await tester.tap(buttonFinder);
+      await tester.pumpAndSettle();
+
+      expect(inventoryRepo.refreshCacheCalls, 1);
+      expect(
+        find.text('Não foi possível atualizar o cache. Verifique sua conexão.'),
+        findsOneWidget,
+      );
+    });
   });
 }

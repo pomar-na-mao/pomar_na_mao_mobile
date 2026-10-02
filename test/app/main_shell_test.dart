@@ -28,6 +28,9 @@ class ShellInventoryRepository implements InventoryRepository {
       availablePlantingSpots: 2,
     );
   }
+
+  @override
+  Future<void> refreshCache() async {}
 }
 
 class ShellPlantsRepository implements PlantsRepository {

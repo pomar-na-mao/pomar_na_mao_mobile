@@ -538,6 +538,23 @@ class InspectionLocalStore {
     Map<String, InspectionPlant> effective,
     Map<String, InspectionPlant> previous,
   ) async {
+    final syncedAdded = await txn.query(
+      'local_added_plants',
+      where: "sync_status = 'synced' AND remote_plant_id IS NOT NULL",
+    );
+    for (final row in syncedAdded) {
+      final pId = row['remote_plant_id'] as String;
+      if (!effective.containsKey(pId)) {
+        effective[pId] = InspectionPlant(
+          id: pId,
+          latitude: (row['latitude'] as num).toDouble(),
+          longitude: (row['longitude'] as num).toDouble(),
+          nonExistent: (row['non_existent'] as int) == 1,
+          zoneId: row['zone_id'] as String?,
+          eligible: true,
+        );
+      }
+    }
     final pending = await txn.rawQuery(
       '''SELECT c.* FROM local_inspection_changes c
       JOIN local_inspections i ON i.local_id = c.inspection_local_id
@@ -675,6 +692,18 @@ class InspectionLocalStore {
       final last = draft['last_changed_at'] as String?;
       if (last != null && !time.isAfter(DateTime.parse(last))) {
         time = DateTime.parse(last).add(const Duration(microseconds: 1));
+      }
+      final loaded = await txn.query(
+        'local_inspection_loaded_plants',
+        where: 'inspection_local_id = ? AND plant_id = ?',
+        whereArgs: [draftId, plantId],
+      );
+      if (loaded.isEmpty) {
+        await txn.insert('local_inspection_loaded_plants', {
+          'inspection_local_id': draftId,
+          'plant_id': plantId,
+          'snapshot': rows.single['snapshot'],
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
       final added = !plant.openTypeIds.contains(typeId);
       await txn.insert('local_inspection_changes', {
@@ -946,6 +975,180 @@ class InspectionLocalStore {
         whereArgs: [id],
         orderBy: 'sequence',
       )).map(_change).toList();
+
+  Future<AddedInspectionPlant> addPlant({
+    required double latitude,
+    required double longitude,
+    required bool nonExistent,
+    String? zoneId,
+  }) async {
+    final plant = AddedInspectionPlant(
+      localId: newId(),
+      latitude: latitude,
+      longitude: longitude,
+      nonExistent: nonExistent,
+      status: InspectionSyncStatus.pending,
+      createdAt: clock().toUtc(),
+      zoneId: zoneId,
+    );
+    if (!plant.hasValidCoordinates) {
+      throw ArgumentError.value(
+        {'latitude': latitude, 'longitude': longitude},
+        'coordinates',
+        'Coordenadas invalidas para planta adicionada',
+      );
+    }
+    await (await database.database).insert('local_added_plants', {
+      'local_id': plant.localId,
+      'latitude': plant.latitude,
+      'longitude': plant.longitude,
+      'non_existent': plant.nonExistent ? 1 : 0,
+      'zone_id': plant.zoneId,
+      'sync_status': plant.status.name,
+      'created_at': plant.createdAt.toIso8601String(),
+    });
+    database.publishCommit();
+    return plant;
+  }
+
+  Future<List<AddedInspectionPlant>> listAddedPlants() async =>
+      (await (await database.database).query(
+        'local_added_plants',
+        orderBy: 'created_at DESC, local_id DESC',
+      )).map(_addedPlant).toList();
+
+  Future<List<AddedInspectionPlant>> pendingAddedPlants() async =>
+      (await (await database.database).query(
+        'local_added_plants',
+        where: "sync_status IN ('pending', 'error')",
+        orderBy: 'created_at, local_id',
+      )).map(_addedPlant).toList();
+
+  Future<void> removeAddedPlant(String localId) async {
+    final db = await database.database;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'local_added_plants',
+        where: 'local_id = ?',
+        whereArgs: [localId],
+      );
+      if (rows.isNotEmpty) {
+        final remotePlantId = rows.first['remote_plant_id'] as String?;
+        if (remotePlantId != null) {
+          await txn.delete(
+            'cached_plants',
+            where: 'id = ?',
+            whereArgs: [remotePlantId],
+          );
+        }
+      }
+      await txn.delete(
+        'local_added_plants',
+        where: 'local_id = ?',
+        whereArgs: [localId],
+      );
+    });
+    database.publishCommit();
+  }
+
+  Future<void> markAddedPlantsSyncing(List<String> localIds) async {
+    if (localIds.isEmpty) return;
+    final db = await database.database;
+    await db.transaction((txn) async {
+      for (final id in localIds) {
+        await txn.update(
+          'local_added_plants',
+          {'sync_status': 'syncing', 'error': null},
+          where: "local_id = ? AND sync_status IN ('pending', 'error')",
+          whereArgs: [id],
+        );
+      }
+    });
+    database.publishCommit();
+  }
+
+  Future<void> markAddedPlantError(String localId, Object error) async {
+    final formatted = _formatSyncError(error);
+    await (await database.database).update(
+      'local_added_plants',
+      {
+        'sync_status': formatted == 'Sem internet' ? 'pending' : 'error',
+        'error': formatted,
+      },
+      where: 'local_id = ?',
+      whereArgs: [localId],
+    );
+    database.publishCommit();
+  }
+
+  Future<void> acknowledgeAddedPlants(
+    List<AddedPlantSyncResult> results,
+  ) async {
+    if (results.isEmpty) return;
+    final db = await database.database;
+    await db.transaction((txn) async {
+      final now = clock().toUtc().toIso8601String();
+      final metadata = (await txn.query('installation')).single;
+      if (metadata['loaded_at'] == null) {
+        await txn.update('installation', {'loaded_at': now});
+      }
+
+      final activeDrafts = await txn.query(
+        'local_inspections',
+        columns: ['local_id'],
+        where: "state = 'in_progress'",
+      );
+
+      for (final result in results) {
+        await txn.update(
+          'local_added_plants',
+          {
+            'sync_status': InspectionSyncStatus.synced.name,
+            'remote_plant_id': result.plantId,
+            if (result.zoneId != null) 'zone_id': result.zoneId,
+            'synced_at': now,
+            'error': null,
+          },
+          where: 'local_id = ?',
+          whereArgs: [result.localId],
+        );
+
+        final plant = InspectionPlant(
+          id: result.plantId,
+          latitude: result.latitude,
+          longitude: result.longitude,
+          zoneId: result.zoneId,
+          nonExistent: result.nonExistent,
+          eligible: true,
+        );
+        final plantJson = jsonEncode(plant.toJson());
+
+        await txn.insert(
+          'cached_plants',
+          {
+            'id': result.plantId,
+            'snapshot': plantJson,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+
+        for (final draft in activeDrafts) {
+          final draftId = draft['local_id'] as String;
+          await txn.insert(
+            'local_inspection_loaded_plants',
+            {
+              'inspection_local_id': draftId,
+              'plant_id': result.plantId,
+              'snapshot': plantJson,
+            },
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+        }
+      }
+    });
+    database.publishCommit();
+  }
+
   Future<void> markSyncing(String id) async {
     await (await database.database).update(
       'local_inspections',
@@ -956,25 +1159,8 @@ class InspectionLocalStore {
   }
 
   Future<void> markError(String id, Object error) async {
-    final str = error.toString();
-    final lower = str.toLowerCase();
-    final isNetwork =
-        lower.contains('sem internet') ||
-        lower.contains('socketexception') ||
-        lower.contains('failed host lookup') ||
-        lower.contains('network') ||
-        lower.contains('clientexception') ||
-        lower.contains('offline') ||
-        lower.contains('sem conexão') ||
-        lower.contains('sem conexao') ||
-        lower.contains('connection refused') ||
-        lower.contains('connection reset') ||
-        lower.contains('connection timed out') ||
-        lower.contains('timeoutexception') ||
-        lower.contains('handshakeexception') ||
-        lower.contains('unreachable');
-    final syncStatus = isNetwork ? 'pending' : 'error';
-    final formatted = isNetwork ? 'Sem internet' : str;
+    final formatted = _formatSyncError(error);
+    final syncStatus = formatted == 'Sem internet' ? 'pending' : 'error';
     await (await database.database).update(
       'local_inspections',
       {'sync_status': syncStatus, 'error': formatted},
@@ -1183,6 +1369,42 @@ class InspectionLocalStore {
     accuracy: (r['accuracy'] as num?)?.toDouble(),
     distance: (r['distance'] as num?)?.toDouble(),
   );
+  static AddedInspectionPlant _addedPlant(Map<String, Object?> r) =>
+      AddedInspectionPlant(
+        localId: r['local_id'] as String,
+        latitude: (r['latitude'] as num).toDouble(),
+        longitude: (r['longitude'] as num).toDouble(),
+        nonExistent: (r['non_existent'] as int) == 1,
+        status: InspectionSyncStatus.values.byName(r['sync_status'] as String),
+        createdAt: DateTime.parse(r['created_at'] as String),
+        zoneId: r['zone_id'] as String?,
+        error: r['error'] as String?,
+        remotePlantId: r['remote_plant_id'] as String?,
+        syncedAt: r['synced_at'] == null
+            ? null
+            : DateTime.parse(r['synced_at'] as String),
+      );
+
+  static String _formatSyncError(Object error) {
+    final str = error.toString();
+    final lower = str.toLowerCase();
+    final isNetwork =
+        lower.contains('sem internet') ||
+        lower.contains('socketexception') ||
+        lower.contains('failed host lookup') ||
+        lower.contains('network') ||
+        lower.contains('clientexception') ||
+        lower.contains('offline') ||
+        lower.contains('sem conexão') ||
+        lower.contains('sem conexao') ||
+        lower.contains('connection refused') ||
+        lower.contains('connection reset') ||
+        lower.contains('connection timed out') ||
+        lower.contains('timeoutexception') ||
+        lower.contains('handshakeexception') ||
+        lower.contains('unreachable');
+    return isNetwork ? 'Sem internet' : str;
+  }
 }
 
 class CachedPlantTotals {

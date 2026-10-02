@@ -74,6 +74,14 @@ class SupabaseInventoryRepository implements InventoryRepository {
       farmBoundaryPoints: counts[4],
     );
   }
+
+  @override
+  Future<void> refreshCache() async {
+    final shared = _sharedReadRepository;
+    if (shared != null) {
+      await shared.refreshCache();
+    }
+  }
 }
 
 class _FunctionalInventoryRemoteDataSource
