@@ -22,7 +22,9 @@ class FakeInspectionRemoteDataSource implements InspectionRemoteDataSource {
   InspectionSyncResult Function(Map<String, dynamic> payload)? syncResultBuilder;
 
   int syncCallCount = 0;
+  int syncAddedPlantsCallCount = 0;
   List<Map<String, dynamic>> syncedPayloads = [];
+  List<Map<String, dynamic>> syncedAddedPlantsPayloads = [];
   bool throwOnSync = false;
   bool throwOnFetch = false;
 
@@ -70,6 +72,28 @@ class FakeInspectionRemoteDataSource implements InspectionRemoteDataSource {
       updated: 0,
       resolved: 0,
     );
+  }
+
+  @override
+  Future<List<AddedPlantSyncResult>> syncAddedPlants(
+    Map<String, dynamic> payload,
+  ) async {
+    syncAddedPlantsCallCount++;
+    syncedAddedPlantsPayloads.add(payload);
+    if (throwOnSync) throw const SocketException('Failed host lookup: sem conexao');
+    final plants = (payload['plants'] as List<dynamic>).cast<Map<String, dynamic>>();
+    return [
+      for (final plant in plants)
+        AddedPlantSyncResult(
+          localId: plant['localId'] as String,
+          plantId: 'remote-${plant['localId']}',
+          latitude: (plant['latitude'] as num).toDouble(),
+          longitude: (plant['longitude'] as num).toDouble(),
+          nonExistent: plant['nonExistent'] as bool? ?? false,
+          status: InspectionSyncStatus.synced,
+          zoneId: plant['zoneId'] as String?,
+        ),
+    ];
   }
 }
 
@@ -212,5 +236,52 @@ void main() {
     expect(results[0], isTrue);
     expect(results[1], isTrue);
     expect(remote.syncCallCount, 1);
+  });
+
+  test('syncPendingAddedPlants sends separate payload and acknowledges queue', () async {
+    final first = await repository.addPlant(
+      latitude: -23.3,
+      longitude: -46.4,
+      nonExistent: false,
+      zoneId: 'zone-1',
+    );
+    final second = await repository.addPlant(
+      latitude: -23.31,
+      longitude: -46.41,
+      nonExistent: true,
+    );
+
+    final success = await repository.syncPendingAddedPlants();
+    expect(success, isTrue);
+    expect(remote.syncAddedPlantsCallCount, 1);
+
+    final payload = remote.syncedAddedPlantsPayloads.single;
+    expect(payload['deviceId'], isNotEmpty);
+    final plants = (payload['plants'] as List).cast<Map<String, dynamic>>();
+    expect(plants.map((p) => p['localId']), [first.localId, second.localId]);
+    expect(plants.first['zoneId'], 'zone-1');
+    expect(plants.last['nonExistent'], isTrue);
+
+    final listed = await repository.listAddedPlants();
+    expect(listed.map((p) => p.status).toSet(), {InspectionSyncStatus.synced});
+    expect(listed.map((p) => p.remotePlantId).toSet(), {
+      'remote-${first.localId}',
+      'remote-${second.localId}',
+    });
+  });
+
+  test('concurrent calls to syncPendingAddedPlants reuse in-flight execution', () async {
+    await repository.addPlant(
+      latitude: -23.3,
+      longitude: -46.4,
+      nonExistent: false,
+    );
+
+    final f1 = repository.syncPendingAddedPlants();
+    final f2 = repository.syncPendingAddedPlants();
+
+    final results = await Future.wait([f1, f2]);
+    expect(results, [true, true]);
+    expect(remote.syncAddedPlantsCallCount, 1);
   });
 }

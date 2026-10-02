@@ -7,11 +7,15 @@ class InventorySummaryHeader extends StatelessWidget {
   const InventorySummaryHeader({
     required this.profile,
     required this.fruitAssetPath,
+    this.onRefreshCache,
+    this.isRefreshing = false,
     super.key,
   });
 
   final InventoryPropertyProfile profile;
   final String fruitAssetPath;
+  final VoidCallback? onRefreshCache;
+  final bool isRefreshing;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +29,11 @@ class InventorySummaryHeader extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= 560;
-          final content = _HeroText(profile: profile);
+          final content = _HeroText(
+            profile: profile,
+            onRefreshCache: onRefreshCache,
+            isRefreshing: isRefreshing,
+          );
           final illustration = _FruitIllustration(
             assetPath: fruitAssetPath,
             size: wide ? 168 : 132,
@@ -56,9 +64,15 @@ class InventorySummaryHeader extends StatelessWidget {
 }
 
 class _HeroText extends StatelessWidget {
-  const _HeroText({required this.profile});
+  const _HeroText({
+    required this.profile,
+    this.onRefreshCache,
+    this.isRefreshing = false,
+  });
 
   final InventoryPropertyProfile profile;
+  final VoidCallback? onRefreshCache;
+  final bool isRefreshing;
 
   @override
   Widget build(BuildContext context) {
@@ -87,6 +101,7 @@ class _HeroText extends StatelessWidget {
         Wrap(
           spacing: 8,
           runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             _HeroBadge(
               icon: Icons.landscape_outlined,

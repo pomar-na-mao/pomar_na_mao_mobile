@@ -209,6 +209,12 @@ class InspectionViewModel extends ChangeNotifier {
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
 
+  bool _isSyncingAddedPlants = false;
+  bool get isSyncingAddedPlants => _isSyncingAddedPlants;
+
+  List<AddedInspectionPlant> _addedPlants = const [];
+  List<AddedInspectionPlant> get addedPlants => _addedPlants;
+
   LocationResult? _locationResult;
   LocationResult? get locationResult => _locationResult;
   UserLocation? get userLocation => _locationResult?.location;
@@ -235,6 +241,7 @@ class InspectionViewModel extends ChangeNotifier {
     await _loadExistingSnapshotSilently();
     await loadZones();
     await refreshLocalInspections();
+    await refreshAddedPlants();
   }
 
   Future<void> _loadExistingSnapshotSilently() async {
@@ -242,6 +249,7 @@ class InspectionViewModel extends ChangeNotifier {
       final snapshot = await repository.loadSnapshot(forceRemote: false);
       if (snapshot != null) {
         _plants = snapshot.plants;
+        _mergeSyncedAddedPlantsIntoInspectionPlants();
         _catalog = snapshot.types;
         _loadStatus = _plants.isEmpty
             ? InspectionLoadStatus.empty
@@ -261,14 +269,19 @@ class InspectionViewModel extends ChangeNotifier {
       final snapshot = await repository.loadSnapshot(forceRemote: forceRemote);
       if (snapshot == null || snapshot.plants.isEmpty) {
         _plants = const [];
+        _mergeSyncedAddedPlantsIntoInspectionPlants();
         _catalog = snapshot?.types ?? const [];
-        _loadStatus = InspectionLoadStatus.empty;
+        _loadStatus = _plants.isEmpty
+            ? InspectionLoadStatus.empty
+            : InspectionLoadStatus.success;
       } else {
         _plants = snapshot.plants;
+        _mergeSyncedAddedPlantsIntoInspectionPlants();
         _catalog = snapshot.types;
         _loadStatus = InspectionLoadStatus.success;
       }
       await refreshLocalInspections();
+      await refreshAddedPlants();
     } catch (e) {
       _loadStatus = InspectionLoadStatus.error;
       _errorMessage = 'Não foi possível carregar as plantas.';
@@ -310,7 +323,7 @@ class InspectionViewModel extends ChangeNotifier {
   }
 
   void toggleStagedOccurrence(String typeId) {
-    if (_selectedPlant == null) return;
+    if (_selectedPlant == null || _stagedNonExistent) return;
     final updated = Set<String>.from(_stagedOccurrenceTypeIds);
     if (updated.contains(typeId)) {
       updated.remove(typeId);
@@ -552,6 +565,7 @@ class InspectionViewModel extends ChangeNotifier {
       final snapshot = await repository.loadSnapshot(forceRemote: false);
       if (snapshot != null) {
         _plants = snapshot.plants;
+        _mergeSyncedAddedPlantsIntoInspectionPlants();
         if (_selectedPlant != null) {
           _selectedPlant = _plants.firstWhere(
             (p) => p.id == _selectedPlant!.id,
@@ -592,12 +606,77 @@ class InspectionViewModel extends ChangeNotifier {
       final snapshot = await repository.loadSnapshot(forceRemote: false);
       if (snapshot != null) {
         _plants = snapshot.plants;
+        _mergeSyncedAddedPlantsIntoInspectionPlants();
       }
       await refreshLocalInspections();
     } catch (e) {
       _feedbackMessage = 'Erro na sincronização';
     } finally {
       _isSyncing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> addPlantAt({
+    required double latitude,
+    required double longitude,
+    required bool nonExistent,
+    String? zoneId,
+  }) async {
+    if (_isSavingLocal) return;
+
+    _isSavingLocal = true;
+    _feedbackMessage = null;
+    notifyListeners();
+
+    try {
+      await repository.addPlant(
+        latitude: latitude,
+        longitude: longitude,
+        nonExistent: nonExistent,
+        zoneId: zoneId ?? selectedZoneFilterId,
+      );
+      await refreshAddedPlants();
+      _feedbackMessage = 'Planta salva no dispositivo';
+    } catch (e) {
+      _feedbackMessage = 'Erro ao salvar planta localmente';
+    } finally {
+      _isSavingLocal = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> syncPendingAddedPlants() async {
+    if (_isSyncingAddedPlants) return;
+
+    _isSyncingAddedPlants = true;
+    _feedbackMessage = null;
+    notifyListeners();
+
+    try {
+      final success = await repository.syncPendingAddedPlants();
+      await refreshAddedPlants();
+      _feedbackMessage = success
+          ? 'Plantas sincronizadas com sucesso!'
+          : (_addedPlants.any((p) => p.error == 'Sem internet')
+                ? 'Sem internet'
+                : 'Algumas plantas nao puderam ser sincronizadas.');
+    } catch (e) {
+      _feedbackMessage = 'Erro na sincronizacao das plantas';
+    } finally {
+      _isSyncingAddedPlants = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> removeAddedPlant(String localId) async {
+    try {
+      await repository.removeAddedPlant(localId);
+      await refreshAddedPlants();
+      _feedbackMessage = 'Planta adicionada removida';
+      notifyListeners();
+    } catch (e) {
+      _feedbackMessage = 'Erro ao remover planta adicionada';
       notifyListeners();
     }
   }
@@ -680,6 +759,64 @@ class InspectionViewModel extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> refreshAddedPlants() async {
+    try {
+      _addedPlants = await repository.listAddedPlants();
+      _mergeSyncedAddedPlantsIntoInspectionPlants();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  void _mergeSyncedAddedPlantsIntoInspectionPlants() {
+    final syncedAddedPlants = _addedPlants.where(
+      (plant) =>
+          plant.status == InspectionSyncStatus.synced &&
+          plant.remotePlantId != null &&
+          plant.hasValidCoordinates,
+    );
+    if (syncedAddedPlants.isEmpty) return;
+
+    final merged = List<InspectionPlant>.from(_plants);
+    var changed = false;
+
+    for (final addedPlant in syncedAddedPlants) {
+      final remotePlantId = addedPlant.remotePlantId!;
+      final index = merged.indexWhere((plant) => plant.id == remotePlantId);
+
+      if (index == -1) {
+        merged.add(
+          InspectionPlant(
+            id: remotePlantId,
+            latitude: addedPlant.latitude,
+            longitude: addedPlant.longitude,
+            nonExistent: addedPlant.nonExistent,
+            openTypeIds: const {},
+            zoneId: addedPlant.zoneId,
+            eligible: true,
+          ),
+        );
+        changed = true;
+      } else if (merged[index].zoneId == null && addedPlant.zoneId != null) {
+        merged[index] = InspectionPlant(
+          id: merged[index].id,
+          latitude: merged[index].latitude,
+          longitude: merged[index].longitude,
+          zoneId: addedPlant.zoneId,
+          description: merged[index].description,
+          openTypeIds: merged[index].openTypeIds,
+          eligible: merged[index].eligible,
+          nonExistent: merged[index].nonExistent,
+        );
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+    _plants = List.unmodifiable(merged);
+    _indexedPlants = null;
+    _filterKey = null;
+  }
+
   Future<void> deletePlantFromInspection({
     required String inspectionId,
     required String plantId,
@@ -689,6 +826,7 @@ class InspectionViewModel extends ChangeNotifier {
       final snapshot = await repository.loadSnapshot(forceRemote: false);
       if (snapshot != null) {
         _plants = snapshot.plants;
+        _mergeSyncedAddedPlantsIntoInspectionPlants();
         if (_selectedPlant != null && _selectedPlant!.id == plantId) {
           final updated = _plants.where((p) => p.id == plantId).firstOrNull;
           _selectedPlant = updated;

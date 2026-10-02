@@ -235,3 +235,148 @@ class InspectionSyncResult {
     );
   }
 }
+
+class AddedInspectionPlant {
+  AddedInspectionPlant({
+    required this.localId,
+    required this.latitude,
+    required this.longitude,
+    required this.nonExistent,
+    required this.status,
+    required DateTime createdAt,
+    this.zoneId,
+    this.error,
+    this.remotePlantId,
+    DateTime? syncedAt,
+  }) : createdAt = createdAt.toUtc(),
+       syncedAt = syncedAt?.toUtc();
+
+  final String localId;
+  final double latitude;
+  final double longitude;
+  final bool nonExistent;
+  final InspectionSyncStatus status;
+  final DateTime createdAt;
+  final String? zoneId;
+  final String? error;
+  final String? remotePlantId;
+  final DateTime? syncedAt;
+
+  bool get hasValidCoordinates =>
+      latitude.isFinite &&
+      longitude.isFinite &&
+      latitude.abs() <= 90 &&
+      longitude.abs() <= 180;
+
+  String get statusLabel => switch (status) {
+    InspectionSyncStatus.pending => 'Pendente',
+    InspectionSyncStatus.syncing => 'Enviando',
+    InspectionSyncStatus.error => 'Erro no envio',
+    InspectionSyncStatus.synced => 'Sincronizada',
+  };
+
+  Map<String, dynamic> toJson() => {
+    'localId': localId,
+    'latitude': latitude,
+    'longitude': longitude,
+    'nonExistent': nonExistent,
+    'status': status.name,
+    'createdAt': createdAt.toIso8601String(),
+    if (zoneId != null) 'zoneId': zoneId,
+    if (error != null) 'error': error,
+    if (remotePlantId != null) 'remotePlantId': remotePlantId,
+    if (syncedAt != null) 'syncedAt': syncedAt!.toIso8601String(),
+  };
+
+  Map<String, dynamic> toPayload() => {
+    'localId': localId,
+    'latitude': latitude,
+    'longitude': longitude,
+    'nonExistent': nonExistent,
+    if (zoneId != null) 'zoneId': zoneId,
+  };
+
+  factory AddedInspectionPlant.fromJson(Map<String, dynamic> json) =>
+      AddedInspectionPlant(
+        localId: (json['localId'] ?? json['local_id']) as String,
+        latitude: (json['latitude'] as num).toDouble(),
+        longitude: (json['longitude'] as num).toDouble(),
+        nonExistent:
+            (json['nonExistent'] ?? json['non_existent']) as bool? ?? false,
+        status: InspectionSyncStatus.values.byName(
+          (json['status'] ?? json['sync_status']) as String? ?? 'pending',
+        ),
+        createdAt: DateTime.parse(
+          (json['createdAt'] ?? json['created_at']) as String,
+        ),
+        zoneId: (json['zoneId'] ?? json['zone_id']) as String?,
+        error: json['error'] as String?,
+        remotePlantId: (json['remotePlantId'] ?? json['remote_plant_id'])
+            as String?,
+        syncedAt: (json['syncedAt'] ?? json['synced_at']) == null
+            ? null
+            : DateTime.parse(
+                (json['syncedAt'] ?? json['synced_at']) as String,
+              ),
+      );
+}
+
+class AddedPlantSyncResult {
+  const AddedPlantSyncResult({
+    required this.localId,
+    required this.plantId,
+    required this.latitude,
+    required this.longitude,
+    required this.nonExistent,
+    required this.status,
+    this.zoneId,
+  });
+
+  final String localId;
+  final String plantId;
+  final double latitude;
+  final double longitude;
+  final bool nonExistent;
+  final InspectionSyncStatus status;
+  final String? zoneId;
+
+  factory AddedPlantSyncResult.fromJson(Map<String, dynamic> json) {
+    final localId = (json['local_id'] ?? json['localId']) as String?;
+    final plantId = (json['plant_id'] ?? json['plantId']) as String?;
+    final latitude = json['latitude'];
+    final longitude = json['longitude'];
+    if (localId == null ||
+        localId.isEmpty ||
+        plantId == null ||
+        plantId.isEmpty ||
+        latitude is! num ||
+        longitude is! num) {
+      throw const FormatException('Contrato de planta adicionada invalido');
+    }
+    return AddedPlantSyncResult(
+      localId: localId,
+      plantId: plantId,
+      latitude: latitude.toDouble(),
+      longitude: longitude.toDouble(),
+      nonExistent:
+          (json['non_existent'] ?? json['nonExistent']) as bool? ?? false,
+      status: InspectionSyncStatus.values.byName(
+        json['sync_status'] as String? ?? 'synced',
+      ),
+      zoneId: (json['zone_id'] ?? json['zoneId']) as String?,
+    );
+  }
+
+  static List<AddedPlantSyncResult> listFromRpc(Object? response) {
+    if (response is! List) {
+      throw const FormatException('Resposta de plantas adicionadas invalida');
+    }
+    return response
+        .map(
+          (row) => AddedPlantSyncResult.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(growable: false);
+  }
+}

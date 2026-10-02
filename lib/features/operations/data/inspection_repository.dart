@@ -17,9 +17,18 @@ abstract interface class InspectionRepository {
     double? distance,
   });
   Future<void> setPlantNonExistent(String plantId, bool nonExistent);
+  Future<AddedInspectionPlant> addPlant({
+    required double latitude,
+    required double longitude,
+    required bool nonExistent,
+    String? zoneId,
+  });
   Future<LocalInspection?> finalizeInspection();
   Future<bool> syncPending();
+  Future<bool> syncPendingAddedPlants();
   Future<List<LocalInspection>> listLocalInspections();
+  Future<List<AddedInspectionPlant>> listAddedPlants();
+  Future<void> removeAddedPlant(String localId);
   Future<List<InspectionChange>> getInspectionChanges(String inspectionId);
   Future<void> removePlantFromInspection(String inspectionId, String plantId);
 }
@@ -38,6 +47,7 @@ class DefaultInspectionRepository implements InspectionRepository {
   final AppLoadingController? loadingController;
 
   Completer<bool>? _currentSync;
+  Completer<bool>? _currentAddedPlantsSync;
 
   @override
   Future<InspectionSnapshot?> loadSnapshot({bool forceRemote = false}) async {
@@ -125,6 +135,21 @@ class DefaultInspectionRepository implements InspectionRepository {
   @override
   Future<void> setPlantNonExistent(String plantId, bool nonExistent) {
     return localStore.setPlantNonExistent(plantId, nonExistent);
+  }
+
+  @override
+  Future<AddedInspectionPlant> addPlant({
+    required double latitude,
+    required double longitude,
+    required bool nonExistent,
+    String? zoneId,
+  }) {
+    return localStore.addPlant(
+      latitude: latitude,
+      longitude: longitude,
+      nonExistent: nonExistent,
+      zoneId: zoneId,
+    );
   }
 
   @override
@@ -245,8 +270,65 @@ class DefaultInspectionRepository implements InspectionRepository {
   }
 
   @override
+  Future<bool> syncPendingAddedPlants() async {
+    if (_currentAddedPlantsSync != null) {
+      return _currentAddedPlantsSync!.future;
+    }
+
+    final completer = Completer<bool>();
+    _currentAddedPlantsSync = completer;
+
+    try {
+      final pending = await localStore.pendingAddedPlants();
+      if (pending.isEmpty) {
+        completer.complete(true);
+        return true;
+      }
+
+      final localIds = pending.map((p) => p.localId).toList();
+      await localStore.markAddedPlantsSyncing(localIds);
+
+      final payload = <String, dynamic>{
+        'deviceId': await localStore.database.deviceId,
+        'plants': pending.map((p) => p.toPayload()).toList(growable: false),
+      };
+
+      try {
+        final controller = loadingController;
+        final results = await (controller == null
+            ? remoteDataSource.syncAddedPlants(payload)
+            : controller.track(() => remoteDataSource.syncAddedPlants(payload)));
+        await localStore.acknowledgeAddedPlants(results);
+        completer.complete(true);
+        return true;
+      } catch (e) {
+        for (final id in localIds) {
+          await localStore.markAddedPlantError(id, e);
+        }
+        completer.complete(false);
+        return false;
+      }
+    } catch (e, st) {
+      completer.completeError(e, st);
+      rethrow;
+    } finally {
+      _currentAddedPlantsSync = null;
+    }
+  }
+
+  @override
   Future<List<LocalInspection>> listLocalInspections() {
     return localStore.list();
+  }
+
+  @override
+  Future<List<AddedInspectionPlant>> listAddedPlants() {
+    return localStore.listAddedPlants();
+  }
+
+  @override
+  Future<void> removeAddedPlant(String localId) {
+    return localStore.removeAddedPlant(localId);
   }
 
   @override

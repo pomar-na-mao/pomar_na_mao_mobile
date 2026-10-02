@@ -10,8 +10,11 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class ControlledRemoteDataSource implements InspectionRemoteDataSource {
   int attempts = 0;
+  int addedPlantAttempts = 0;
   List<Map<String, dynamic>> receivedPayloads = [];
+  List<Map<String, dynamic>> receivedAddedPlantPayloads = [];
   bool shouldFailOnNetwork = false;
+  bool shouldFailAddedPlantsOnNetwork = false;
   bool shouldSimulateLostResponse = false;
 
   final Set<String> registeredOperationIds = {};
@@ -66,6 +69,30 @@ class ControlledRemoteDataSource implements InspectionRemoteDataSource {
       updated: 0,
       resolved: 0,
     );
+  }
+
+  @override
+  Future<List<AddedPlantSyncResult>> syncAddedPlants(
+    Map<String, dynamic> payload,
+  ) async {
+    addedPlantAttempts++;
+    receivedAddedPlantPayloads.add(payload);
+    if (shouldFailAddedPlantsOnNetwork) {
+      throw Exception('Falha de conexÃ£o com a rede');
+    }
+    final plants = (payload['plants'] as List<dynamic>).cast<Map<String, dynamic>>();
+    return [
+      for (final plant in plants)
+        AddedPlantSyncResult(
+          localId: plant['localId'] as String,
+          plantId: 'remote-${plant['localId']}',
+          latitude: (plant['latitude'] as num).toDouble(),
+          longitude: (plant['longitude'] as num).toDouble(),
+          nonExistent: plant['nonExistent'] as bool? ?? false,
+          status: InspectionSyncStatus.synced,
+          zoneId: plant['zoneId'] as String?,
+        ),
+    ];
   }
 }
 
@@ -165,6 +192,56 @@ void main() {
 
     // Payloads reused the exact same localInspectionId
     expect(remote.receivedPayloads[0]['localInspectionId'], remote.receivedPayloads[1]['localInspectionId']);
+
+    await reopenedDb.close();
+  });
+
+  test('added plants survive restart and retry in their own sync queue', () async {
+    final added = await repo.addPlant(
+      latitude: -23.45,
+      longitude: -46.67,
+      nonExistent: true,
+      zoneId: 'zone-1',
+    );
+    expect((await repo.listAddedPlants()).single.localId, added.localId);
+
+    await db.close();
+
+    final reopenedDb = InspectionDatabase(
+      projectUrl: 'https://uxschjkypkkzprbwuhxm.supabase.co',
+      factory: ffiFactory,
+      directory: tempDir.path,
+    );
+    final reopenedStore = InspectionLocalStore(reopenedDb);
+    final reopenedRepo = DefaultInspectionRepository(
+      localStore: reopenedStore,
+      remoteDataSource: remote,
+    );
+
+    var addedPlants = await reopenedRepo.listAddedPlants();
+    expect(addedPlants, hasLength(1));
+    expect(addedPlants.single.localId, added.localId);
+    expect(addedPlants.single.nonExistent, isTrue);
+    expect(addedPlants.single.zoneId, 'zone-1');
+
+    remote.shouldFailAddedPlantsOnNetwork = true;
+    var synced = await reopenedRepo.syncPendingAddedPlants();
+    expect(synced, isFalse);
+    addedPlants = await reopenedRepo.listAddedPlants();
+    expect(addedPlants.single.status, InspectionSyncStatus.error);
+
+    remote.shouldFailAddedPlantsOnNetwork = false;
+    synced = await reopenedRepo.syncPendingAddedPlants();
+    expect(synced, isTrue);
+    addedPlants = await reopenedRepo.listAddedPlants();
+    expect(addedPlants.single.status, InspectionSyncStatus.synced);
+    expect(addedPlants.single.remotePlantId, 'remote-${added.localId}');
+
+    expect(remote.addedPlantAttempts, 2);
+    expect(
+      remote.receivedAddedPlantPayloads.first['plants'],
+      remote.receivedAddedPlantPayloads.last['plants'],
+    );
 
     await reopenedDb.close();
   });

@@ -45,10 +45,28 @@ class _InventoryViewState extends State<InventoryView> {
     }
   }
 
-  Future<void> _refresh() => Future.wait([
-    widget.viewModel.loadSummary(),
-    widget.viewModel.loadMapData(),
-  ]);
+  Future<void> _handleRefreshCache(BuildContext context) async {
+    try {
+      await widget.viewModel.refreshCache();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dados e cache atualizados com sucesso!'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Não foi possível atualizar o cache. Verifique sua conexão.',
+          ),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,9 +85,40 @@ class _InventoryViewState extends State<InventoryView> {
             ),
           ],
         ),
+        actions: [
+          ListenableBuilder(
+            listenable: widget.viewModel,
+            builder: (context, _) {
+              final isRefreshing = widget.viewModel.isRefreshingCache;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: IconButton(
+                  key: const ValueKey('inventory-refresh-cache-button'),
+                  tooltip: 'Carregar dados e atualizar',
+                  onPressed: isRefreshing
+                      ? null
+                      : () => _handleRefreshCache(context),
+                  icon: isRefreshing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFF294C35),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.cloud_download_outlined,
+                          color: Color(0xFF294C35),
+                        ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: RefreshIndicator(
-        onRefresh: _refresh,
+        onRefresh: () => _handleRefreshCache(context),
         child: LayoutBuilder(
           builder: (context, constraints) {
             final horizontalPadding = constraints.maxWidth >= 720 ? 28.0 : 16.0;
@@ -95,6 +144,8 @@ class _InventoryViewState extends State<InventoryView> {
                             key: const ValueKey('inventory-property-hero'),
                             profile: widget.viewModel.profile,
                             fruitAssetPath: widget.fruitAssetPath,
+                            onRefreshCache: () => _handleRefreshCache(context),
+                            isRefreshing: widget.viewModel.isRefreshingCache,
                           ),
                           const SizedBox(height: 18),
                           InventoryMetricsGrid(viewModel: widget.viewModel),

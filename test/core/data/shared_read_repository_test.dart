@@ -171,6 +171,11 @@ class CountingInspectionRemoteDataSource implements InspectionRemoteDataSource {
     updated: 0,
     resolved: 0,
   );
+
+  @override
+  Future<List<AddedPlantSyncResult>> syncAddedPlants(
+    Map<String, dynamic> payload,
+  ) async => const [];
 }
 
 void main() {
@@ -744,12 +749,12 @@ void main() {
       final refreshed = await inspectionRepository.loadSnapshot(
         forceRemote: true,
       );
-      expect(refreshed!.plants.map((plant) => plant.id), ['p-1']);
+      expect(refreshed!.plants.map((plant) => plant.id), ['p-1', 'p-2']);
       expect(refreshed.types, hasLength(1));
       expect(inspectionRemote.catalogCalls, 1);
       expect(farmRemote.plantCalls, 1);
 
-      expect((await inspectionRepository.loadSnapshot())!.plants, hasLength(1));
+      expect((await inspectionRepository.loadSnapshot())!.plants, hasLength(2));
       expect(await inspectionRepository.getCatalog(), hasLength(1));
       expect(inspectionRemote.catalogCalls, 1);
       expect(farmRemote.plantCalls, 1);

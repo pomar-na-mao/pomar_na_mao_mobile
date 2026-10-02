@@ -56,12 +56,36 @@ class InventoryViewModel extends ChangeNotifier {
 
   bool _initializationStarted = false;
   bool _isDisposed = false;
+  bool _isRefreshingCache = false;
+  bool get isRefreshingCache => _isRefreshingCache;
   StreamSubscription<void>? _plantChangesSubscription;
 
   Future<void> initialize() async {
     if (_initializationStarted || _isDisposed) return;
     _initializationStarted = true;
     await Future.wait([loadSummary(), loadMapData()]);
+  }
+
+  /// Recarrega os dados do servidor remoto, atualiza o cache local e
+  /// atualiza os totais e mapa na tela.
+  Future<void> refreshCache() async {
+    if (_isRefreshingCache || _isDisposed) return;
+    _isRefreshingCache = true;
+    _notifySafely();
+
+    try {
+      await _inventoryRepository.refreshCache();
+      if (_isDisposed) return;
+      await Future.wait([
+        loadSummary(),
+        loadMapData(),
+      ]);
+    } finally {
+      if (!_isDisposed) {
+        _isRefreshingCache = false;
+        _notifySafely();
+      }
+    }
   }
 
   Future<void> loadSummary() async {

@@ -24,6 +24,9 @@ class InspectionMapConfig {
   const InspectionMapConfig({
     required this.plants,
     required this.onSelectPlant,
+    required this.onMapLongPress,
+    required this.onRemoveAddedPlant,
+    this.addedPlants = const [],
     this.polygons = const {},
     this.userLocation,
     this.canShowUserLocation = false,
@@ -31,6 +34,9 @@ class InspectionMapConfig {
 
   final List<InspectionPlant> plants;
   final ValueChanged<InspectionPlant> onSelectPlant;
+  final ValueChanged<LatLng> onMapLongPress;
+  final ValueChanged<AddedInspectionPlant> onRemoveAddedPlant;
+  final List<AddedInspectionPlant> addedPlants;
   final Set<Polygon> polygons;
   final UserLocation? userLocation;
   final bool canShowUserLocation;
@@ -58,9 +64,12 @@ class _InspectionViewState extends State<InspectionView> {
   CameraPosition? _savedCamera;
   BitmapDescriptor? _plantMarkerIcon;
   BitmapDescriptor? _nonExistentPlantMarkerIcon;
+  BitmapDescriptor? _addedPlantMarkerIcon;
   Set<Marker> _markers = const {};
   final _plantLayer = BoundedPlantMarkers();
   String? _lastFittedFilterSignature;
+  String? _lastTappedAddedPlantId;
+  DateTime? _lastTappedAddedPlantAt;
 
   bool _hasSetInitialCamera = false;
   bool _userHasInteractedWithMap = false;
@@ -126,10 +135,15 @@ class _InspectionViewState extends State<InspectionView> {
         color: const Color(0xFFF9A825),
         highlightColor: const Color(0xFFFFD54F),
       ),
+      _createPlantMarkerIcon(
+        color: const Color(0xFF0F766E),
+        highlightColor: const Color(0xFF5EEAD4),
+      ),
     ]);
     if (!mounted) return;
     _plantMarkerIcon = icons[0];
     _nonExistentPlantMarkerIcon = icons[1];
+    _addedPlantMarkerIcon = icons[2];
     _updateMarkers(_effectiveViewModel);
     setState(() {});
   }
@@ -291,6 +305,244 @@ class _InspectionViewState extends State<InspectionView> {
     );
   }
 
+  Set<Marker> _addedPlantMarkers(InspectionViewModel vm) {
+    final icon =
+        _addedPlantMarkerIcon ??
+        BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+    return {
+      for (final plant in vm.addedPlants)
+        if (plant.hasValidCoordinates &&
+            (plant.status != InspectionSyncStatus.synced ||
+                plant.remotePlantId == null ||
+                vm.plantById(plant.remotePlantId!) == null))
+          Marker(
+            markerId: MarkerId('added-${plant.localId}'),
+            position: LatLng(plant.latitude, plant.longitude),
+            icon: icon,
+            consumeTapEvents: true,
+            infoWindow: InfoWindow(
+              title: plant.nonExistent
+                  ? 'Planta adicionada inexistente'
+                  : 'Planta adicionada',
+              snippet: plant.statusLabel,
+            ),
+            anchor: const Offset(0.5, 0.5),
+            onTap: () => _handleAddedPlantMarkerTap(vm, plant),
+          ),
+    };
+  }
+
+  void _handleAddedPlantMarkerTap(
+    InspectionViewModel vm,
+    AddedInspectionPlant plant,
+  ) {
+    final now = DateTime.now();
+    final isDoubleTap =
+        _lastTappedAddedPlantId == plant.localId &&
+        _lastTappedAddedPlantAt != null &&
+        now.difference(_lastTappedAddedPlantAt!) <
+            const Duration(milliseconds: 650);
+    _lastTappedAddedPlantId = plant.localId;
+    _lastTappedAddedPlantAt = now;
+    if (isDoubleTap) {
+      _lastTappedAddedPlantId = null;
+      _lastTappedAddedPlantAt = null;
+      unawaited(vm.removeAddedPlant(plant.localId));
+    }
+  }
+
+  Future<void> _showAddPlantModal(
+    InspectionViewModel vm,
+    LatLng position,
+  ) async {
+    var nonExistent = false;
+    String? selectedZoneId =
+        vm.zones.any((z) => z.id == vm.selectedZoneFilterId)
+            ? vm.selectedZoneFilterId
+            : null;
+    final shouldSave = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final theme = Theme.of(context);
+        final colorScheme = theme.colorScheme;
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Material(
+              color: colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              clipBehavior: Clip.antiAlias,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.add_location_alt_outlined,
+                            color: colorScheme.secondary,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Adicionar planta',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Zona',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      InputDecorator(
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.grid_view_rounded),
+                          filled: true,
+                          fillColor: colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.35),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 4,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: colorScheme.outlineVariant,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: colorScheme.outlineVariant,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: colorScheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String?>(
+                            key: const ValueKey('added-plant-zone-dropdown'),
+                            value: vm.zones.any((z) => z.id == selectedZoneId)
+                                ? selectedZoneId
+                                : null,
+                            isExpanded: true,
+                            hint: Text(
+                              vm.zones.isEmpty
+                                  ? 'Sem zona'
+                                  : 'Selecione a zona',
+                            ),
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('Sem zona'),
+                              ),
+                              for (final zone in vm.zones)
+                                DropdownMenuItem<String?>(
+                                  value: zone.id,
+                                  child: Text(
+                                    zone.name,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: (newZoneId) {
+                              setModalState(() => selectedZoneId = newZoneId);
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: Icon(
+                          nonExistent
+                              ? Icons.hide_source_outlined
+                              : Icons.spa_outlined,
+                        ),
+                        title: const Text('Marcar como inexistente'),
+                        value: nonExistent,
+                        onChanged: (value) {
+                          setModalState(() => nonExistent = value);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: const Text('Cancelar'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton.icon(
+                              key: const ValueKey('confirm-added-plant-button'),
+                              onPressed: () => Navigator.of(context).pop(true),
+                              icon: const Icon(Icons.check_rounded),
+                              label: const Text('Salvar'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (shouldSave == true) {
+      await vm.addPlantAt(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        nonExistent: nonExistent,
+        zoneId: selectedZoneId,
+      );
+    }
+  }
+
   String _buildFilterBadgeLabel(InspectionViewModel vm) {
     final parts = <String>[];
     if (vm.selectedZoneFilter case final zone?) {
@@ -322,6 +574,9 @@ class _InspectionViewState extends State<InspectionView> {
             vm.selectPlantById(plant.id);
             PlantEditorModal.show(context, vm);
           },
+          onMapLongPress: (position) => _showAddPlantModal(vm, position),
+          onRemoveAddedPlant: (plant) => vm.removeAddedPlant(plant.localId),
+          addedPlants: vm.addedPlants,
           polygons: vm.polygons,
           userLocation: vm.userLocation,
           canShowUserLocation: vm.canShowUserLocation,
@@ -366,10 +621,12 @@ class _InspectionViewState extends State<InspectionView> {
                                 ),
                             onCameraIdle: _plantLayer.cameraIdle,
                             onCameraMove: (position) => _savedCamera = position,
-                            markers: _markers,
+                            markers: {..._markers, ..._addedPlantMarkers(vm)},
                             polygons: vm.polygons,
                             myLocationEnabled: vm.canShowUserLocation,
                             myLocationButtonEnabled: vm.canShowUserLocation,
+                            onLongPress: (position) =>
+                                _showAddPlantModal(vm, position),
                             onMapCreated: (controller) {
                               _mapController = controller;
                               _plantLayer.controller = controller;
@@ -606,4 +863,9 @@ class _DummyRemoteDataSource implements InspectionRemoteDataSource {
     updated: 0,
     resolved: 0,
   );
+
+  @override
+  Future<List<AddedPlantSyncResult>> syncAddedPlants(
+    Map<String, dynamic> payload,
+  ) async => const [];
 }

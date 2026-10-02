@@ -38,9 +38,13 @@ class FakeInspectionRepo implements InspectionRepository {
   Object? loadError;
   List<LocalInspection> localList = [];
   bool syncSucceeds = true;
+  final List<AddedInspectionPlant> addedPlants = [];
 
   int toggleCallCount = 0;
   int finalizeCallCount = 0;
+  int addPlantCallCount = 0;
+  int syncAddedPlantsCallCount = 0;
+  int removeAddedPlantCallCount = 0;
 
   @override
   Future<InspectionSnapshot?> loadSnapshot({bool forceRemote = false}) async {
@@ -99,7 +103,57 @@ class FakeInspectionRepo implements InspectionRepository {
   Future<bool> syncPending() async => syncSucceeds;
 
   @override
+  Future<bool> syncPendingAddedPlants() async {
+    syncAddedPlantsCallCount++;
+    if (syncSucceeds) {
+      for (var i = 0; i < addedPlants.length; i++) {
+        final plant = addedPlants[i];
+        final remoteId = 'remote-${plant.localId}';
+        addedPlants[i] = AddedInspectionPlant(
+          localId: plant.localId,
+          latitude: plant.latitude,
+          longitude: plant.longitude,
+          nonExistent: plant.nonExistent,
+          status: InspectionSyncStatus.synced,
+          createdAt: plant.createdAt,
+          remotePlantId: remoteId,
+          syncedAt: DateTime.now(),
+          zoneId: plant.zoneId,
+        );
+        if (currentSnapshot != null &&
+            !currentSnapshot!.plants.any((p) => p.id == remoteId)) {
+          final updated = List<InspectionPlant>.from(currentSnapshot!.plants)
+            ..add(
+              InspectionPlant(
+                id: remoteId,
+                latitude: plant.latitude,
+                longitude: plant.longitude,
+                nonExistent: plant.nonExistent,
+                zoneId: plant.zoneId,
+              ),
+            );
+          currentSnapshot = InspectionSnapshot(
+            plants: updated,
+            types: currentSnapshot!.types,
+            loadedAt: currentSnapshot!.loadedAt,
+          );
+        }
+      }
+    }
+    return syncSucceeds;
+  }
+
+  @override
   Future<List<LocalInspection>> listLocalInspections() async => localList;
+
+  @override
+  Future<List<AddedInspectionPlant>> listAddedPlants() async => addedPlants;
+
+  @override
+  Future<void> removeAddedPlant(String localId) async {
+    removeAddedPlantCallCount++;
+    addedPlants.removeWhere((plant) => plant.localId == localId);
+  }
 
   @override
   Future<List<InspectionChange>> getInspectionChanges(
@@ -136,6 +190,27 @@ class FakeInspectionRepo implements InspectionRepository {
         loadedAt: currentSnapshot!.loadedAt,
       );
     }
+  }
+
+  @override
+  Future<AddedInspectionPlant> addPlant({
+    required double latitude,
+    required double longitude,
+    required bool nonExistent,
+    String? zoneId,
+  }) async {
+    addPlantCallCount++;
+    final plant = AddedInspectionPlant(
+      localId: 'added-${addedPlants.length + 1}',
+      latitude: latitude,
+      longitude: longitude,
+      nonExistent: nonExistent,
+      status: InspectionSyncStatus.pending,
+      createdAt: DateTime.now(),
+      zoneId: zoneId,
+    );
+    addedPlants.insert(0, plant);
+    return plant;
   }
 
   @override
@@ -341,6 +416,71 @@ void main() {
     expect(repo.lastRemovedInspectionId, 'inspec-1');
     expect(repo.lastRemovedPlantId, 'p-1');
     expect(viewModel.feedbackMessage, 'Planta removida com sucesso');
+  });
+
+  test('addPlantAt stores added plant without changing local inspections', () async {
+    viewModel.setZones([
+      const Zone(id: 'zone-1', name: 'Zona 1', code: 'Z1'),
+    ]);
+    viewModel.filterByZone('zone-1');
+    repo.localList = [
+      LocalInspection(
+        id: 'draft-1',
+        startedAt: DateTime.now(),
+        status: InspectionSyncStatus.pending,
+        plantsCount: 1,
+        changesCount: 1,
+      ),
+    ];
+    await viewModel.refreshLocalInspections();
+
+    await viewModel.addPlantAt(
+      latitude: -23.45,
+      longitude: -46.67,
+      nonExistent: true,
+    );
+
+    expect(repo.addPlantCallCount, 1);
+    expect(viewModel.addedPlants, hasLength(1));
+    expect(viewModel.addedPlants.single.nonExistent, isTrue);
+    expect(viewModel.addedPlants.single.zoneId, 'zone-1');
+    expect(viewModel.localInspections, hasLength(1));
+    expect(viewModel.feedbackMessage, 'Planta salva no dispositivo');
+  });
+
+  test('syncPendingAddedPlants refreshes separate queue and feedback', () async {
+    await viewModel.addPlantAt(
+      latitude: -23.45,
+      longitude: -46.67,
+      nonExistent: false,
+      zoneId: 'zone-2',
+    );
+
+    await viewModel.syncPendingAddedPlants();
+
+    expect(repo.syncAddedPlantsCallCount, 1);
+    expect(viewModel.addedPlants.single.status, InspectionSyncStatus.synced);
+    expect(viewModel.addedPlants.single.remotePlantId, 'remote-added-1');
+    expect(viewModel.allPlants.map((plant) => plant.id), contains('remote-added-1'));
+    expect(viewModel.plantById('remote-added-1')?.latitude, -23.45);
+    expect(viewModel.plantById('remote-added-1')?.longitude, -46.67);
+    expect(viewModel.plantById('remote-added-1')?.zoneId, 'zone-2');
+    expect(viewModel.feedbackMessage, 'Plantas sincronizadas com sucesso!');
+  });
+
+  test('removeAddedPlant refreshes separate queue', () async {
+    await viewModel.addPlantAt(
+      latitude: -23.45,
+      longitude: -46.67,
+      nonExistent: false,
+    );
+    final localId = viewModel.addedPlants.single.localId;
+
+    await viewModel.removeAddedPlant(localId);
+
+    expect(repo.removeAddedPlantCallCount, 1);
+    expect(viewModel.addedPlants, isEmpty);
+    expect(viewModel.feedbackMessage, 'Planta adicionada removida');
   });
 
   test('filterByOccurrence filters plants in memory without new fetch and clearOccurrenceFilter restores all', () async {
@@ -570,4 +710,116 @@ void main() {
     expect(viewModel.selectedPlant?.nonExistent, isTrue);
     expect(viewModel.hasStagedChanges, isFalse);
   });
+
+  test(
+    'synced added plant persists in plants list after finalizing inspection',
+    () async {
+      final existingPlant = InspectionPlant(
+        id: 'p-existing',
+        latitude: -23.1,
+        longitude: -46.1,
+        nonExistent: false,
+      );
+      repo.currentSnapshot = InspectionSnapshot(
+        plants: [existingPlant],
+        types: const [OccurrenceType(id: 't-1', name: 'Praga', code: 'pest')],
+        loadedAt: DateTime.now(),
+      );
+      await viewModel.loadPlants(forceRemote: false);
+      expect(viewModel.plants, hasLength(1));
+
+      // Add a new plant point
+      await viewModel.addPlantAt(
+        latitude: -23.2,
+        longitude: -46.2,
+        nonExistent: false,
+        zoneId: 'z-1',
+      );
+      expect(viewModel.addedPlants, hasLength(1));
+
+      // Sync the added plant
+      await viewModel.syncPendingAddedPlants();
+      expect(viewModel.addedPlants.single.status, InspectionSyncStatus.synced);
+      final remoteId = viewModel.addedPlants.single.remotePlantId!;
+      expect(viewModel.plants.any((p) => p.id == remoteId), isTrue);
+
+      // Add occurrence to existing plant and finalize inspection
+      viewModel.selectPlant(existingPlant);
+      viewModel.toggleStagedOccurrence('t-1');
+      await viewModel.savePlantChangesAndFinalize();
+
+      // Verify the newly added plant remains in viewModel.plants!
+      expect(viewModel.plants.any((p) => p.id == remoteId), isTrue);
+      expect(viewModel.plantById(remoteId), isNotNull);
+    },
+  );
+
+  test(
+    'occurrences can be added to newly added synced plant and saved',
+    () async {
+      repo.currentSnapshot = InspectionSnapshot(
+        plants: [],
+        types: const [OccurrenceType(id: 't-1', name: 'Praga', code: 'pest')],
+        loadedAt: DateTime.now(),
+      );
+      await viewModel.loadPlants(forceRemote: false);
+
+      await viewModel.addPlantAt(
+        latitude: -23.3,
+        longitude: -46.3,
+        nonExistent: false,
+      );
+      await viewModel.syncPendingAddedPlants();
+
+      final remoteId = viewModel.addedPlants.single.remotePlantId!;
+      final newPlant = viewModel.plantById(remoteId);
+      expect(newPlant, isNotNull);
+
+      // Select newly added plant and add occurrence
+      viewModel.selectPlant(newPlant!);
+      viewModel.toggleStagedOccurrence('t-1');
+      expect(viewModel.hasStagedChanges, isTrue);
+
+      await viewModel.savePlantChanges();
+      expect(repo.toggleCallCount, 1);
+      expect(viewModel.feedbackMessage, 'Salvo no dispositivo');
+      expect(viewModel.selectedPlant?.openTypeIds.contains('t-1'), isTrue);
+    },
+  );
+
+  test(
+    'toggleStagedOccurrence is ignored when stagedNonExistent is true',
+    () async {
+      final plant = InspectionPlant(
+        id: 'p-disabled-occ',
+        latitude: -23.1,
+        longitude: -46.1,
+        nonExistent: false,
+      );
+      repo.currentSnapshot = InspectionSnapshot(
+        plants: [plant],
+        types: const [OccurrenceType(id: 't-1', name: 'Praga', code: 'pest')],
+        loadedAt: DateTime.now(),
+      );
+      await viewModel.loadPlants(forceRemote: false);
+
+      viewModel.selectPlant(plant);
+      expect(viewModel.isOccurrenceChecked('t-1'), isFalse);
+
+      // Mark plant as non-existent
+      viewModel.toggleStagedNonExistent(true);
+      expect(viewModel.stagedNonExistent, isTrue);
+
+      // Attempt to toggle occurrence
+      viewModel.toggleStagedOccurrence('t-1');
+      expect(viewModel.isOccurrenceChecked('t-1'), isFalse);
+
+      // Untoggle non-existent and toggle should work again
+      viewModel.toggleStagedNonExistent(false);
+      viewModel.toggleStagedOccurrence('t-1');
+      expect(viewModel.isOccurrenceChecked('t-1'), isTrue);
+    },
+  );
 }
+
+
