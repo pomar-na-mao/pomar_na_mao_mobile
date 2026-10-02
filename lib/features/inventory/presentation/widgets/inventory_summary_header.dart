@@ -19,95 +19,113 @@ class InventorySummaryHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InventoryDashboardCard(
-      padding: const EdgeInsets.fromLTRB(22, 20, 18, 18),
-      gradient: const LinearGradient(
-        colors: [Color(0xFFE7F1E5), Color(0xFFF8FBF6)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 560;
-          final content = _HeroText(
-            profile: profile,
-            onRefreshCache: onRefreshCache,
-            isRefreshing: isRefreshing,
-          );
-          final illustration = _FruitIllustration(
-            assetPath: fruitAssetPath,
-            size: wide ? 168 : 132,
-          );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 360;
+        final isWide = constraints.maxWidth >= 600;
+        final illustrationSize = isWide ? 92.0 : (isCompact ? 64.0 : 76.0);
 
-          if (wide) {
-            return Row(
-              children: [
-                Expanded(child: content),
-                const SizedBox(width: 16),
-                illustration,
-              ],
-            );
-          }
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        return InventoryDashboardCard(
+          padding: EdgeInsets.symmetric(
+            horizontal: isCompact ? 14 : 18,
+            vertical: isCompact ? 12 : 14,
+          ),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFE8F2E6), Color(0xFFF7FAF5)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              content,
-              const SizedBox(height: 12),
-              Align(alignment: Alignment.centerRight, child: illustration),
+              Expanded(
+                child: _HeroContent(
+                  profile: profile,
+                  isCompact: isCompact,
+                ),
+              ),
+              SizedBox(width: isCompact ? 10 : 16),
+              _FruitIllustration(
+                assetPath: fruitAssetPath,
+                size: illustrationSize,
+              ),
             ],
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
-class _HeroText extends StatelessWidget {
-  const _HeroText({
+class _HeroContent extends StatelessWidget {
+  const _HeroContent({
     required this.profile,
-    this.onRefreshCache,
-    this.isRefreshing = false,
+    required this.isCompact,
   });
 
   final InventoryPropertyProfile profile;
-  final VoidCallback? onRefreshCache;
-  final bool isRefreshing;
+  final bool isCompact;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          'VISÃO DA PROPRIEDADE',
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: const Color(0xFF3C6E47),
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.1,
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(
+                color: Color(0xFF2E7D32),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                'VISÃO DA PROPRIEDADE',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: const Color(0xFF2E6B3E),
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.1,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           profile.farmName,
-          style: theme.textTheme.headlineSmall?.copyWith(
-            color: const Color(0xFF173326),
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: const Color(0xFF132A1C),
             fontWeight: FontWeight.w900,
-            height: 1.1,
+            letterSpacing: -0.2,
+            height: 1.2,
+            fontSize: isCompact ? 18 : 20,
           ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: 6,
+          runSpacing: 6,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             _HeroBadge(
               icon: Icons.landscape_outlined,
               label: profile.totalArea,
             ),
-            _HeroBadge(icon: Icons.eco_outlined, label: profile.crop),
+            _HeroBadge(
+              icon: Icons.eco_outlined,
+              label: profile.crop,
+            ),
           ],
         ),
       ],
@@ -125,21 +143,28 @@ class _HeroBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFD6E4D5)),
+        color: Colors.white.withValues(alpha: 0.90),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFD2E3D0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08173820),
+            blurRadius: 4,
+            offset: Offset(0, 1.5),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 18, color: const Color(0xFF3C6E47)),
-            const SizedBox(width: 7),
+            Icon(icon, size: 14, color: const Color(0xFF2E6B3E)),
+            const SizedBox(width: 5),
             Text(
               label,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: const Color(0xFF294C35),
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: const Color(0xFF1E3F29),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -164,11 +189,22 @@ class _FruitIllustration extends StatelessWidget {
       child: Container(
         width: size,
         height: size,
-        padding: const EdgeInsets.all(8),
-        decoration: const BoxDecoration(
+        padding: const EdgeInsets.all(7),
+        decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [Color(0xFFFFFFFF), Color(0xFFDDEED8)],
+          color: Colors.white,
+          border: Border.all(color: const Color(0xFFD4E6D2), width: 1.5),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x10173820),
+              blurRadius: 10,
+              offset: Offset(0, 3),
+            ),
+          ],
+          gradient: const RadialGradient(
+            colors: [Color(0xFFFFFFFF), Color(0xFFE4F0E2)],
+            center: Alignment(-0.2, -0.2),
+            radius: 0.9,
           ),
         ),
         child: ExcludeSemantics(
@@ -177,7 +213,7 @@ class _FruitIllustration extends StatelessWidget {
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) => const Icon(
               Icons.image_not_supported_outlined,
-              size: 46,
+              size: 34,
               color: Color(0xFF5F6F64),
             ),
           ),
