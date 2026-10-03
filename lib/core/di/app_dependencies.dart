@@ -19,8 +19,14 @@ import '../../features/operations/data/inspection_database.dart';
 import '../../features/operations/data/inspection_local_store.dart';
 import '../../features/operations/data/inspection_remote_data_source.dart';
 import '../../features/operations/data/inspection_repository.dart';
+import '../../features/operations/data/spraying_database.dart';
+import '../../features/operations/data/spraying_local_store.dart';
+import '../../features/operations/data/spraying_remote_data_source.dart';
+import '../../features/operations/data/spraying_repository.dart';
 import '../../features/operations/domain/inspection_models.dart';
+import '../../features/operations/domain/spraying_models.dart';
 import '../../features/operations/presentation/inspection_view_model.dart';
+import '../../features/operations/presentation/spraying_view_model.dart';
 import '../config/app_config.dart';
 import '../data/shared_read_repository.dart';
 import '../ui/app_loading_controller.dart';
@@ -39,15 +45,20 @@ class AppDependencies {
     AppLoadingController? loadingController,
     InspectionRepository? inspectionRepository,
     this.inspectionDatabase,
+    SprayingRepository? sprayingRepository,
+    this.sprayingDatabase,
     this.sharedReadRepository,
     InventoryViewModel? inventoryViewModel,
     FarmMapViewModel? farmMapViewModel,
     InspectionViewModel? inspectionViewModel,
+    SprayingViewModel? sprayingViewModel,
   }) : loadingController = loadingController ?? AppLoadingController(),
        _injectedInspectionRepository = inspectionRepository,
+       _injectedSprayingRepository = sprayingRepository,
        _injectedInventoryViewModel = inventoryViewModel,
        _injectedFarmMapViewModel = farmMapViewModel,
-       _injectedInspectionViewModel = inspectionViewModel;
+       _injectedInspectionViewModel = inspectionViewModel,
+       _injectedSprayingViewModel = sprayingViewModel;
 
   factory AppDependencies.fromSupabaseClient(
     SupabaseClient supabaseClient, {
@@ -82,6 +93,15 @@ class AppDependencies {
       loadingController: loadingController,
     );
 
+    final sprayDb =
+        SprayingDatabase(projectUrl: supabaseClient.rest.url.toString());
+    final sprayStore = SprayingLocalStore(sprayDb);
+    final sprayRemote = SupabaseSprayingRemoteDataSource(supabaseClient);
+    final sprayRepo = DefaultSprayingRepository(
+      localStore: sprayStore,
+      remoteDataSource: sprayRemote,
+    );
+
     return AppDependencies(
       farmRepository: farmRepo,
       plantsRepository: plantsRepo,
@@ -90,8 +110,10 @@ class AppDependencies {
       locationService: locService,
       loadingController: loadingController,
       inspectionDatabase: inspDb,
+      sprayingDatabase: sprayDb,
       sharedReadRepository: sharedReadRepo,
       inspectionRepository: inspRepo,
+      sprayingRepository: sprayRepo,
       inventoryViewModel: InventoryViewModel(
         inventoryRepo,
         farmRepo,
@@ -109,8 +131,10 @@ class AppDependencies {
   final LocationService locationService;
   final AppLoadingController loadingController;
   final InspectionDatabase? inspectionDatabase;
+  final SprayingDatabase? sprayingDatabase;
   final SharedReadRepository? sharedReadRepository;
   final InspectionRepository? _injectedInspectionRepository;
+  final SprayingRepository? _injectedSprayingRepository;
 
   InspectionRepository get inspectionRepository =>
       _injectedInspectionRepository ??
@@ -121,9 +145,19 @@ class AppDependencies {
         remoteDataSource: FakeEmptyRemoteDataSource(),
       );
 
+  SprayingRepository get sprayingRepository =>
+      _injectedSprayingRepository ??
+      DefaultSprayingRepository(
+        localStore: SprayingLocalStore(
+          sprayingDatabase ?? SprayingDatabase(projectUrl: ''),
+        ),
+        remoteDataSource: const _FakeEmptySprayingRemoteDataSource(),
+      );
+
   final InventoryViewModel? _injectedInventoryViewModel;
   final FarmMapViewModel? _injectedFarmMapViewModel;
   final InspectionViewModel? _injectedInspectionViewModel;
+  final SprayingViewModel? _injectedSprayingViewModel;
 
   late final InventoryViewModel inventoryViewModel =
       _injectedInventoryViewModel ??
@@ -154,14 +188,50 @@ class AppDependencies {
         plantChanges: sharedReadRepository?.plantChanges,
       );
 
+  late final SprayingViewModel sprayingViewModel =
+      _injectedSprayingViewModel ??
+      SprayingViewModel(
+        sprayingRepository: sprayingRepository,
+        inspectionRepository: inspectionRepository,
+        locationService: locationService,
+        zonesRepository: zonesRepository,
+      );
+
   /// Libera recursos e encerra listeners dos ViewModels criados.
   void dispose() {
     inventoryViewModel.dispose();
     farmMapViewModel.dispose();
     inspectionViewModel.dispose();
+    _injectedSprayingViewModel?.dispose();
     unawaited(sharedReadRepository?.dispose());
     unawaited(inspectionDatabase?.close());
+    unawaited(sprayingDatabase?.close());
   }
+}
+
+class _FakeEmptySprayingRemoteDataSource implements SprayingRemoteDataSource {
+  const _FakeEmptySprayingRemoteDataSource();
+
+  @override
+  Future<SprayingSyncResult> syncSprayingOperation(
+    Map<String, dynamic> payload,
+  ) async {
+    return SprayingSyncResult(
+      fieldOperationId: '',
+      routeId: '',
+      trackPointsCount: 0,
+      inputsCount: 0,
+      confirmedPlantsCount: 0,
+      syncedAt: DateTime.now().toUtc(),
+    );
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> recalculateAffectedPlants({
+    required Map<String, dynamic> geojson,
+    String? zoneId,
+    double maxDistanceMeters = 9.0,
+  }) async => const [];
 }
 
 class FakeEmptyRemoteDataSource implements InspectionRemoteDataSource {

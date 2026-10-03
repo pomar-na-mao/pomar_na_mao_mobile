@@ -305,6 +305,17 @@ class _InspectionViewState extends State<InspectionView> {
     );
   }
 
+  void _recenterOnUser(InspectionViewModel vm) {
+    final loc = vm.userLocation;
+    final controller = _mapController;
+    if (loc != null && controller != null) {
+      animateMapCamera(
+        controller,
+        CameraUpdate.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 17),
+      );
+    }
+  }
+
   Set<Marker> _addedPlantMarkers(InspectionViewModel vm) {
     final icon =
         _addedPlantMarkerIcon ??
@@ -588,6 +599,14 @@ class _InspectionViewState extends State<InspectionView> {
             backgroundColor: const Color(0xFFF4F7F2),
             surfaceTintColor: Colors.transparent,
             title: const Text('Inspeção'),
+            actions: [
+              if (vm.userLocation != null)
+                IconButton(
+                  icon: const Icon(Icons.my_location),
+                  tooltip: 'Minha localização',
+                  onPressed: () => _recenterOnUser(vm),
+                ),
+            ],
           ),
           body: Column(
             children: [
@@ -624,7 +643,7 @@ class _InspectionViewState extends State<InspectionView> {
                             markers: {..._markers, ..._addedPlantMarkers(vm)},
                             polygons: vm.polygons,
                             myLocationEnabled: vm.canShowUserLocation,
-                            myLocationButtonEnabled: vm.canShowUserLocation,
+                            myLocationButtonEnabled: false,
                             onLongPress: (position) =>
                                 _showAddPlantModal(vm, position),
                             onMapCreated: (controller) {

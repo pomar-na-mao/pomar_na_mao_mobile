@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/inspection_view.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/operations_view.dart';
+import 'package:pomar_na_mao_mobile/features/operations/presentation/spraying_view.dart';
 
 Widget buildSubject({
   InspectionMapBuilder? inspectionMapBuilder,
+  SprayingMapBuilder? sprayingMapBuilder,
   TextScaler textScaler = TextScaler.noScaling,
 }) {
   return MaterialApp(
@@ -19,6 +21,9 @@ Widget buildSubject({
           inspectionMapBuilder:
               inspectionMapBuilder ??
               (_, _) => const SizedBox(key: ValueKey('test-inspection-map')),
+          sprayingMapBuilder:
+              sprayingMapBuilder ??
+              (_, _) => const SizedBox(key: ValueKey('test-spraying-map')),
         ),
       ),
     ),
@@ -38,8 +43,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Rotinas de campo'), findsOneWidget);
-    expect(find.text('1 disponível'), findsOneWidget);
-    expect(find.text('4 em breve'), findsOneWidget);
+    expect(find.text('2 disponíveis'), findsOneWidget);
+    expect(find.text('3 em breve'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('primary-operation-section')),
       findsOneWidget,
@@ -58,14 +63,14 @@ void main() {
     ]) {
       expect(find.text(title), findsOneWidget);
     }
-    expect(find.text('Disponível agora'), findsOneWidget);
-    expect(find.text('Em breve'), findsNWidgets(4));
+    expect(find.text('Disponível agora'), findsNWidgets(2));
+    expect(find.text('Em breve'), findsNWidgets(3));
 
     final primaryTop = tester.getTopLeft(
       find.byKey(const ValueKey('operation-card-inspection')),
     );
     final futureTop = tester.getTopLeft(
-      find.byKey(const ValueKey('operation-card-spraying')),
+      find.byKey(const ValueKey('operation-card-irrigation')),
     );
     expect(primaryTop.dy, lessThan(futureTop.dy));
 
@@ -87,10 +92,10 @@ void main() {
       ),
       matchesSemantics(
         label: 'Pulverização',
-        hint: 'Indisponível. Em breve',
+        hint: 'Disponível. Toque duas vezes para abrir',
         isButton: true,
         hasEnabledState: true,
-        isEnabled: false,
+        isEnabled: true,
       ),
     );
     semantics.dispose();
@@ -101,14 +106,38 @@ void main() {
     await tester.pumpWidget(buildSubject());
     await tester.pumpAndSettle();
 
-    for (final id in ['spraying', 'irrigation', 'harvest', 'soil-analysis']) {
+    for (final id in ['irrigation', 'harvest', 'soil-analysis']) {
       final card = find.byKey(ValueKey('operation-card-$id'));
       await tester.ensureVisible(card);
       await tester.tap(card);
       await tester.pumpAndSettle();
       expect(find.byType(InspectionView), findsNothing);
+      expect(find.byType(SprayingView), findsNothing);
       expect(find.byType(OperationsView), findsOneWidget);
     }
+  });
+
+  testWidgets('spraying action opens and returns to operations', (
+    tester,
+  ) async {
+    await setSurfaceSize(tester, const Size(420, 900));
+    await tester.pumpWidget(buildSubject());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('operation-card-spraying')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SprayingView), findsOneWidget);
+    expect(find.byKey(const ValueKey('action-spraying-load-plants')), findsOneWidget);
+    expect(find.byKey(const ValueKey('action-spraying-filter-zone')), findsOneWidget);
+    expect(find.byKey(const ValueKey('action-spraying-session')), findsOneWidget);
+    expect(find.byKey(const ValueKey('action-spraying-saved-history')), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OperationsView), findsOneWidget);
+    expect(find.text('Operações'), findsOneWidget);
   });
 
   testWidgets('primary inspection action opens and returns to operations', (
