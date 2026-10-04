@@ -3,11 +3,13 @@ class UserLocation {
     required this.latitude,
     required this.longitude,
     this.accuracy,
+    this.timestamp,
   });
 
   final double latitude;
   final double longitude;
   final double? accuracy;
+  final DateTime? timestamp;
 }
 
 enum LocationAvailability {

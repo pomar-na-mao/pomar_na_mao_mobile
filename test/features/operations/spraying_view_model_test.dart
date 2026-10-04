@@ -214,10 +214,15 @@ class FakeInspectionRepository implements InspectionRepository {
   }
 
   @override
-  Future<List<InspectionChange>> getInspectionChanges(String inspectionId) async => [];
+  Future<List<InspectionChange>> getInspectionChanges(
+    String inspectionId,
+  ) async => [];
 
   @override
-  Future<void> removePlantFromInspection(String inspectionId, String plantId) async {}
+  Future<void> removePlantFromInspection(
+    String inspectionId,
+    String plantId,
+  ) async {}
 
   @override
   Future<void> setPlantNonExistent(String plantId, bool nonExistent) async {}
@@ -325,37 +330,40 @@ void main() {
       expect((plants.first as Map)['distanceMeters'], equals(4.2));
     });
 
-    test('SprayingSyncResult.fromRpc correctly parses camelCase and snake_case', () {
-      final snakeCaseResponse = {
-        'field_operation_id': 'op-remote-1',
-        'route_id': 'route-remote-1',
-        'track_points_count': 10,
-        'inputs_count': 2,
-        'confirmed_plants_count': 15,
-        'synced_at': '2026-10-02T12:00:00.000Z',
-      };
-      final res1 = SprayingSyncResult.fromRpc(snakeCaseResponse);
-      expect(res1.fieldOperationId, equals('op-remote-1'));
-      expect(res1.routeId, equals('route-remote-1'));
-      expect(res1.trackPointsCount, equals(10));
-      expect(res1.inputsCount, equals(2));
-      expect(res1.confirmedPlantsCount, equals(15));
+    test(
+      'SprayingSyncResult.fromRpc correctly parses camelCase and snake_case',
+      () {
+        final snakeCaseResponse = {
+          'field_operation_id': 'op-remote-1',
+          'route_id': 'route-remote-1',
+          'track_points_count': 10,
+          'inputs_count': 2,
+          'confirmed_plants_count': 15,
+          'synced_at': '2026-10-02T12:00:00.000Z',
+        };
+        final res1 = SprayingSyncResult.fromRpc(snakeCaseResponse);
+        expect(res1.fieldOperationId, equals('op-remote-1'));
+        expect(res1.routeId, equals('route-remote-1'));
+        expect(res1.trackPointsCount, equals(10));
+        expect(res1.inputsCount, equals(2));
+        expect(res1.confirmedPlantsCount, equals(15));
 
-      final camelCaseResponse = {
-        'fieldOperationId': 'op-remote-2',
-        'routeId': 'route-remote-2',
-        'trackPointsCount': 5,
-        'inputsCount': 1,
-        'confirmedPlantsCount': 8,
-        'syncedAt': '2026-10-02T12:30:00.000Z',
-      };
-      final res2 = SprayingSyncResult.fromRpc(camelCaseResponse);
-      expect(res2.fieldOperationId, equals('op-remote-2'));
-      expect(res2.routeId, equals('route-remote-2'));
-      expect(res2.trackPointsCount, equals(5));
-      expect(res2.inputsCount, equals(1));
-      expect(res2.confirmedPlantsCount, equals(8));
-    });
+        final camelCaseResponse = {
+          'fieldOperationId': 'op-remote-2',
+          'routeId': 'route-remote-2',
+          'trackPointsCount': 5,
+          'inputsCount': 1,
+          'confirmedPlantsCount': 8,
+          'syncedAt': '2026-10-02T12:30:00.000Z',
+        };
+        final res2 = SprayingSyncResult.fromRpc(camelCaseResponse);
+        expect(res2.fieldOperationId, equals('op-remote-2'));
+        expect(res2.routeId, equals('route-remote-2'));
+        expect(res2.trackPointsCount, equals(5));
+        expect(res2.inputsCount, equals(1));
+        expect(res2.confirmedPlantsCount, equals(8));
+      },
+    );
   });
 
   group('SprayingViewModel Session Lifecycle', () {
@@ -384,12 +392,15 @@ void main() {
       locationService.dispose();
     });
 
-    test('initial state is idle with empty track points and reviewed plants', () {
-      expect(viewModel.sessionState, equals(SprayingSessionState.idle));
-      expect(viewModel.activeTrackPoints, isEmpty);
-      expect(viewModel.reviewedPlants, isEmpty);
-      expect(viewModel.totalDistanceMeters, equals(0.0));
-    });
+    test(
+      'initial state is idle with empty track points and reviewed plants',
+      () {
+        expect(viewModel.sessionState, equals(SprayingSessionState.idle));
+        expect(viewModel.activeTrackPoints, isEmpty);
+        expect(viewModel.reviewedPlants, isEmpty);
+        expect(viewModel.totalDistanceMeters, equals(0.0));
+      },
+    );
 
     test('startSession initializes operation and recording state', () async {
       await viewModel.startSession(
@@ -410,15 +421,16 @@ void main() {
     test('GPS tracking records track points when recording', () async {
       viewModel.startLocationTracking();
 
-      await viewModel.startSession(
-        zoneId: 'zone-1',
-        operatorName: 'João',
-      );
+      await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
 
       // Emit first location
       locationService.emit(
         const LocationResult.available(
-          UserLocation(latitude: -21.177000, longitude: -47.810000, accuracy: 5.0),
+          UserLocation(
+            latitude: -21.177000,
+            longitude: -47.810000,
+            accuracy: 5.0,
+          ),
         ),
       );
       await pumpEventQueue();
@@ -426,19 +438,68 @@ void main() {
       expect(viewModel.activeTrackPoints.length, equals(1));
       expect(viewModel.userLocation, isNotNull);
 
-      // Emit second location 50 meters away
+      // A single displaced sample must not extend the route.
       locationService.emit(
         const LocationResult.available(
-          UserLocation(latitude: -21.177450, longitude: -47.810000, accuracy: 4.0),
+          UserLocation(
+            latitude: -21.177060,
+            longitude: -47.810000,
+            accuracy: 4.0,
+          ),
+        ),
+      );
+      await pumpEventQueue();
+      expect(viewModel.activeTrackPoints.length, equals(1));
+
+      locationService.emit(
+        const LocationResult.available(
+          UserLocation(
+            latitude: -21.177065,
+            longitude: -47.810000,
+            accuracy: 4.0,
+          ),
         ),
       );
       await pumpEventQueue();
 
       expect(viewModel.activeTrackPoints.length, equals(2));
-      expect(viewModel.totalDistanceMeters, greaterThan(40.0));
+      expect(viewModel.totalDistanceMeters, greaterThan(5.0));
       expect(viewModel.polylines.isNotEmpty, isTrue);
 
       viewModel.stopLocationTracking();
+    });
+
+    test('GPS excursion does not move marker or recorded route', () async {
+      viewModel.startLocationTracking();
+      await viewModel.startSession(zoneId: 'zone-1');
+
+      locationService.emit(
+        const LocationResult.available(
+          UserLocation(latitude: -21.177, longitude: -47.81, accuracy: 3),
+        ),
+      );
+      await pumpEventQueue();
+      final initialLocation = viewModel.userLocation;
+
+      locationService.emit(
+        const LocationResult.available(
+          UserLocation(latitude: -21.1765, longitude: -47.81, accuracy: 3),
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(viewModel.userLocation, same(initialLocation));
+      expect(viewModel.activeTrackPoints, hasLength(1));
+      expect(viewModel.polylines, isEmpty);
+
+      locationService.emit(
+        const LocationResult.available(
+          UserLocation(latitude: -21.177, longitude: -47.81, accuracy: 3),
+        ),
+      );
+      await pumpEventQueue();
+      expect(viewModel.userLocation, same(initialLocation));
+      expect(viewModel.activeTrackPoints, hasLength(1));
     });
 
     test('pauseSession and resumeSession manage state correctly', () async {
@@ -451,7 +512,11 @@ void main() {
       // Emitting location while paused does not add track points
       locationService.emit(
         const LocationResult.available(
-          UserLocation(latitude: -21.177000, longitude: -47.810000, accuracy: 5.0),
+          UserLocation(
+            latitude: -21.177000,
+            longitude: -47.810000,
+            accuracy: 5.0,
+          ),
         ),
       );
       expect(viewModel.activeTrackPoints, isEmpty);
@@ -460,33 +525,54 @@ void main() {
       expect(viewModel.sessionState, equals(SprayingSessionState.recording));
     });
 
-    test('finishSession saves operation locally in draft status offline', () async {
-      viewModel.startLocationTracking();
-      await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
+    test(
+      'finishSession saves operation locally in draft status offline',
+      () async {
+        viewModel.startLocationTracking();
+        await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
 
-      locationService.emit(
-        const LocationResult.available(
-          UserLocation(latitude: -21.177000, longitude: -47.810000, accuracy: 3.0),
-        ),
-      );
-      await pumpEventQueue();
-      locationService.emit(
-        const LocationResult.available(
-          UserLocation(latitude: -21.177050, longitude: -47.810050, accuracy: 3.0),
-        ),
-      );
-      await pumpEventQueue();
+        locationService.emit(
+          const LocationResult.available(
+            UserLocation(
+              latitude: -21.177000,
+              longitude: -47.810000,
+              accuracy: 3.0,
+            ),
+          ),
+        );
+        await pumpEventQueue();
+        locationService.emit(
+          const LocationResult.available(
+            UserLocation(
+              latitude: -21.177050,
+              longitude: -47.810050,
+              accuracy: 3.0,
+            ),
+          ),
+        );
+        await pumpEventQueue();
+        locationService.emit(
+          const LocationResult.available(
+            UserLocation(
+              latitude: -21.177051,
+              longitude: -47.810050,
+              accuracy: 3.0,
+            ),
+          ),
+        );
+        await pumpEventQueue();
 
-      await viewModel.finishSession();
+        await viewModel.finishSession();
 
-      expect(viewModel.sessionState, equals(SprayingSessionState.idle));
-      expect(viewModel.currentOperation, isNull);
-      expect(sprayingRepo.operations.length, equals(1));
-      final savedOp = sprayingRepo.operations.values.first;
-      expect(savedOp.syncStatus, equals(SprayingSyncStatus.draft));
-      expect(savedOp.route, isNotNull);
-      expect(savedOp.trackPoints.length, equals(2));
-    });
+        expect(viewModel.sessionState, equals(SprayingSessionState.idle));
+        expect(viewModel.currentOperation, isNull);
+        expect(sprayingRepo.operations.length, equals(1));
+        final savedOp = sprayingRepo.operations.values.first;
+        expect(savedOp.syncStatus, equals(SprayingSyncStatus.draft));
+        expect(savedOp.route, isNotNull);
+        expect(savedOp.trackPoints.length, equals(2));
+      },
+    );
 
     test('startReviewingOperation calculates affected plants within 9m buffer and loads review state', () async {
       // Set candidate plants in inspection snapshot
@@ -517,19 +603,38 @@ void main() {
 
       locationService.emit(
         const LocationResult.available(
-          UserLocation(latitude: -21.177000, longitude: -47.810000, accuracy: 3.0),
+          UserLocation(
+            latitude: -21.177000,
+            longitude: -47.810000,
+            accuracy: 3.0,
+          ),
         ),
       );
       await pumpEventQueue();
       locationService.emit(
         const LocationResult.available(
-          UserLocation(latitude: -21.177050, longitude: -47.810050, accuracy: 3.0),
+          UserLocation(
+            latitude: -21.177050,
+            longitude: -47.810050,
+            accuracy: 3.0,
+          ),
+        ),
+      );
+      await pumpEventQueue();
+      locationService.emit(
+        const LocationResult.available(
+          UserLocation(
+            latitude: -21.177051,
+            longitude: -47.810050,
+            accuracy: 3.0,
+          ),
         ),
       );
       await pumpEventQueue();
 
       await viewModel.finishSession();
       final savedOp = sprayingRepo.operations.values.first;
+      expect(savedOp.trackPoints.length, 2);
 
       await viewModel.startReviewingOperation(savedOp);
 
@@ -537,7 +642,10 @@ void main() {
       expect(viewModel.reviewingOperation, isNotNull);
       expect(viewModel.reviewedPlants.length, equals(1));
       expect(viewModel.reviewedPlants.first.plantId, equals('plant-near'));
-      expect(viewModel.reviewedPlants.first.matchSource, equals(SprayingMatchSource.autoMatched));
+      expect(
+        viewModel.reviewedPlants.first.matchSource,
+        equals(SprayingMatchSource.autoMatched),
+      );
       expect(viewModel.polylines.isNotEmpty, isTrue);
     });
 
@@ -562,84 +670,108 @@ void main() {
       expect(viewModel.reviewedPlantIds.contains('plant-custom-1'), isFalse);
     });
 
-    test('saveInputsAndComplete validates inputs and saves to repository', () async {
-      viewModel.startLocationTracking();
-      await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
-      locationService.emit(
-        const LocationResult.available(
-          UserLocation(latitude: -21.177000, longitude: -47.810000, accuracy: 3.0),
-        ),
-      );
-      await pumpEventQueue();
-      locationService.emit(
-        const LocationResult.available(
-          UserLocation(latitude: -21.177050, longitude: -47.810050, accuracy: 3.0),
-        ),
-      );
-      await pumpEventQueue();
-      await viewModel.finishSession();
-      final savedOp = sprayingRepo.operations.values.first;
-      await viewModel.startReviewingOperation(savedOp);
-
-      // Empty inputs should fail validation
-      await viewModel.saveInputsAndComplete(inputs: []);
-      expect(viewModel.errorMessage, isNotNull);
-      expect(viewModel.isReviewing, isTrue);
-
-      // With valid inputs
-      await viewModel.saveInputsAndComplete(
-        inputs: const [
-          SprayingInput(
-            localId: 'inp-1',
-            inputType: 'fungicide',
-            productName: 'Score',
+    test(
+      'saveInputsAndComplete validates inputs and saves to repository',
+      () async {
+        viewModel.startLocationTracking();
+        await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
+        locationService.emit(
+          const LocationResult.available(
+            UserLocation(
+              latitude: -21.177000,
+              longitude: -47.810000,
+              accuracy: 3.0,
+            ),
           ),
-        ],
-        notes: 'Concluído normalmente',
-      );
+        );
+        await pumpEventQueue();
+        locationService.emit(
+          const LocationResult.available(
+            UserLocation(
+              latitude: -21.177050,
+              longitude: -47.810050,
+              accuracy: 3.0,
+            ),
+          ),
+        );
+        await pumpEventQueue();
+        locationService.emit(
+          const LocationResult.available(
+            UserLocation(
+              latitude: -21.177051,
+              longitude: -47.810050,
+              accuracy: 3.0,
+            ),
+          ),
+        );
+        await pumpEventQueue();
+        await viewModel.finishSession();
+        final savedOp = sprayingRepo.operations.values.first;
+        await viewModel.startReviewingOperation(savedOp);
 
-      expect(viewModel.sessionState, equals(SprayingSessionState.idle));
-      expect(viewModel.isReviewing, isFalse);
-      expect(viewModel.feedbackMessage, isNotNull);
-      expect(viewModel.currentOperation, isNull);
-      expect(sprayingRepo.operations.length, equals(1));
-      expect(
-        sprayingRepo.operations.values.first.syncStatus,
-        equals(SprayingSyncStatus.reviewed),
-      );
-    });
+        // Empty inputs should fail validation
+        await viewModel.saveInputsAndComplete(inputs: []);
+        expect(viewModel.errorMessage, isNotNull);
+        expect(viewModel.isReviewing, isTrue);
 
-    test('syncOperation performs atomic synchronization with Supabase RPC', () async {
-      // Create a reviewed operation in local repo
-      final op = SprayingOperation(
-        localId: 'op-ready-1',
-        zoneId: 'zone-1',
-        startedAt: DateTime.now().toUtc(),
-        finishedAt: DateTime.now().toUtc(),
-        operatorName: 'João',
-        syncStatus: SprayingSyncStatus.reviewed,
-        route: SprayingRoute(
-          localId: 'r-1',
-          geojson: const {'type': 'LineString', 'coordinates': []},
-          distanceMeters: 100.0,
+        // With valid inputs
+        await viewModel.saveInputsAndComplete(
+          inputs: const [
+            SprayingInput(
+              localId: 'inp-1',
+              inputType: 'fungicide',
+              productName: 'Score',
+            ),
+          ],
+          notes: 'Concluído normalmente',
+        );
+
+        expect(viewModel.sessionState, equals(SprayingSessionState.idle));
+        expect(viewModel.isReviewing, isFalse);
+        expect(viewModel.feedbackMessage, isNotNull);
+        expect(viewModel.currentOperation, isNull);
+        expect(sprayingRepo.operations.length, equals(1));
+        expect(
+          sprayingRepo.operations.values.first.syncStatus,
+          equals(SprayingSyncStatus.reviewed),
+        );
+      },
+    );
+
+    test(
+      'syncOperation performs atomic synchronization with Supabase RPC',
+      () async {
+        // Create a reviewed operation in local repo
+        final op = SprayingOperation(
+          localId: 'op-ready-1',
+          zoneId: 'zone-1',
           startedAt: DateTime.now().toUtc(),
           finishedAt: DateTime.now().toUtc(),
-        ),
-      );
-      await sprayingRepo.saveOperation(op);
-      await viewModel.loadLocalOperations();
+          operatorName: 'João',
+          syncStatus: SprayingSyncStatus.reviewed,
+          route: SprayingRoute(
+            localId: 'r-1',
+            geojson: const {'type': 'LineString', 'coordinates': []},
+            distanceMeters: 100.0,
+            startedAt: DateTime.now().toUtc(),
+            finishedAt: DateTime.now().toUtc(),
+          ),
+        );
+        await sprayingRepo.saveOperation(op);
+        await viewModel.loadLocalOperations();
 
-      expect(viewModel.localOperations.length, equals(1));
+        expect(viewModel.localOperations.length, equals(1));
 
-      await viewModel.syncOperation('op-ready-1');
+        await viewModel.syncOperation('op-ready-1');
 
-      expect(sprayingRepo.syncCallCount, equals(1));
-      expect(viewModel.feedbackMessage, contains('Sincronizado com sucesso'));
-      expect(
-        sprayingRepo.operations['op-ready-1']!.syncStatus,
-        equals(SprayingSyncStatus.synced),
-      );
-    });
+        expect(sprayingRepo.syncCallCount, equals(1));
+        expect(viewModel.feedbackMessage, contains('Sincronizado com sucesso'));
+        expect(
+          sprayingRepo.operations['op-ready-1']!.syncStatus,
+          equals(SprayingSyncStatus.synced),
+        );
+      },
+    );
 
     test('cancelSession removes ongoing operation and resets state', () async {
       await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');

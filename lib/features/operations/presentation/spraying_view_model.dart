@@ -15,6 +15,7 @@ import '../data/inspection_repository.dart';
 import '../data/spraying_repository.dart';
 import '../domain/inspection_models.dart';
 import '../domain/spraying_geometry_service.dart';
+import '../domain/spraying_location_filter.dart';
 import '../domain/spraying_models.dart';
 import 'inspection_view_model.dart';
 
@@ -65,6 +66,7 @@ class SprayingViewModel extends ChangeNotifier {
   // --- Localização ---
   UserLocation? _userLocation;
   UserLocation? get userLocation => _userLocation;
+  final SprayingLocationFilter _locationFilter = SprayingLocationFilter();
 
   StreamSubscription<LocationResult>? _locationSubscription;
   bool _isLocationActive = false;
@@ -87,9 +89,7 @@ class SprayingViewModel extends ChangeNotifier {
     if (_selectedZoneFilterId == null) {
       return _allPlants;
     }
-    return _allPlants
-        .where((p) => p.zoneId == _selectedZoneFilterId)
-        .toList();
+    return _allPlants.where((p) => p.zoneId == _selectedZoneFilterId).toList();
   }
 
   // --- Sessão de Pulverização ---
@@ -174,15 +174,22 @@ class SprayingViewModel extends ChangeNotifier {
   Set<Polyline> get polylines {
     if (_sessionState == SprayingSessionState.recording ||
         _sessionState == SprayingSessionState.paused) {
-      if (_activeTrackPoints.length < 2) return const {};
+      final points = _activeTrackPoints
+          .map((tp) => LatLng(tp.latitude, tp.longitude))
+          .toList();
+
+      if (points.length < 2) return const {};
+
       return {
         Polyline(
           polylineId: const PolylineId('spraying_active_route'),
-          color: const Color(0xFF15803D), // Green primary
-          width: 5,
-          points: _activeTrackPoints
-              .map((tp) => LatLng(tp.latitude, tp.longitude))
-              .toList(),
+          color: const Color(0xFF16A34A), // Green primary
+          width: 6,
+          patterns: <PatternItem>[PatternItem.dot, PatternItem.gap(10)],
+          jointType: JointType.round,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          points: points,
         ),
       };
     }
@@ -193,7 +200,11 @@ class SprayingViewModel extends ChangeNotifier {
           Polyline(
             polylineId: const PolylineId('spraying_review_route'),
             color: const Color(0xFF2563EB), // Blue review route
-            width: 5,
+            width: 6,
+            patterns: <PatternItem>[PatternItem.dot, PatternItem.gap(10)],
+            jointType: JointType.round,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
             points: pts.map((tp) => LatLng(tp.latitude, tp.longitude)).toList(),
           ),
         };
@@ -282,9 +293,11 @@ class SprayingViewModel extends ChangeNotifier {
     _locationSubscription = locationService.watchLocation().listen((result) {
       if (result.availability == LocationAvailability.available &&
           result.location != null) {
-        _userLocation = result.location;
+        final accepted = _locationFilter.add(result.location!);
+        if (accepted == null) return;
+        _userLocation = accepted;
         if (_sessionState == SprayingSessionState.recording) {
-          _recordTrackPoint(result.location!);
+          _recordTrackPoint(accepted);
         }
         notifyListeners();
       }
@@ -298,10 +311,8 @@ class SprayingViewModel extends ChangeNotifier {
   }
 
   void _recordTrackPoint(UserLocation loc) {
-    // Descarta coordenadas com precisão extremamente baixa (> 50 metros)
-    if (loc.accuracy != null && loc.accuracy! > 50.0) return;
+    if (loc.accuracy == null || loc.accuracy! > 12) return;
 
-    // Se já houver um ponto anterior muito próximo (< 1 metro), evita redundância
     if (_activeTrackPoints.isNotEmpty) {
       final last = _activeTrackPoints.last;
       final dist = geometryService.haversineDistanceMeters(
@@ -310,12 +321,12 @@ class SprayingViewModel extends ChangeNotifier {
         loc.latitude,
         loc.longitude,
       );
-      if (dist < 1.0) return;
+      if (dist < 2.5) return;
     }
 
     final tp = SprayingTrackPoint(
       localId: const Uuid().v4(),
-      recordedAt: DateTime.now().toUtc(),
+      recordedAt: loc.timestamp?.toUtc() ?? DateTime.now().toUtc(),
       latitude: loc.latitude,
       longitude: loc.longitude,
       accuracyM: loc.accuracy,
@@ -327,7 +338,9 @@ class SprayingViewModel extends ChangeNotifier {
     );
 
     if (_currentOperation != null) {
-      unawaited(sprayingRepository.addTrackPoint(_currentOperation!.localId, tp));
+      unawaited(
+        sprayingRepository.addTrackPoint(_currentOperation!.localId, tp),
+      );
     }
     notifyListeners();
   }
@@ -345,10 +358,12 @@ class SprayingViewModel extends ChangeNotifier {
   }) async {
     final opId = const Uuid().v4();
     final now = DateTime.now().toUtc();
-    final resolvedZoneId = zoneId ??
+    final resolvedZoneId =
+        zoneId ??
         _selectedZoneFilterId ??
         (_zones.isNotEmpty ? _zones.first.id : 'geral');
-    final resolvedOperator = (operatorName != null && operatorName.trim().isNotEmpty)
+    final resolvedOperator =
+        (operatorName != null && operatorName.trim().isNotEmpty)
         ? operatorName.trim()
         : 'Operador';
 
@@ -372,8 +387,10 @@ class SprayingViewModel extends ChangeNotifier {
 
     await sprayingRepository.saveOperation(_currentOperation!);
 
-    // Grava o primeiro ponto imediatamente se tivermos localização atual
-    if (_userLocation != null) {
+    if (_userLocation != null &&
+        _userLocation!.timestamp != null &&
+        DateTime.now().toUtc().difference(_userLocation!.timestamp!.toUtc()) <
+            const Duration(seconds: 5)) {
       _recordTrackPoint(_userLocation!);
     }
 
@@ -403,12 +420,17 @@ class SprayingViewModel extends ChangeNotifier {
       return;
     }
 
+    final wasRecording = _sessionState == SprayingSessionState.recording;
     _sessionState = SprayingSessionState.finished;
     final now = DateTime.now().toUtc();
 
     if (_currentOperation != null) {
       // Garante captura do ponto final se houver localização atual
-      if (_userLocation != null) {
+      if (wasRecording &&
+          _userLocation != null &&
+          _userLocation!.timestamp != null &&
+          now.difference(_userLocation!.timestamp!.toUtc()) <
+              const Duration(seconds: 5)) {
         if (_activeTrackPoints.isEmpty) {
           _recordTrackPoint(_userLocation!);
         } else {
@@ -432,8 +454,12 @@ class SprayingViewModel extends ChangeNotifier {
       );
 
       final routeId = const Uuid().v4();
-      final geojson = geometryService.buildLineStringGeoJson(_activeTrackPoints);
-      final dist = geometryService.calculateTotalDistanceMeters(_activeTrackPoints);
+      final geojson = geometryService.buildLineStringGeoJson(
+        _activeTrackPoints,
+      );
+      final dist = geometryService.calculateTotalDistanceMeters(
+        _activeTrackPoints,
+      );
 
       final route = SprayingRoute(
         localId: routeId,
@@ -453,8 +479,7 @@ class SprayingViewModel extends ChangeNotifier {
       await sprayingRepository.saveRoute(_currentOperation!.localId, route);
       await sprayingRepository.saveOperation(_currentOperation!);
 
-      _feedbackMessage =
-          'Pulverização finalizada e salva localmente! Abra a lista de pulverizações para revisar e sincronizar.';
+      _feedbackMessage = 'Pulverização finalizada e salva localmente! Abra a lista de pulverizações para revisar e sincronizar.';
       _sessionState = SprayingSessionState.idle;
       _currentOperation = null;
       _activeTrackPoints = [];
@@ -486,7 +511,10 @@ class SprayingViewModel extends ChangeNotifier {
           maxDistanceMeters: 9.0,
         );
         _reviewedPlants = List.from(calculated);
-        await sprayingRepository.saveConfirmedPlants(op.localId, _reviewedPlants);
+        await sprayingRepository.saveConfirmedPlants(
+          op.localId,
+          _reviewedPlants,
+        );
       } catch (e) {
         _errorMessage = 'Erro ao determinar plantas afetadas: $e';
       }
@@ -577,8 +605,7 @@ class SprayingViewModel extends ChangeNotifier {
       operatorName: operatorName ?? targetOp.operatorName,
       title: title ?? targetOp.title,
       machineName: machineName ?? targetOp.machineName,
-      tractorIdentifier:
-          tractorIdentifier ?? targetOp.tractorIdentifier,
+      tractorIdentifier: tractorIdentifier ?? targetOp.tractorIdentifier,
       notes: notes ?? targetOp.notes,
       syncStatus: SprayingSyncStatus.reviewed,
       inputs: inputs,
@@ -653,7 +680,8 @@ class SprayingViewModel extends ChangeNotifier {
 
     try {
       final syncedCount = await sprayingRepository.syncAllReviewed();
-      _feedbackMessage = '$syncedCount pulverizações sincronizadas com sucesso!';
+      _feedbackMessage =
+          '$syncedCount pulverizações sincronizadas com sucesso!';
       await loadLocalOperations();
       _isSyncing = false;
       notifyListeners();
