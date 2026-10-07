@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -21,6 +23,67 @@ class FakeLocationService implements LocationService {
   Stream<LocationResult> watchLocation() => Stream.value(
         const LocationResult.available(UserLocation(latitude: -23.1, longitude: -46.1)),
       );
+}
+
+class ControlledLocationService implements LocationService {
+  final _controller = StreamController<LocationResult>.broadcast();
+  int watchCallCount = 0;
+
+  @override
+  Future<LocationResult> getCurrentLocation() async =>
+      const LocationResult.serviceDisabled();
+
+  @override
+  Stream<LocationResult> watchLocation() {
+    watchCallCount++;
+    return _controller.stream;
+  }
+
+  void emitStableLocation({
+    required double latitude,
+    required double longitude,
+    required DateTime endTimestamp,
+  }) {
+    for (var millisecondsAgo = 2000;
+        millisecondsAgo >= 0;
+        millisecondsAgo -= 1000) {
+      _controller.add(
+        LocationResult.available(
+          UserLocation(
+            latitude: latitude,
+            longitude: longitude,
+            accuracy: 3,
+            timestamp: endTimestamp.subtract(
+              Duration(milliseconds: millisecondsAgo),
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  void emitMovement({
+    required double latitude,
+    required double longitude,
+    required DateTime startTimestamp,
+  }) {
+    for (var index = 1; index <= 3; index++) {
+      _controller.add(
+        LocationResult.available(
+          UserLocation(
+            latitude: latitude,
+            longitude: longitude,
+            accuracy: 3,
+            timestamp: startTimestamp.add(
+              Duration(milliseconds: index * 100),
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> dispose() => _controller.close();
 }
 
 class FakeWidgetInspectionRepository implements InspectionRepository {
@@ -302,6 +365,72 @@ void main() {
       }
     }
     await tester.binding.setSurfaceSize(null);
+  });
+
+  testWidgets('shows signal overlay until inspection GPS stabilizes', (tester) async {
+    final controlledLocation = ControlledLocationService();
+    final controlledViewModel = InspectionViewModel(
+      repository: repo,
+      locationService: controlledLocation,
+    );
+    addTearDown(controlledViewModel.dispose);
+    addTearDown(controlledLocation.dispose);
+
+    await tester.pumpWidget(buildTestWidget(viewModel: controlledViewModel));
+    await tester.pump();
+
+    expect(find.text('Aguardando sinal estabilizar'), findsOneWidget);
+
+    controlledLocation.emitStableLocation(
+      latitude: -23.1,
+      longitude: -46.1,
+      endTimestamp: DateTime.now().toUtc(),
+    );
+    await tester.pump();
+
+    expect(find.text('Aguardando sinal estabilizar'), findsNothing);
+    expect(controlledViewModel.userLocation?.latitude, -23.1);
+  });
+
+  testWidgets('keeps GPS tracking while plant editor modal is open', (tester) async {
+    final controlledLocation = ControlledLocationService();
+    final controlledViewModel = InspectionViewModel(
+      repository: repo,
+      locationService: controlledLocation,
+    );
+    addTearDown(controlledViewModel.dispose);
+    addTearDown(controlledLocation.dispose);
+
+    await tester.pumpWidget(buildTestWidget(viewModel: controlledViewModel));
+    await tester.pump();
+
+    final stabilizedAt = DateTime.now().toUtc();
+    controlledLocation.emitStableLocation(
+      latitude: -23.1,
+      longitude: -46.1,
+      endTimestamp: stabilizedAt,
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('map-plant-plant-1')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PlantEditorModal), findsOneWidget);
+
+    controlledLocation.emitMovement(
+      latitude: -23.09996,
+      longitude: -46.1,
+      startTimestamp: stabilizedAt,
+    );
+    await tester.pump();
+
+    expect(controlledLocation.watchCallCount, 1);
+    expect(controlledViewModel.userLocation?.latitude, -23.09996);
+
+    await tester.tap(find.byTooltip('Fechar'));
+    await tester.pumpAndSettle();
+
+    expect(controlledLocation.watchCallCount, 1);
+    expect(controlledViewModel.userLocation?.latitude, -23.09996);
   });
 
   testWidgets('map long press opens added plant modal and double tap removes it', (tester) async {
@@ -846,4 +975,3 @@ void main() {
     expect(repo.setNonExistentCalls, 1);
   });
 }
-

@@ -245,9 +245,11 @@ void main() {
 
   test('location handling for GPS states and messages', () async {
     viewModel.resumeLocation();
+    expect(viewModel.isWaitingForStableLocation, isTrue);
 
     locationService.emit(const LocationResult.permissionDenied());
     await Future<void>.delayed(Duration.zero);
+    expect(viewModel.isWaitingForStableLocation, isFalse);
     expect(viewModel.locationMessage, contains('Permita o acesso'));
     expect(viewModel.canShowUserLocation, isFalse);
 
@@ -276,6 +278,30 @@ void main() {
     expect(viewModel.locationMessage, isNull);
     expect(viewModel.canShowUserLocation, isTrue);
     expect(viewModel.userLocation?.latitude, -23.5);
+    expect(viewModel.isWaitingForStableLocation, isFalse);
+  });
+
+  test('pause preserves the last stable position', () async {
+    viewModel.resumeLocation();
+    final now = DateTime.now().toUtc();
+    for (var secondsAgo = 2; secondsAgo >= 0; secondsAgo--) {
+      locationService.emit(
+        LocationResult.available(
+          UserLocation(
+            latitude: -23.5,
+            longitude: -46.5,
+            accuracy: 3,
+            timestamp: now.subtract(Duration(seconds: secondsAgo)),
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    viewModel.pauseLocation();
+
+    expect(viewModel.userLocation?.latitude, -23.5);
+    expect(viewModel.canShowUserLocation, isTrue);
   });
 
   test('initialization cannot reactivate GPS on a hidden route', () async {

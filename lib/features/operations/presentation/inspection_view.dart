@@ -20,6 +20,7 @@ import '../domain/inspection_models.dart';
 import 'inspection_view_model.dart';
 import 'widgets/inspection_action_card.dart';
 import 'widgets/plant_editor_modal.dart';
+import 'widgets/spraying_signal_overlay.dart';
 
 class InspectionMapConfig {
   const InspectionMapConfig({
@@ -80,6 +81,8 @@ class _InspectionViewState extends State<InspectionView> {
   bool _userHasInteractedWithMap = false;
   String? _focusedZoneFilterId;
   String? _focusedOccurrenceFilterId;
+  bool _isOperationSectionActive = true;
+  ModalRoute<dynamic>? _route;
 
   void _markersChanged() {
     if (mounted) setState(() => _markers = _plantLayer.markers);
@@ -102,7 +105,15 @@ class _InspectionViewState extends State<InspectionView> {
     });
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _isOperationSectionActive = MapActivity.of(context);
+    _route = ModalRoute.of(context);
+  }
+
   InspectionViewModel? _fallbackVm;
+  InspectionViewModel? _activeVm;
 
   InspectionViewModel get _effectiveViewModel {
     final scope = AppScope.maybeOf(context);
@@ -127,10 +138,32 @@ class _InspectionViewState extends State<InspectionView> {
 
   @override
   void dispose() {
+    _activeVm?.pauseLocation();
     _plantLayer.dispose();
     _mapController = null;
     _fallbackVm?.dispose();
     super.dispose();
+  }
+
+  void _handleMapActivityChanged(InspectionViewModel vm, bool active) {
+    if (active) {
+      vm.resumeLocation();
+      return;
+    }
+
+    _mapController = null;
+    _plantLayer.controller = null;
+
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    final isAppForeground =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
+    final isRouteActive = _route?.isActive ?? true;
+
+    // A modal hides the native map surface, but the inspection still needs
+    // fresh GPS samples for the user's marker and saved plant changes.
+    if (!isAppForeground || !_isOperationSectionActive || !isRouteActive) {
+      vm.pauseLocation();
+    }
   }
 
   Future<void> _loadUserMarkerIcon() async {
@@ -626,6 +659,7 @@ class _InspectionViewState extends State<InspectionView> {
   @override
   Widget build(BuildContext context) {
     final vm = _effectiveViewModel;
+    _activeVm = vm;
 
     return ListenableBuilder(
       listenable: vm,
@@ -680,201 +714,214 @@ class _InspectionViewState extends State<InspectionView> {
                 ),
             ],
           ),
-          body: Column(
+          body: Stack(
             children: [
-              // Map Area
-              Expanded(
-                child: Stack(
-                  children: [
-                    if (widget.mapBuilder != null)
-                      widget.mapBuilder!(context, mapConfig)
-                    else
-                      Listener(
-                        onPointerDown: (_) => _userHasInteractedWithMap = true,
-                        child: ActiveMapSurface(
-                          onActivityChanged: (active) {
-                            if (active) {
-                              vm.resumeLocation();
-                            } else {
-                              vm.pauseLocation();
-                              _mapController = null;
-                              _plantLayer.controller = null;
-                            }
-                          },
-                          builder: (_) => GoogleMap(
-                            key: const ValueKey('inspection-google-map'),
-                            mapType: MapType.satellite,
-                            initialCameraPosition:
-                                _savedCamera ??
-                                const CameraPosition(
-                                  target: _fallbackPosition,
-                                  zoom: 17,
-                                ),
-                            onCameraIdle: () {
-                              _plantLayer.cameraIdle();
-                              if (vm.userLocation case final location?) {
-                                _userMapNavigator.invalidate();
-                                _followUser(location);
-                              }
-                            },
-                            onCameraMove: (position) => _savedCamera = position,
-                            markers: {
-                              ..._markers,
-                              ..._addedPlantMarkers(vm),
-                              if (vm.userLocation case final location?)
-                                Marker(
-                                  markerId: const MarkerId('inspection_user'),
-                                  position: LatLng(
-                                    location.latitude,
-                                    location.longitude,
+              Column(
+                children: [
+                  // Map Area
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        Listener(
+                          onPointerDown: (_) =>
+                              _userHasInteractedWithMap = true,
+                          child: ActiveMapSurface(
+                            onActivityChanged: (active) =>
+                                _handleMapActivityChanged(vm, active),
+                            builder: (_) => widget.mapBuilder != null
+                                ? widget.mapBuilder!(context, mapConfig)
+                                : GoogleMap(
+                                    key: const ValueKey(
+                                      'inspection-google-map',
+                                    ),
+                                    mapType: MapType.satellite,
+                                    initialCameraPosition:
+                                        _savedCamera ??
+                                        const CameraPosition(
+                                          target: _fallbackPosition,
+                                          zoom: 17,
+                                        ),
+                                    onCameraIdle: () {
+                                      _plantLayer.cameraIdle();
+                                      if (vm.userLocation
+                                          case final location?) {
+                                        _userMapNavigator.invalidate();
+                                        _followUser(location);
+                                      }
+                                    },
+                                    onCameraMove: (position) =>
+                                        _savedCamera = position,
+                                    markers: {
+                                      ..._markers,
+                                      ..._addedPlantMarkers(vm),
+                                      if (vm.userLocation case final location?)
+                                        Marker(
+                                          markerId: const MarkerId(
+                                            'inspection_user',
+                                          ),
+                                          position: LatLng(
+                                            location.latitude,
+                                            location.longitude,
+                                          ),
+                                          icon:
+                                              _userMarkerIcon ??
+                                              BitmapDescriptor.defaultMarkerWithHue(
+                                                BitmapDescriptor.hueAzure,
+                                              ),
+                                          anchor: const Offset(0.5, 0.5),
+                                          zIndexInt: 1000,
+                                        ),
+                                    },
+                                    polygons: vm.polygons,
+                                    myLocationEnabled: false,
+                                    myLocationButtonEnabled: false,
+                                    onLongPress: (position) =>
+                                        _showAddPlantModal(vm, position),
+                                    onMapCreated: (controller) {
+                                      _mapController = controller;
+                                      _plantLayer.controller = controller;
+                                      _plantLayer.cameraIdle();
+                                      unawaited(_fitCamera(vm));
+                                      if (vm.userLocation
+                                          case final location?) {
+                                        _followUser(location);
+                                      }
+                                    },
                                   ),
-                                  icon:
-                                      _userMarkerIcon ??
-                                      BitmapDescriptor.defaultMarkerWithHue(
-                                        BitmapDescriptor.hueAzure,
-                                      ),
-                                  anchor: const Offset(0.5, 0.5),
-                                  zIndexInt: 1000,
-                                ),
-                            },
-                            polygons: vm.polygons,
-                            myLocationEnabled: false,
-                            myLocationButtonEnabled: false,
-                            onLongPress: (position) =>
-                                _showAddPlantModal(vm, position),
-                            onMapCreated: (controller) {
-                              _mapController = controller;
-                              _plantLayer.controller = controller;
-                              _plantLayer.cameraIdle();
-                              unawaited(_fitCamera(vm));
-                              if (vm.userLocation case final location?) {
-                                _followUser(location);
-                              }
-                            },
                           ),
                         ),
-                      ),
 
-                    // Loading overlay
-                    if (vm.loadStatus == InspectionLoadStatus.loading)
-                      const Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: LinearProgressIndicator(),
-                      ),
+                        // Loading overlay
+                        if (vm.loadStatus == InspectionLoadStatus.loading)
+                          const Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: LinearProgressIndicator(),
+                          ),
 
-                    // Status Banners
-                    if (vm.loadStatus == InspectionLoadStatus.empty)
-                      _StatusBanner(
-                        key: const ValueKey('inspection-empty-banner'),
-                        message: 'Nenhuma planta encontrada.',
-                        icon: Icons.info_outline,
-                      ),
+                        // Status Banners
+                        if (vm.loadStatus == InspectionLoadStatus.empty)
+                          _StatusBanner(
+                            key: const ValueKey('inspection-empty-banner'),
+                            message: 'Nenhuma planta encontrada.',
+                            icon: Icons.info_outline,
+                          ),
 
-                    if (vm.loadStatus == InspectionLoadStatus.error)
-                      _StatusBanner(
-                        key: const ValueKey('inspection-error-banner'),
-                        message: vm.errorMessage ?? 'Erro ao carregar plantas.',
-                        icon: Icons.error_outline,
-                        actionLabel: 'Tentar novamente',
-                        onAction: () => vm.loadPlants(),
-                      ),
+                        if (vm.loadStatus == InspectionLoadStatus.error)
+                          _StatusBanner(
+                            key: const ValueKey('inspection-error-banner'),
+                            message:
+                                vm.errorMessage ?? 'Erro ao carregar plantas.',
+                            icon: Icons.error_outline,
+                            actionLabel: 'Tentar novamente',
+                            onAction: () => vm.loadPlants(),
+                          ),
 
-                    // Active filter badge (Zone and/or Occurrence)
-                    if (vm.isFiltered)
-                      Positioned(
-                        top: 12,
-                        left: 16,
-                        right: 16,
-                        child: Center(
-                          child: Material(
-                            elevation: 4,
-                            borderRadius: BorderRadius.circular(20),
-                            color: Theme.of(context).colorScheme.surface,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 8,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    vm.selectedOccurrenceFilter != null
-                                        ? Icons.pest_control_outlined
-                                        : Icons.grid_view_rounded,
-                                    size: 18,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .primary,
+                        // Active filter badge (Zone and/or Occurrence)
+                        if (vm.isFiltered)
+                          Positioned(
+                            top: 12,
+                            left: 16,
+                            right: 16,
+                            child: Center(
+                              child: Material(
+                                elevation: 4,
+                                borderRadius: BorderRadius.circular(20),
+                                color: Theme.of(context).colorScheme.surface,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
                                   ),
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    child: Text(
-                                      _buildFilterBadgeLabel(vm),
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  InkWell(
-                                    key: const ValueKey(
-                                      'clear-occurrence-filter-button',
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                    onTap: () => vm.clearAllFilters(),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(2),
-                                      child: Icon(
-                                        Icons.close,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        vm.selectedOccurrenceFilter != null
+                                            ? Icons.pest_control_outlined
+                                            : Icons.grid_view_rounded,
                                         size: 18,
                                         color: Theme.of(context)
                                             .colorScheme
-                                            .onSurfaceVariant,
+                                            .primary,
                                       ),
-                                    ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          _buildFilterBadgeLabel(vm),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      InkWell(
+                                        key: const ValueKey(
+                                          'clear-occurrence-filter-button',
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                        onTap: () => vm.clearAllFilters(),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(2),
+                                          child: Icon(
+                                            Icons.close,
+                                            size: 18,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
 
-                    // Empty filter banner
-                    if (vm.loadStatus == InspectionLoadStatus.success &&
-                        vm.isFiltered &&
-                        vm.plants.isEmpty)
-                      _StatusBanner(
-                        key: const ValueKey('inspection-empty-filter-banner'),
-                        message: 'Nenhuma planta encontrada com os filtros selecionados.',
-                        icon: Icons.filter_alt_off_outlined,
-                        actionLabel: 'Mostrar todas',
-                        onAction: () => vm.clearAllFilters(),
-                      ),
+                        // Empty filter banner
+                        if (vm.loadStatus == InspectionLoadStatus.success &&
+                            vm.isFiltered &&
+                            vm.plants.isEmpty)
+                          _StatusBanner(
+                            key: const ValueKey(
+                              'inspection-empty-filter-banner',
+                            ),
+                            message: 'Nenhuma planta encontrada com os filtros selecionados.',
+                            icon: Icons.filter_alt_off_outlined,
+                            actionLabel: 'Mostrar todas',
+                            onAction: () => vm.clearAllFilters(),
+                          ),
 
-                    if (vm.locationMessage case final message?)
-                      Positioned(
-                        bottom: 8,
-                        left: 16,
-                        right: 16,
-                        child: _StatusBanner(
-                          message: message,
-                          icon: Icons.location_off_outlined,
-                        ),
-                      ),
-                  ],
-                ),
+                        if (vm.locationMessage case final message?)
+                          Positioned(
+                            bottom: 8,
+                            left: 16,
+                            right: 16,
+                            child: _StatusBanner(
+                              message: message,
+                              icon: Icons.location_off_outlined,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // Bottom Action Card
+                  InspectionActionCard(viewModel: vm),
+                ],
               ),
-
-              // Bottom Action Card
-              InspectionActionCard(viewModel: vm),
+              if (vm.isWaitingForStableLocation)
+                Positioned.fill(
+                  child: SprayingSignalOverlay(
+                    onCancel: vm.cancelStableLocationWait,
+                  ),
+                ),
             ],
           ),
         );
