@@ -255,11 +255,23 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(viewModel.locationMessage, contains('Ative o serviço'));
 
-    locationService.emit(
-      const LocationResult.available(
-        UserLocation(latitude: -23.5, longitude: -46.5),
-      ),
-    );
+    final now = DateTime.now().toUtc();
+    for (var secondsAgo = 2; secondsAgo >= 0; secondsAgo--) {
+      locationService.emit(
+        LocationResult.available(
+          UserLocation(
+            latitude: -23.5,
+            longitude: -46.5,
+            accuracy: 3,
+            timestamp: now.subtract(Duration(seconds: secondsAgo)),
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      if (secondsAgo > 0) {
+        expect(viewModel.canShowUserLocation, isFalse);
+      }
+    }
     await Future<void>.delayed(Duration.zero);
     expect(viewModel.locationMessage, isNull);
     expect(viewModel.canShowUserLocation, isTrue);
@@ -418,55 +430,64 @@ void main() {
     expect(viewModel.feedbackMessage, 'Planta removida com sucesso');
   });
 
-  test('addPlantAt stores added plant without changing local inspections', () async {
-    viewModel.setZones([
-      const Zone(id: 'zone-1', name: 'Zona 1', code: 'Z1'),
-    ]);
-    viewModel.filterByZone('zone-1');
-    repo.localList = [
-      LocalInspection(
-        id: 'draft-1',
-        startedAt: DateTime.now(),
-        status: InspectionSyncStatus.pending,
-        plantsCount: 1,
-        changesCount: 1,
-      ),
-    ];
-    await viewModel.refreshLocalInspections();
+  test(
+    'addPlantAt stores added plant without changing local inspections',
+    () async {
+      viewModel.setZones([
+        const Zone(id: 'zone-1', name: 'Zona 1', code: 'Z1'),
+      ]);
+      viewModel.filterByZone('zone-1');
+      repo.localList = [
+        LocalInspection(
+          id: 'draft-1',
+          startedAt: DateTime.now(),
+          status: InspectionSyncStatus.pending,
+          plantsCount: 1,
+          changesCount: 1,
+        ),
+      ];
+      await viewModel.refreshLocalInspections();
 
-    await viewModel.addPlantAt(
-      latitude: -23.45,
-      longitude: -46.67,
-      nonExistent: true,
-    );
+      await viewModel.addPlantAt(
+        latitude: -23.45,
+        longitude: -46.67,
+        nonExistent: true,
+      );
 
-    expect(repo.addPlantCallCount, 1);
-    expect(viewModel.addedPlants, hasLength(1));
-    expect(viewModel.addedPlants.single.nonExistent, isTrue);
-    expect(viewModel.addedPlants.single.zoneId, 'zone-1');
-    expect(viewModel.localInspections, hasLength(1));
-    expect(viewModel.feedbackMessage, 'Planta salva no dispositivo');
-  });
+      expect(repo.addPlantCallCount, 1);
+      expect(viewModel.addedPlants, hasLength(1));
+      expect(viewModel.addedPlants.single.nonExistent, isTrue);
+      expect(viewModel.addedPlants.single.zoneId, 'zone-1');
+      expect(viewModel.localInspections, hasLength(1));
+      expect(viewModel.feedbackMessage, 'Planta salva no dispositivo');
+    },
+  );
 
-  test('syncPendingAddedPlants refreshes separate queue and feedback', () async {
-    await viewModel.addPlantAt(
-      latitude: -23.45,
-      longitude: -46.67,
-      nonExistent: false,
-      zoneId: 'zone-2',
-    );
+  test(
+    'syncPendingAddedPlants refreshes separate queue and feedback',
+    () async {
+      await viewModel.addPlantAt(
+        latitude: -23.45,
+        longitude: -46.67,
+        nonExistent: false,
+        zoneId: 'zone-2',
+      );
 
-    await viewModel.syncPendingAddedPlants();
+      await viewModel.syncPendingAddedPlants();
 
-    expect(repo.syncAddedPlantsCallCount, 1);
-    expect(viewModel.addedPlants.single.status, InspectionSyncStatus.synced);
-    expect(viewModel.addedPlants.single.remotePlantId, 'remote-added-1');
-    expect(viewModel.allPlants.map((plant) => plant.id), contains('remote-added-1'));
-    expect(viewModel.plantById('remote-added-1')?.latitude, -23.45);
-    expect(viewModel.plantById('remote-added-1')?.longitude, -46.67);
-    expect(viewModel.plantById('remote-added-1')?.zoneId, 'zone-2');
-    expect(viewModel.feedbackMessage, 'Plantas sincronizadas com sucesso!');
-  });
+      expect(repo.syncAddedPlantsCallCount, 1);
+      expect(viewModel.addedPlants.single.status, InspectionSyncStatus.synced);
+      expect(viewModel.addedPlants.single.remotePlantId, 'remote-added-1');
+      expect(
+        viewModel.allPlants.map((plant) => plant.id),
+        contains('remote-added-1'),
+      );
+      expect(viewModel.plantById('remote-added-1')?.latitude, -23.45);
+      expect(viewModel.plantById('remote-added-1')?.longitude, -46.67);
+      expect(viewModel.plantById('remote-added-1')?.zoneId, 'zone-2');
+      expect(viewModel.feedbackMessage, 'Plantas sincronizadas com sucesso!');
+    },
+  );
 
   test('removeAddedPlant refreshes separate queue', () async {
     await viewModel.addPlantAt(
@@ -657,32 +678,35 @@ void main() {
     },
   );
 
-  test('stagedNonExistent is initialized from plant and toggles correctly', () async {
-    final plant = InspectionPlant(
-      id: 'p-toggle',
-      latitude: -23.1,
-      longitude: -46.1,
-      nonExistent: false,
-    );
-    repo.currentSnapshot = InspectionSnapshot(
-      plants: [plant],
-      types: const [],
-      loadedAt: DateTime.now(),
-    );
-    await viewModel.loadPlants(forceRemote: false);
+  test(
+    'stagedNonExistent is initialized from plant and toggles correctly',
+    () async {
+      final plant = InspectionPlant(
+        id: 'p-toggle',
+        latitude: -23.1,
+        longitude: -46.1,
+        nonExistent: false,
+      );
+      repo.currentSnapshot = InspectionSnapshot(
+        plants: [plant],
+        types: const [],
+        loadedAt: DateTime.now(),
+      );
+      await viewModel.loadPlants(forceRemote: false);
 
-    viewModel.selectPlant(plant);
-    expect(viewModel.stagedNonExistent, isFalse);
-    expect(viewModel.hasStagedChanges, isFalse);
+      viewModel.selectPlant(plant);
+      expect(viewModel.stagedNonExistent, isFalse);
+      expect(viewModel.hasStagedChanges, isFalse);
 
-    viewModel.toggleStagedNonExistent(true);
-    expect(viewModel.stagedNonExistent, isTrue);
-    expect(viewModel.hasStagedChanges, isTrue);
+      viewModel.toggleStagedNonExistent(true);
+      expect(viewModel.stagedNonExistent, isTrue);
+      expect(viewModel.hasStagedChanges, isTrue);
 
-    viewModel.toggleStagedNonExistent();
-    expect(viewModel.stagedNonExistent, isFalse);
-    expect(viewModel.hasStagedChanges, isFalse);
-  });
+      viewModel.toggleStagedNonExistent();
+      expect(viewModel.stagedNonExistent, isFalse);
+      expect(viewModel.hasStagedChanges, isFalse);
+    },
+  );
 
   test('savePlantChanges persists nonExistent flag when changed', () async {
     final plant = InspectionPlant(
@@ -821,5 +845,3 @@ void main() {
     },
   );
 }
-
-

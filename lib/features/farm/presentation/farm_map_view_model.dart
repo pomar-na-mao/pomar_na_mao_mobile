@@ -8,6 +8,7 @@ import '../domain/plant.dart';
 import '../domain/plants_repository.dart';
 import '../domain/region_point.dart';
 import '../domain/user_location.dart';
+import '../domain/user_position_tracker.dart';
 import '../domain/zone.dart';
 import '../domain/zones_repository.dart';
 
@@ -35,6 +36,7 @@ class FarmMapViewModel extends ChangeNotifier {
   final LocationService _locationService;
   final FarmRepository _farmRepository;
   StreamSubscription<LocationResult>? _locationSubscription;
+  final UserPositionTracker _positionTracker = UserPositionTracker();
   StreamSubscription<void>? _plantChangesSubscription;
   bool _disposed = false;
 
@@ -176,17 +178,40 @@ class FarmMapViewModel extends ChangeNotifier {
 
   Future<void> loadUserLocation() async {
     if (_disposed || _locationSubscription != null) return;
-    _locationSubscription = _locationService.watchLocation().listen((result) {
-      if (_disposed || _locationSubscription == null) return;
-      _locationResult = result;
-      notifyListeners();
-    });
+    _positionTracker.reset();
+    final hadResult = _locationResult != null;
+    _locationResult = null;
+    if (hadResult) scheduleMicrotask(notifyListeners);
+    _locationSubscription = _locationService.watchLocation().listen(
+      (result) {
+        if (_disposed || _locationSubscription == null) return;
+        if (result.location case final location?) {
+          final accepted = _positionTracker.add(location);
+          if (accepted == null) return;
+          _locationResult = LocationResult.available(accepted);
+        } else {
+          _positionTracker.reset();
+          _locationResult = result;
+        }
+        notifyListeners();
+      },
+      onError: (Object _) {
+        if (_disposed) return;
+        _positionTracker.reset();
+        _locationResult = const LocationResult.error();
+        notifyListeners();
+      },
+    );
   }
 
   void pauseLocation() {
     final subscription = _locationSubscription;
     _locationSubscription = null;
     unawaited(subscription?.cancel());
+    _positionTracker.reset();
+    final hadResult = _locationResult != null;
+    _locationResult = null;
+    if (hadResult) scheduleMicrotask(notifyListeners);
   }
 
   @override

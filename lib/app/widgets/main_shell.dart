@@ -90,6 +90,7 @@ class _MainShellState extends State<MainShell> {
                           builder: (_) => OperationsView(
                             inspectionViewModel: effectiveInspectionVm,
                             inspectionMapBuilder: widget.inspectionMapBuilder,
+                            sprayingViewModel: scopeDeps?.sprayingViewModel,
                           ),
                           settings: settings,
                         );

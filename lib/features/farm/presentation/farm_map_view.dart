@@ -5,10 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../domain/zone.dart';
+import '../domain/user_location.dart';
 import 'farm_map_geometry.dart';
 import 'farm_map_view_model.dart';
 import 'bounded_plant_markers.dart';
 import 'plant_spatial_index.dart';
+import 'user_map_navigation.dart';
+import 'widgets/farm_action_card.dart';
 import '../../../core/ui/map_activity.dart';
 import '../../../core/ui/map_camera.dart';
 
@@ -55,6 +58,10 @@ class _FarmMapViewState extends State<FarmMapView> {
   var _hasSetInitialCamera = false;
   BitmapDescriptor? _plantMarkerIcon;
   BitmapDescriptor? _nonExistentPlantMarkerIcon;
+  BitmapDescriptor? _userMarkerIcon;
+  final UserMapNavigator _userMapNavigator = UserMapNavigator();
+  UserLocation? _lastUserLocation;
+  bool _hasFocusedOnUser = false;
 
   Set<Marker> _cachedMarkers = const {};
   final _plantLayer = BoundedPlantMarkers();
@@ -68,6 +75,7 @@ class _FarmMapViewState extends State<FarmMapView> {
     super.initState();
     _plantLayer.addListener(_markersChanged);
     unawaited(_loadPlantMarkerIcon());
+    unawaited(_loadUserMarkerIcon());
     unawaited(widget.viewModel.initialize());
   }
 
@@ -84,6 +92,36 @@ class _FarmMapViewState extends State<FarmMapView> {
     _plantLayer.dispose();
     _mapController = null;
     super.dispose();
+  }
+
+  Future<void> _loadUserMarkerIcon() async {
+    final icon = await createUserLocationMarkerIcon();
+    if (mounted) setState(() => _userMarkerIcon = icon);
+  }
+
+  void _followUser(UserLocation location) {
+    final controller = _mapController;
+    if (controller == null) return;
+    if (!_hasFocusedOnUser) {
+      _hasFocusedOnUser = true;
+      unawaited(
+        _userMapNavigator.focus(
+          controller,
+          location,
+          tilt: _savedCamera?.tilt ?? 0,
+          bearing: _savedCamera?.bearing ?? 0,
+        ),
+      );
+      return;
+    }
+    unawaited(
+      _userMapNavigator.follow(
+        location: location,
+        controller: controller,
+        camera: () => _savedCamera,
+        isActive: () => mounted && _mapController == controller,
+      ),
+    );
   }
 
   void _updateMarkersIfNeeded() {
@@ -202,6 +240,10 @@ class _FarmMapViewState extends State<FarmMapView> {
   Future<void> _fitCameraToAvailableCoordinates() async {
     final controller = _mapController;
     if (controller == null) return;
+    if (_hasFocusedOnUser &&
+        _lastCameraZoneId == widget.viewModel.selectedZoneId) {
+      return;
+    }
     final dataSignature = (
       widget.viewModel.allPlants,
       widget.viewModel.selectedZoneId,
@@ -308,18 +350,58 @@ class _FarmMapViewState extends State<FarmMapView> {
     );
   }
 
+  void _recenterOnUser() {
+    final loc = widget.viewModel.userLocation;
+    final controller = _mapController;
+    if (loc != null && controller != null) {
+      _hasFocusedOnUser = true;
+      unawaited(
+        _userMapNavigator.focus(
+          controller,
+          loc,
+          tilt: _savedCamera?.tilt ?? 0,
+          bearing: _savedCamera?.bearing ?? 0,
+        ),
+      );
+    }
+  }
+
+  String _selectedZoneName(FarmMapViewModel vm) {
+    final zoneId = vm.selectedZoneId;
+    if (zoneId == null) return '';
+    final zone = vm.zones.where((z) => z.id == zoneId).firstOrNull;
+    return zone?.displayName ?? 'Zona filtrada';
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: widget.viewModel,
       builder: (context, _) {
         _updateMarkersIfNeeded();
+        final location = widget.viewModel.userLocation;
+        if (location == null) {
+          if (_lastUserLocation != null) _userMapNavigator.reset();
+          _lastUserLocation = null;
+          _hasFocusedOnUser = false;
+        } else {
+          _userMapNavigator.observe(location);
+          if (!identical(_lastUserLocation, location)) {
+            _lastUserLocation = location;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _followUser(location);
+            });
+          }
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) unawaited(_fitCameraToAvailableCoordinates());
         });
 
         return Scaffold(
+          backgroundColor: const Color(0xFFF4F7F2),
           appBar: AppBar(
+            backgroundColor: const Color(0xFFF4F7F2),
+            surfaceTintColor: Colors.transparent,
             title: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -330,123 +412,174 @@ class _FarmMapViewState extends State<FarmMapView> {
                 ),
               ],
             ),
+            actions: [
+              if (widget.viewModel.userLocation != null)
+                IconButton(
+                  icon: const Icon(Icons.my_location),
+                  tooltip: 'Minha localização',
+                  onPressed: _recenterOnUser,
+                ),
+            ],
           ),
-          body: Stack(
+          body: Column(
             children: [
-              ActiveMapSurface(
-                onActivityChanged: (active) {
-                  if (active) {
-                    unawaited(widget.viewModel.loadUserLocation());
-                  } else {
-                    widget.viewModel.pauseLocation();
-                    _mapController = null;
-                    _plantLayer.controller = null;
-                  }
-                },
-                builder: (_) => GoogleMap(
-                  mapType: MapType.satellite,
-                  initialCameraPosition:
-                      _savedCamera ??
-                      const CameraPosition(target: _fallbackPosition, zoom: 17),
-                  onCameraIdle: _plantLayer.cameraIdle,
-                  onCameraMove: (position) => _savedCamera = position,
-                  markers: _cachedMarkers,
-                  polygons: _polygons,
-                  myLocationEnabled: widget.viewModel.canShowUserLocation,
-                  myLocationButtonEnabled: widget.viewModel.canShowUserLocation,
-                  onMapCreated: (controller) {
-                    _mapController = controller;
-                    _plantLayer.controller = controller;
-                    _plantLayer.cameraIdle();
-                    unawaited(_fitCameraToAvailableCoordinates());
-                  },
+              Expanded(
+                child: Stack(
+                  children: [
+                    ActiveMapSurface(
+                      onActivityChanged: (active) {
+                        if (active) {
+                          unawaited(widget.viewModel.loadUserLocation());
+                        } else {
+                          widget.viewModel.pauseLocation();
+                          _mapController = null;
+                          _plantLayer.controller = null;
+                        }
+                      },
+                      builder: (_) => GoogleMap(
+                        mapType: MapType.satellite,
+                        initialCameraPosition:
+                            _savedCamera ??
+                            const CameraPosition(
+                              target: _fallbackPosition,
+                              zoom: 17,
+                            ),
+                        onCameraIdle: () {
+                          _plantLayer.cameraIdle();
+                          if (widget.viewModel.userLocation
+                              case final location?) {
+                            _userMapNavigator.invalidate();
+                            _followUser(location);
+                          }
+                        },
+                        onCameraMove: (position) => _savedCamera = position,
+                        markers: {
+                          ..._cachedMarkers,
+                          if (widget.viewModel.userLocation
+                              case final location?)
+                            Marker(
+                              markerId: const MarkerId('farm_user'),
+                              position: LatLng(
+                                location.latitude,
+                                location.longitude,
+                              ),
+                              icon:
+                                  _userMarkerIcon ??
+                                  BitmapDescriptor.defaultMarkerWithHue(
+                                    BitmapDescriptor.hueAzure,
+                                  ),
+                              anchor: const Offset(0.5, 0.5),
+                              zIndexInt: 1000,
+                            ),
+                        },
+                        polygons: _polygons,
+                        myLocationEnabled: false,
+                        myLocationButtonEnabled: false,
+                        onMapCreated: (controller) {
+                          _mapController = controller;
+                          _plantLayer.controller = controller;
+                          _plantLayer.cameraIdle();
+                          unawaited(_fitCameraToAvailableCoordinates());
+                          if (widget.viewModel.userLocation
+                              case final location?) {
+                            _followUser(location);
+                          }
+                        },
+                      ),
+                    ),
+                    if (widget.viewModel.plantsStatus ==
+                        PlantsLoadStatus.loading)
+                      const Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: LinearProgressIndicator(),
+                      ),
+                    if (widget.viewModel.selectedZoneId != null)
+                      Positioned(
+                        top: 12,
+                        left: 16,
+                        right: 16,
+                        child: Center(
+                          child: Material(
+                            elevation: 4,
+                            borderRadius: BorderRadius.circular(20),
+                            color: Theme.of(context).colorScheme.surface,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.grid_view_rounded,
+                                    size: 18,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _selectedZoneName(widget.viewModel),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  GestureDetector(
+                                    key: const ValueKey(
+                                      'clear-farm-zone-badge-button',
+                                    ),
+                                    onTap: () =>
+                                        widget.viewModel.selectZone(null),
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 16,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (widget.viewModel.plantsStatus == PlantsLoadStatus.empty)
+                      _StatusCard(
+                        message: widget.viewModel.selectedZoneId == null
+                            ? 'Nenhuma planta foi encontrada.'
+                            : 'Nenhuma planta foi encontrada nesta zona.',
+                        topPadding: widget.viewModel.selectedZoneId != null
+                            ? 64
+                            : 24,
+                      ),
+                    if (widget.viewModel.plantsStatus == PlantsLoadStatus.error)
+                      _StatusCard(
+                        message: widget.viewModel.errorMessage!,
+                        actionLabel: 'Tentar novamente',
+                        onAction: widget.viewModel.loadFarmData,
+                        topPadding: widget.viewModel.selectedZoneId != null
+                            ? 64
+                            : 24,
+                      ),
+                    if (widget.viewModel.locationMessage case final message?)
+                      _StatusCard(message: message, alignBottom: true),
+                  ],
                 ),
               ),
-              _ZoneFilterCard(
-                zones: widget.viewModel.zones,
-                selectedZoneId: widget.viewModel.selectedZoneId,
-                onChanged: widget.viewModel.selectZone,
-              ),
-              if (widget.viewModel.plantsStatus == PlantsLoadStatus.loading)
-                const LinearProgressIndicator(),
-              if (widget.viewModel.plantsStatus == PlantsLoadStatus.empty)
-                _StatusCard(
-                  message: widget.viewModel.selectedZoneId == null
-                      ? 'Nenhuma planta foi encontrada.'
-                      : 'Nenhuma planta foi encontrada nesta zona.',
-                  topPadding: 92,
-                ),
-              if (widget.viewModel.plantsStatus == PlantsLoadStatus.error)
-                _StatusCard(
-                  message: widget.viewModel.errorMessage!,
-                  actionLabel: 'Tentar novamente',
-                  onAction: widget.viewModel.loadFarmData,
-                  topPadding: 92,
-                ),
-              if (widget.viewModel.locationMessage case final message?)
-                _StatusCard(message: message, alignBottom: true),
+              FarmActionCard(viewModel: widget.viewModel),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-class _ZoneFilterCard extends StatelessWidget {
-  const _ZoneFilterCard({
-    required this.zones,
-    required this.selectedZoneId,
-    required this.onChanged,
-  });
-
-  final List<Zone> zones;
-  final String? selectedZoneId;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final sortedZones = sortZonesByCode(zones);
-    return Align(
-      alignment: Alignment.topCenter,
-      child: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-        child: Material(
-          color: Theme.of(context).colorScheme.surface,
-          elevation: 2,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                isExpanded: true,
-                value: selectedZoneId ?? _FarmMapViewState._allZonesValue,
-                icon: const Icon(Icons.expand_more),
-                items: [
-                  const DropdownMenuItem(
-                    value: _FarmMapViewState._allZonesValue,
-                    child: Text('Todas as zonas'),
-                  ),
-                  ...sortedZones.map(
-                    (zone) => DropdownMenuItem(
-                      value: zone.id,
-                      child: Text(
-                        zone.displayName,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ],
-                onChanged: (value) {
-                  onChanged(
-                    value == _FarmMapViewState._allZonesValue ? null : value,
-                  );
-                },
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

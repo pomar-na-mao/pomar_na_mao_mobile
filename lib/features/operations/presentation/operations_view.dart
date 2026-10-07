@@ -3,31 +3,48 @@ import 'package:flutter/material.dart';
 import 'inspection_view.dart';
 import 'inspection_view_model.dart';
 import 'operation_definition.dart';
+import 'spraying_view.dart';
+import 'spraying_view_model.dart';
 import 'widgets/operation_card.dart';
 
 class OperationsView extends StatelessWidget {
   const OperationsView({
     this.inspectionViewModel,
     this.inspectionMapBuilder,
+    this.sprayingViewModel,
+    this.sprayingMapBuilder,
     super.key,
   });
 
   final InspectionViewModel? inspectionViewModel;
   final InspectionMapBuilder? inspectionMapBuilder;
+  final SprayingViewModel? sprayingViewModel;
+  final SprayingMapBuilder? sprayingMapBuilder;
 
   static const _backgroundColor = Color(0xFFF4F7F2);
 
   void _openOperation(BuildContext context, OperationDefinition operation) {
-    if (!operation.isEnabled || operation.id != 'inspection') return;
+    if (!operation.isEnabled) return;
 
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => InspectionView(
-          viewModel: inspectionViewModel,
-          mapBuilder: inspectionMapBuilder,
+    if (operation.id == 'inspection') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => InspectionView(
+            viewModel: inspectionViewModel,
+            mapBuilder: inspectionMapBuilder,
+          ),
         ),
-      ),
-    );
+      );
+    } else if (operation.id == 'spraying') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SprayingView(
+            viewModel: sprayingViewModel,
+            mapBuilder: sprayingMapBuilder,
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -38,7 +55,6 @@ class OperationsView extends StatelessWidget {
     final future = operationDefinitions
         .where((item) => !item.isEnabled)
         .toList();
-    final primaryOperation = available.first;
 
     return Scaffold(
       backgroundColor: _backgroundColor,
@@ -91,17 +107,26 @@ class OperationsView extends StatelessWidget {
                       18,
                     ),
                     sliver: SliverToBoxAdapter(
-                      child: SizedBox(
+                      child: KeyedSubtree(
                         key: const ValueKey('primary-operation-section'),
-                        height: primaryHeight,
-                        child: OperationCard(
-                          key: ValueKey(
-                            'operation-card-${primaryOperation.id}',
-                          ),
-                          operation: primaryOperation,
-                          prominent: true,
-                          onTap: () =>
-                              _openOperation(context, primaryOperation),
+                        child: Column(
+                          children: [
+                            for (var i = 0; i < available.length; i++) ...[
+                              if (i > 0) const SizedBox(height: 16),
+                              SizedBox(
+                                height: primaryHeight,
+                                child: OperationCard(
+                                  key: ValueKey(
+                                    'operation-card-${available[i].id}',
+                                  ),
+                                  operation: available[i],
+                                  prominent: true,
+                                  onTap: () =>
+                                      _openOperation(context, available[i]),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ),
@@ -202,7 +227,9 @@ class _OperationsSummary extends StatelessWidget {
               children: [
                 _SummaryChip(
                   icon: Icons.check_circle_outline,
-                  label: '$availableCount disponível',
+                  label: availableCount == 1
+                      ? '1 disponível'
+                      : '$availableCount disponíveis',
                 ),
                 _SummaryChip(
                   icon: Icons.schedule_outlined,
