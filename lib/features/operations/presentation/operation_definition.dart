@@ -34,11 +34,11 @@ const operationDefinitions = <OperationDefinition>[
   OperationDefinition(
     id: 'spraying',
     title: 'Pulverização',
-    description: 'Planejamento e histórico de aplicações no pomar.',
+    description: 'Acompanhe a aplicação, insumos e rota no mapa.',
     icon: Icons.pest_control_outlined,
-    accent: Color(0xFF7A5C12),
-    isEnabled: false,
-    statusLabel: 'Em breve',
+    accent: Color(0xFF2E7D32),
+    isEnabled: true,
+    statusLabel: 'Disponível agora',
   ),
   OperationDefinition(
     id: 'irrigation',

@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../farm/data/supabase_zones_repository.dart';
 import '../../farm/domain/region_point.dart';
 import '../../farm/domain/user_location.dart';
+import '../../farm/domain/user_position_tracker.dart';
 import '../../farm/domain/zone.dart';
 import '../../farm/domain/zones_repository.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
@@ -84,6 +85,7 @@ class InspectionViewModel extends ChangeNotifier {
   StreamSubscription<LocationResult>? _locationSubscription;
   StreamSubscription<void>? _plantChangesSubscription;
   bool _isLocationActive = false;
+  final UserPositionTracker _positionTracker = UserPositionTracker();
 
   InspectionLoadStatus _loadStatus = InspectionLoadStatus.initial;
   InspectionLoadStatus get loadStatus => _loadStatus;
@@ -470,7 +472,9 @@ class InspectionViewModel extends ChangeNotifier {
     final removedTypes = initialTypes.difference(stagedTypes);
     final nonExistentChanged = _stagedNonExistent != plant.nonExistent;
 
-    if (addedTypes.isEmpty && removedTypes.isEmpty && !nonExistentChanged) return;
+    if (addedTypes.isEmpty && removedTypes.isEmpty && !nonExistentChanged) {
+      return;
+    }
 
     _isSavingLocal = true;
     _feedbackMessage = null;
@@ -848,17 +852,48 @@ class InspectionViewModel extends ChangeNotifier {
     if (_disposed || _isLocationActive) return;
     _isLocationActive = true;
     _locationSubscription?.cancel();
-    _locationSubscription = locationService.watchLocation().listen((result) {
-      if (_disposed || !_isLocationActive) return;
-      _locationResult = result;
-      notifyListeners();
-    });
+    _positionTracker.reset();
+    final hadResult = _locationResult != null;
+    _locationResult = null;
+    if (hadResult) scheduleMicrotask(notifyListeners);
+    _locationSubscription = locationService.watchLocation().listen(
+      (result) {
+        if (_disposed || !_isLocationActive) return;
+        if (result.location case final location?) {
+          final accepted = _positionTracker.add(location);
+          if (accepted == null) return;
+          _locationResult = LocationResult.available(accepted);
+        } else {
+          _positionTracker.reset();
+          _locationResult = result;
+        }
+        notifyListeners();
+      },
+      onError: (Object _) {
+        if (_disposed || !_isLocationActive) return;
+        _positionTracker.reset();
+        _locationResult = const LocationResult.error();
+        notifyListeners();
+      },
+      onDone: () {
+        if (_disposed || !_isLocationActive) return;
+        _isLocationActive = false;
+        _locationSubscription = null;
+        _positionTracker.reset();
+        _locationResult = const LocationResult.error();
+        notifyListeners();
+      },
+    );
   }
 
   void pauseLocation() {
     _isLocationActive = false;
     _locationSubscription?.cancel();
     _locationSubscription = null;
+    _positionTracker.reset();
+    final hadResult = _locationResult != null;
+    _locationResult = null;
+    if (hadResult) scheduleMicrotask(notifyListeners);
   }
 
   @override

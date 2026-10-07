@@ -1,12 +1,32 @@
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../domain/user_location.dart';
 
 class GeolocatorLocationService implements LocationService {
-  static const _locationSettings = LocationSettings(
-    accuracy: LocationAccuracy.bestForNavigation,
-    distanceFilter: 1,
-  );
+  static LocationSettings _createLocationSettings() {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+        intervalDuration: const Duration(seconds: 1),
+      );
+    }
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        activityType: ActivityType.fitness,
+        distanceFilter: 0,
+        pauseLocationUpdatesAutomatically: false,
+        showBackgroundLocationIndicator: false,
+      );
+    }
+    return const LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+    );
+  }
 
   @override
   Future<LocationResult> getCurrentLocation() async {
@@ -15,7 +35,7 @@ class GeolocatorLocationService implements LocationService {
       if (unavailableResult != null) return unavailableResult;
 
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: _locationSettings,
+        locationSettings: _createLocationSettings(),
       );
       return _toLocationResult(position);
     } on Exception {
@@ -25,14 +45,14 @@ class GeolocatorLocationService implements LocationService {
 
   @override
   Stream<LocationResult> watchLocation() async* {
-    final initialResult = await getCurrentLocation();
-    yield initialResult;
-
-    if (initialResult.availability != LocationAvailability.available) return;
-
     try {
+      final unavailableResult = await _ensureLocationAccess();
+      if (unavailableResult != null) {
+        yield unavailableResult;
+        return;
+      }
       await for (final position in Geolocator.getPositionStream(
-        locationSettings: _locationSettings,
+        locationSettings: _createLocationSettings(),
       )) {
         yield _toLocationResult(position);
       }
@@ -64,6 +84,9 @@ class GeolocatorLocationService implements LocationService {
         latitude: position.latitude,
         longitude: position.longitude,
         accuracy: position.accuracy,
+        timestamp: position.timestamp,
+        heading: position.heading,
+        speed: position.speed,
       ),
     );
   }
