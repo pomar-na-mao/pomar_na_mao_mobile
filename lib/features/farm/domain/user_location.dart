@@ -4,12 +4,16 @@ class UserLocation {
     required this.longitude,
     this.accuracy,
     this.timestamp,
+    this.heading,
+    this.speed,
   });
 
   final double latitude;
   final double longitude;
   final double? accuracy;
   final DateTime? timestamp;
+  final double? heading;
+  final double? speed;
 }
 
 enum LocationAvailability {

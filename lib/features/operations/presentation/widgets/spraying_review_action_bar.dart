@@ -5,10 +5,7 @@ import 'spraying_inputs_modal.dart';
 import 'spraying_review_modal.dart';
 
 class SprayingReviewActionBar extends StatelessWidget {
-  const SprayingReviewActionBar({
-    required this.viewModel,
-    super.key,
-  });
+  const SprayingReviewActionBar({required this.viewModel, super.key});
 
   final SprayingViewModel viewModel;
 
@@ -96,87 +93,71 @@ class SprayingReviewActionBar extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
 
-                    // Metrics and action buttons row
                     Row(
+                      key: const ValueKey('review-plants-count'),
                       children: [
-                        // Plants badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
+                        Text(
+                          '${vm.reviewedPlants.length}',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1D4ED8),
                           ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: const Color(0xFFBFDBFE),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 10,
-                                height: 10,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFF1D4ED8),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '${vm.reviewedPlants.length} atingidas',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1E40AF),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Spacer(),
-
-                        // Button 1: Ver lista
-                        OutlinedButton.icon(
-                          key: const ValueKey('btn-review-plants-list'),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: const Icon(Icons.checklist_rounded, size: 16),
-                          label: const Text('Lista'),
-                          onPressed: () =>
-                              SprayingReviewModal.show(context, vm),
                         ),
                         const SizedBox(width: 8),
-
-                        // Button 2: Preencher Insumos
-                        FilledButton.icon(
-                          key: const ValueKey('btn-review-proceed-inputs'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF1D4ED8),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        Flexible(
+                          child: Text(
+                            'Plantas atingidas',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
-                          icon: const Icon(Icons.science_outlined, size: 16),
-                          label: const Text(
-                            'Insumos',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            key: const ValueKey('btn-review-plants-list'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(44),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(Icons.checklist_rounded, size: 16),
+                            label: const Text('Lista'),
+                            onPressed: () =>
+                                SprayingReviewModal.show(context, vm),
                           ),
-                          onPressed: () =>
-                              SprayingInputsModal.show(context, vm),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton.icon(
+                            key: const ValueKey('btn-review-proceed-inputs'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF1D4ED8),
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(44),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(Icons.science_outlined, size: 16),
+                            label: const Text(
+                              'Insumos',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            onPressed: () =>
+                                SprayingInputsModal.show(context, vm),
+                          ),
                         ),
                       ],
                     ),

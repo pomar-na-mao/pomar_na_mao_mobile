@@ -1,12 +1,7 @@
 import 'dart:convert';
 
 /// Estado do ciclo de gravação da rota de pulverização no dispositivo.
-enum SprayingSessionState {
-  idle,
-  recording,
-  paused,
-  finished,
-}
+enum SprayingSessionState { idle, recording, paused, finished }
 
 /// Estado de sincronização e ciclo de vida da operação local.
 enum SprayingSyncStatus {
@@ -126,8 +121,8 @@ class SprayingRoute {
     return SprayingRoute(
       localId: json['localId'] as String? ?? json['local_id'] as String,
       geojson: parsedGeo,
-      distanceMeters:
-          (json['distanceMeters'] ?? json['distance_meters'] as num).toDouble(),
+      distanceMeters: (json['distanceMeters'] ?? json['distance_meters'] as num)
+          .toDouble(),
       startedAt: DateTime.parse(
         json['startedAt'] as String? ?? json['started_at'] as String,
       ),
@@ -186,8 +181,8 @@ class SprayingInput {
         json['active_ingredient'] as String?,
     dose: (json['dose'] as num?)?.toDouble(),
     doseUnit: json['doseUnit'] as String? ?? json['dose_unit'] as String?,
-    totalQuantity:
-        (json['totalQuantity'] ?? json['total_quantity'] as num?)?.toDouble(),
+    totalQuantity: (json['totalQuantity'] ?? json['total_quantity'] as num?)
+        ?.toDouble(),
     totalQuantityUnit:
         json['totalQuantityUnit'] as String? ??
         json['total_quantity_unit'] as String?,
@@ -220,7 +215,8 @@ class SprayingConfirmedPlant {
     'plantId': plantId,
     'matchSource': matchSource.value,
     if (matchedAt != null) 'matchedAt': matchedAt!.toUtc().toIso8601String(),
-    if (nearestTrackPointLocalId != null && nearestTrackPointLocalId!.isNotEmpty)
+    if (nearestTrackPointLocalId != null &&
+        nearestTrackPointLocalId!.isNotEmpty)
       'nearestTrackPointLocalId': nearestTrackPointLocalId,
     if (distanceMeters != null) 'distanceMeters': distanceMeters,
     if (notes != null && notes!.isNotEmpty) 'notes': notes,
@@ -380,21 +376,28 @@ class SprayingSyncResult {
       throw FormatException('Formato de resposta RPC inválido: $response');
     }
 
+    int count(String snakeCase, String camelCase) {
+      final value = map[snakeCase] ?? map[camelCase];
+      if (value is! num ||
+          !value.isFinite ||
+          value < 0 ||
+          value != value.round()) {
+        throw FormatException('Contagem $snakeCase inválida na resposta RPC');
+      }
+      return value.toInt();
+    }
+
     return SprayingSyncResult(
       fieldOperationId:
           map['field_operation_id'] as String? ??
           map['fieldOperationId'] as String,
       routeId: map['route_id'] as String? ?? map['routeId'] as String,
-      trackPointsCount:
-          map['track_points_count'] as int? ??
-          map['trackPointsCount'] as int? ??
-          0,
-      inputsCount:
-          map['inputs_count'] as int? ?? map['inputsCount'] as int? ?? 0,
-      confirmedPlantsCount:
-          map['confirmed_plants_count'] as int? ??
-          map['confirmedPlantsCount'] as int? ??
-          0,
+      trackPointsCount: count('track_points_count', 'trackPointsCount'),
+      inputsCount: count('inputs_count', 'inputsCount'),
+      confirmedPlantsCount: count(
+        'confirmed_plants_count',
+        'confirmedPlantsCount',
+      ),
       syncedAt: DateTime.parse(
         map['synced_at'] as String? ?? map['syncedAt'] as String,
       ),

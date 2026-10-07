@@ -10,6 +10,7 @@ import '../../farm/domain/user_location.dart';
 import '../../farm/presentation/bounded_plant_markers.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
 import '../../farm/presentation/plant_spatial_index.dart';
+import '../../farm/presentation/user_map_navigation.dart';
 import '../data/inspection_database.dart';
 import '../data/inspection_local_store.dart';
 import '../data/inspection_remote_data_source.dart';
@@ -21,10 +22,12 @@ import '../data/spraying_repository.dart';
 import '../domain/inspection_models.dart';
 import '../domain/spraying_models.dart';
 import 'inspection_view_model.dart';
+import 'spraying_heading.dart';
 import 'spraying_map_camera.dart';
 import 'spraying_view_model.dart';
 import 'widgets/spraying_action_card.dart';
 import 'widgets/spraying_review_action_bar.dart';
+import 'widgets/spraying_signal_overlay.dart';
 
 class SprayingMapConfig {
   const SprayingMapConfig({
@@ -59,12 +62,14 @@ class SprayingView extends StatefulWidget {
 
 class _SprayingViewState extends State<SprayingView> {
   static const _fallbackPosition = defaultFarmMapPosition;
+  static const _recordingStartZoom = userFollowZoom;
 
   GoogleMapController? _mapController;
   CameraPosition? _savedCamera;
   BitmapDescriptor? _plantMarkerIcon;
   BitmapDescriptor? _pulverizedPlantMarkerIcon;
   BitmapDescriptor? _userMarkerIcon;
+  final SprayingCourseTracker _courseTracker = SprayingCourseTracker();
   Set<Marker> _markers = const {};
   final _plantLayer = BoundedPlantMarkers();
   String? _lastZoneSignature;
@@ -110,10 +115,7 @@ class _SprayingViewState extends State<SprayingView> {
         color: const Color(0xFF1D4ED8),
         highlightColor: const Color(0xFF60A5FA),
       ),
-      _createPlantMarkerIcon(
-        color: const Color(0xFF1976D2),
-        highlightColor: const Color(0xFF90CAF9),
-      ),
+      createUserLocationMarkerIcon(),
     ]);
     if (!mounted) return;
     _plantMarkerIcon = icons[0];
@@ -238,14 +240,27 @@ class _SprayingViewState extends State<SprayingView> {
     );
   }
 
-  void _recenterOnUser(SprayingViewModel vm) {
+  void _recenterOnUser(SprayingViewModel vm, {double zoom = 19}) {
     final loc = vm.userLocation;
     final controller = _mapController;
     if (loc == null || controller == null) return;
     _needsInitialFocus = false;
     _lastCheckedLocation = loc;
+    final position = LatLng(loc.latitude, loc.longitude);
+    final course = vm.sessionState == SprayingSessionState.recording
+        ? _courseTracker.course
+        : null;
     controller.animateCamera(
-      CameraUpdate.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 19),
+      course == null
+          ? CameraUpdate.newLatLngZoom(position, zoom)
+          : CameraUpdate.newCameraPosition(
+              CameraPosition(
+                target: position,
+                zoom: zoom,
+                tilt: _savedCamera?.tilt ?? 0,
+                bearing: course,
+              ),
+            ),
     );
   }
 
@@ -275,12 +290,29 @@ class _SprayingViewState extends State<SprayingView> {
         return;
       }
       _lastCheckedLocation = location;
-      if (!isInsideSprayingFocusArea(
+      final outsideFocusArea = !isInsideSprayingFocusArea(
         bounds,
         LatLng(location.latitude, location.longitude),
-      )) {
+      );
+      final camera = _savedCamera;
+      final bearing = nextSprayingMapBearing(
+        camera?.bearing ?? 0,
+        _courseTracker.course,
+      );
+      final position = sprayingFollowCameraPosition(
+        current:
+            camera ??
+            CameraPosition(
+              target: LatLng(location.latitude, location.longitude),
+              zoom: _recordingStartZoom,
+            ),
+        user: LatLng(location.latitude, location.longitude),
+        outsideFocusArea: outsideFocusArea,
+        bearing: bearing,
+      );
+      if (position != null) {
         await controller.animateCamera(
-          CameraUpdate.newLatLng(LatLng(location.latitude, location.longitude)),
+          CameraUpdate.newCameraPosition(position),
         );
       }
     } catch (error) {
@@ -395,7 +427,8 @@ class _SprayingViewState extends State<SprayingView> {
           });
         }
 
-        if (vm.errorMessage != null) {
+        if (vm.errorMessage != null &&
+            (ModalRoute.of(context)?.isCurrent ?? true)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -412,12 +445,15 @@ class _SprayingViewState extends State<SprayingView> {
         if (_lastSessionState != vm.sessionState) {
           if (vm.sessionState == SprayingSessionState.recording &&
               _lastSessionState != SprayingSessionState.paused) {
+            _courseTracker.reset();
             _needsInitialFocus = true;
             _lastCheckedLocation = null;
             _userHasInteractedWithMap = false;
             if (vm.userLocation != null) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) _recenterOnUser(vm);
+                if (mounted) {
+                  _recenterOnUser(vm, zoom: _recordingStartZoom);
+                }
               });
             }
           }
@@ -427,10 +463,11 @@ class _SprayingViewState extends State<SprayingView> {
         if (vm.sessionState == SprayingSessionState.recording &&
             vm.userLocation != null) {
           final loc = vm.userLocation!;
+          _courseTracker.add(loc);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             if (_needsInitialFocus) {
-              _recenterOnUser(vm);
+              _recenterOnUser(vm, zoom: _recordingStartZoom);
             } else {
               unawaited(_keepUserVisible(loc, vm));
             }
@@ -452,184 +489,206 @@ class _SprayingViewState extends State<SprayingView> {
                 ),
             ],
           ),
-          body: Column(
+          body: Stack(
             children: [
-              Expanded(
-                child: Stack(
-                  children: [
-                    if (widget.mapBuilder != null)
-                      widget.mapBuilder!(
-                        context,
-                        SprayingMapConfig(
-                          plants: vm.displayedPlants,
-                          polylines: vm.polylines,
-                          polygons: vm.polygons,
-                          onSelectPlant: (p) => vm.toggleAffectedPlant(p),
-                          initialPosition: const CameraPosition(
-                            target: _fallbackPosition,
-                            zoom: 17,
-                          ),
-                        ),
-                      )
-                    else
-                      Listener(
-                        onPointerDown: (_) {
-                          _userHasInteractedWithMap = true;
-                        },
-                        child: ActiveMapSurface(
-                          onActivityChanged: (active) {
-                            if (active) {
-                              vm.startLocationTracking();
-                            } else {
-                              vm.stopLocationTracking();
-                              _mapController = null;
-                              _plantLayer.controller = null;
-                            }
-                          },
-                          builder: (_) => GoogleMap(
-                            key: const ValueKey('spraying-google-map'),
-                            mapType: MapType.satellite,
-                            initialCameraPosition:
-                                _savedCamera ??
-                                const CameraPosition(
-                                  target: _fallbackPosition,
-                                  zoom: 17,
-                                ),
-                            onCameraIdle: () {
-                              _plantLayer.cameraIdle();
-                              final loc = vm.userLocation;
-                              if (vm.sessionState ==
-                                      SprayingSessionState.recording &&
-                                  loc != null) {
-                                _lastCheckedLocation = null;
-                                unawaited(_keepUserVisible(loc, vm));
-                              }
-                            },
-                            onCameraMove: (position) => _savedCamera = position,
-                            markers: {
-                              ..._markers,
-                              if (vm.userLocation case final loc?)
-                                Marker(
-                                  markerId: const MarkerId('spraying_user'),
-                                  position: LatLng(loc.latitude, loc.longitude),
-                                  icon:
-                                      _userMarkerIcon ??
-                                      BitmapDescriptor.defaultMarkerWithHue(
-                                        BitmapDescriptor.hueAzure,
-                                      ),
-                                  anchor: const Offset(0.5, 0.5),
-                                  zIndexInt: 1000,
-                                ),
-                            },
-                            polygons: vm.polygons,
-                            polylines: vm.polylines,
-                            myLocationEnabled: false,
-                            myLocationButtonEnabled: false,
-                            zoomControlsEnabled: false,
-                            mapToolbarEnabled: false,
-                            onMapCreated: (ctrl) {
-                              _mapController = ctrl;
-                              _plantLayer.controller = ctrl;
-                              _plantLayer.cameraIdle();
-                              if (vm.userLocation != null &&
-                                  (_needsInitialFocus ||
-                                      !_userHasInteractedWithMap)) {
-                                _recenterOnUser(vm);
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-
-                    // Loading overlay
-                    if (vm.loadStatus == InspectionLoadStatus.loading)
-                      const Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: LinearProgressIndicator(),
-                      ),
-
-                    // Badge de Filtro Ativo
-                    if (vm.isFiltered)
-                      Positioned(
-                        top: 12,
-                        left: 16,
-                        right: 16,
-                        child: Center(
-                          child: Material(
-                            elevation: 4,
-                            borderRadius: BorderRadius.circular(20),
-                            color: Theme.of(context).colorScheme.surface,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 8,
+              Column(
+                children: [
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        if (widget.mapBuilder != null)
+                          widget.mapBuilder!(
+                            context,
+                            SprayingMapConfig(
+                              plants: vm.displayedPlants,
+                              polylines: vm.polylines,
+                              polygons: vm.polygons,
+                              onSelectPlant: (p) => vm.toggleAffectedPlant(p),
+                              initialPosition: const CameraPosition(
+                                target: _fallbackPosition,
+                                zoom: 17,
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.grid_view_rounded,
-                                    size: 18,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .primary,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    child: Text(
-                                      vm.zones.any(
-                                            (z) =>
-                                                z.id == vm.selectedZoneFilterId,
-                                          )
-                                          ? vm.zones
-                                                .firstWhere(
-                                                  (z) =>
-                                                      z.id ==
-                                                      vm.selectedZoneFilterId,
-                                                )
-                                                .name
-                                          : 'Zona filtrada',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                      overflow: TextOverflow.ellipsis,
+                            ),
+                          )
+                        else
+                          Listener(
+                            onPointerDown: (_) {
+                              _userHasInteractedWithMap = true;
+                            },
+                            child: ActiveMapSurface(
+                              onActivityChanged: (active) {
+                                if (active) {
+                                  vm.startLocationTracking();
+                                } else {
+                                  vm.stopLocationTracking();
+                                  _mapController = null;
+                                  _plantLayer.controller = null;
+                                }
+                              },
+                              builder: (_) => GoogleMap(
+                                key: const ValueKey('spraying-google-map'),
+                                mapType: MapType.satellite,
+                                initialCameraPosition:
+                                    _savedCamera ??
+                                    const CameraPosition(
+                                      target: _fallbackPosition,
+                                      zoom: 17,
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  InkWell(
-                                    borderRadius: BorderRadius.circular(12),
-                                    onTap: () => vm.setZoneFilter(null),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(2),
-                                      child: Icon(
-                                        Icons.close,
-                                        size: 18,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
+                                onCameraIdle: () {
+                                  _plantLayer.cameraIdle();
+                                  final loc = vm.userLocation;
+                                  if (vm.sessionState ==
+                                          SprayingSessionState.recording &&
+                                      loc != null) {
+                                    _lastCheckedLocation = null;
+                                    unawaited(_keepUserVisible(loc, vm));
+                                  }
+                                },
+                                onCameraMove: (position) =>
+                                    _savedCamera = position,
+                                markers: {
+                                  ..._markers,
+                                  if (vm.userLocation case final loc?)
+                                    Marker(
+                                      markerId: const MarkerId('spraying_user'),
+                                      position: LatLng(
+                                        loc.latitude,
+                                        loc.longitude,
                                       ),
+                                      icon:
+                                          _userMarkerIcon ??
+                                          BitmapDescriptor.defaultMarkerWithHue(
+                                            BitmapDescriptor.hueAzure,
+                                          ),
+                                      anchor: const Offset(0.5, 0.5),
+                                      zIndexInt: 1000,
                                     ),
-                                  ),
-                                ],
+                                },
+                                polygons: vm.polygons,
+                                polylines: vm.polylines,
+                                myLocationEnabled: false,
+                                myLocationButtonEnabled: false,
+                                zoomControlsEnabled: false,
+                                mapToolbarEnabled: false,
+                                onMapCreated: (ctrl) {
+                                  _mapController = ctrl;
+                                  _plantLayer.controller = ctrl;
+                                  _plantLayer.cameraIdle();
+                                  if (vm.userLocation != null &&
+                                      (_needsInitialFocus ||
+                                          !_userHasInteractedWithMap)) {
+                                    _recenterOnUser(
+                                      vm,
+                                      zoom: _needsInitialFocus
+                                          ? _recordingStartZoom
+                                          : 19,
+                                    );
+                                  }
+                                },
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
 
-              // Card de Ações abaixo do mapa
-              if (vm.isReviewing)
-                SprayingReviewActionBar(viewModel: vm)
-              else
-                SprayingActionCard(viewModel: vm),
+                        // Loading overlay
+                        if (vm.loadStatus == InspectionLoadStatus.loading)
+                          const Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: LinearProgressIndicator(),
+                          ),
+
+                        // Badge de Filtro Ativo
+                        if (vm.isFiltered)
+                          Positioned(
+                            top: 12,
+                            left: 16,
+                            right: 16,
+                            child: Center(
+                              child: Material(
+                                elevation: 4,
+                                borderRadius: BorderRadius.circular(20),
+                                color: Theme.of(context).colorScheme.surface,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.grid_view_rounded,
+                                        size: 18,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          vm.zones.any(
+                                                (z) =>
+                                                    z.id ==
+                                                    vm.selectedZoneFilterId,
+                                              )
+                                              ? vm.zones
+                                                    .firstWhere(
+                                                      (z) =>
+                                                          z.id ==
+                                                          vm.selectedZoneFilterId,
+                                                    )
+                                                    .name
+                                              : 'Zona filtrada',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      InkWell(
+                                        borderRadius: BorderRadius.circular(12),
+                                        onTap: () => vm.setZoneFilter(null),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(2),
+                                          child: Icon(
+                                            Icons.close,
+                                            size: 18,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // Card de Ações abaixo do mapa
+                  if (vm.isReviewing)
+                    SprayingReviewActionBar(viewModel: vm)
+                  else
+                    SprayingActionCard(viewModel: vm),
+                ],
+              ),
+              if (vm.isPreparingSession)
+                Positioned.fill(
+                  child: SprayingSignalOverlay(
+                    onCancel: vm.sessionState == SprayingSessionState.idle
+                        ? vm.cancelSessionPreparation
+                        : null,
+                  ),
+                ),
             ],
           ),
         );

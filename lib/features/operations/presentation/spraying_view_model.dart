@@ -16,6 +16,7 @@ import '../data/spraying_repository.dart';
 import '../domain/inspection_models.dart';
 import '../domain/spraying_geometry_service.dart';
 import '../domain/spraying_location_filter.dart';
+import '../domain/spraying_signal_stabilizer.dart';
 import '../domain/spraying_models.dart';
 import 'inspection_view_model.dart';
 
@@ -66,7 +67,13 @@ class SprayingViewModel extends ChangeNotifier {
   // --- Localização ---
   UserLocation? _userLocation;
   UserLocation? get userLocation => _userLocation;
-  final SprayingLocationFilter _locationFilter = SprayingLocationFilter();
+  SprayingLocationFilter _locationFilter = SprayingLocationFilter();
+  final SprayingSignalStabilizer _signalStabilizer = SprayingSignalStabilizer();
+  bool _awaitingStableSignal = false;
+  bool _startingPreparedSession = false;
+  bool get isPreparingSession =>
+      _awaitingStableSignal || _startingPreparedSession;
+  Timer? _signalWaitTimeout;
 
   StreamSubscription<LocationResult>? _locationSubscription;
   bool _isLocationActive = false;
@@ -287,21 +294,95 @@ class SprayingViewModel extends ChangeNotifier {
   }
 
   // --- Rastreamento de Localização GPS ---
+  void prepareSessionStart() {
+    if (_sessionState != SprayingSessionState.idle || isPreparingSession) {
+      return;
+    }
+    _signalStabilizer.reset();
+    _awaitingStableSignal = true;
+    _signalWaitTimeout?.cancel();
+    _signalWaitTimeout = Timer(const Duration(seconds: 30), () {
+      _stopWaitingForSignal(
+        'Não foi possível estabilizar o sinal GPS. Tente novamente em um local aberto.',
+      );
+    });
+    startLocationTracking();
+    notifyListeners();
+  }
+
+  void cancelSessionPreparation() => _stopWaitingForSignal(null);
+
+  void _stopWaitingForSignal(String? message) {
+    if (!_awaitingStableSignal) return;
+    _awaitingStableSignal = false;
+    _signalWaitTimeout?.cancel();
+    _signalStabilizer.reset();
+    _errorMessage = message;
+    notifyListeners();
+  }
+
+  Future<void> _startPreparedSession(UserLocation location) async {
+    _awaitingStableSignal = false;
+    _signalWaitTimeout?.cancel();
+    _signalStabilizer.reset();
+    _userLocation = location;
+    _locationFilter = SprayingLocationFilter()..add(location);
+    _startingPreparedSession = true;
+    notifyListeners();
+    try {
+      await startSession();
+    } catch (error) {
+      _sessionState = SprayingSessionState.idle;
+      _currentOperation = null;
+      _activeTrackPoints = [];
+      _totalDistanceMeters = 0;
+      _errorMessage = 'Falha ao iniciar pulverização: $error';
+    } finally {
+      _startingPreparedSession = false;
+      notifyListeners();
+    }
+  }
+
   void startLocationTracking() {
     if (_isLocationActive) return;
     _isLocationActive = true;
-    _locationSubscription = locationService.watchLocation().listen((result) {
-      if (result.availability == LocationAvailability.available &&
-          result.location != null) {
-        final accepted = _locationFilter.add(result.location!);
-        if (accepted == null) return;
-        _userLocation = accepted;
-        if (_sessionState == SprayingSessionState.recording) {
-          _recordTrackPoint(accepted);
+    _locationSubscription = locationService.watchLocation().listen(
+      (result) {
+        if (result.availability == LocationAvailability.available &&
+            result.location != null) {
+          final location = result.location!;
+          final accepted = _locationFilter.add(location);
+          if (accepted != null) {
+            _userLocation = accepted;
+            if (_sessionState == SprayingSessionState.recording) {
+              _recordTrackPoint(accepted);
+            }
+            notifyListeners();
+          }
+          if (_awaitingStableSignal) {
+            final stable = _signalStabilizer.add(location);
+            if (stable != null) unawaited(_startPreparedSession(stable));
+          }
+        } else if (_awaitingStableSignal) {
+          _stopWaitingForSignal(
+            'Localização indisponível. Verifique o GPS e a permissão do app.',
+          );
         }
-        notifyListeners();
-      }
-    });
+      },
+      onError: (Object _) {
+        stopLocationTracking();
+        if (_awaitingStableSignal) {
+          _stopWaitingForSignal('Não foi possível acessar o sinal GPS.');
+        }
+      },
+      onDone: () {
+        _isLocationActive = false;
+        _locationSubscription = null;
+        if (_awaitingStableSignal) {
+          _stopWaitingForSignal('Sinal GPS indisponível. Tente novamente.');
+        }
+      },
+    );
   }
 
   void stopLocationTracking() {
@@ -580,7 +661,7 @@ class SprayingViewModel extends ChangeNotifier {
   }
 
   /// Salva os insumos e finaliza a revisão, deixando a operação pronta para sincronização.
-  Future<void> saveInputsAndComplete({
+  Future<bool> saveInputsAndComplete({
     required List<SprayingInput> inputs,
     String? operatorName,
     String? title,
@@ -589,19 +670,31 @@ class SprayingViewModel extends ChangeNotifier {
     String? notes,
   }) async {
     final targetOp = _reviewingOperation ?? _currentOperation;
-    if (targetOp == null) return;
+    if (targetOp == null) return false;
 
     if (inputs.isEmpty) {
       _errorMessage = 'Ao menos um insumo agrícola é obrigatório';
       notifyListeners();
-      return;
+      return false;
     }
+
+    final reviewedZoneIds = _reviewedPlants
+        .map((plant) => plantById(plant.plantId)?.zoneId)
+        .whereType<String>()
+        .toSet();
+    if (reviewedZoneIds.length > 1) {
+      _errorMessage = 'As plantas atingidas pertencem a talhões diferentes. Revise a seleção antes de salvar.';
+      notifyListeners();
+      return false;
+    }
+    final operationZoneId = reviewedZoneIds.singleOrNull ?? targetOp.zoneId;
 
     final opId = targetOp.localId;
     await sprayingRepository.saveInputs(opId, inputs);
     await sprayingRepository.saveConfirmedPlants(opId, _reviewedPlants);
 
     final updatedOp = targetOp.copyWith(
+      zoneId: operationZoneId,
       operatorName: operatorName ?? targetOp.operatorName,
       title: title ?? targetOp.title,
       machineName: machineName ?? targetOp.machineName,
@@ -626,6 +719,7 @@ class SprayingViewModel extends ChangeNotifier {
 
     await loadLocalOperations();
     notifyListeners();
+    return true;
   }
 
   /// Descarta a sessão atual em andamento.
@@ -707,6 +801,7 @@ class SprayingViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _signalWaitTimeout?.cancel();
     stopLocationTracking();
     super.dispose();
   }

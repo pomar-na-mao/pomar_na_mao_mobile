@@ -85,6 +85,8 @@ class GeolocatorLocationService implements LocationService {
         longitude: position.longitude,
         accuracy: position.accuracy,
         timestamp: position.timestamp,
+        heading: position.heading,
+        speed: position.speed,
       ),
     );
   }

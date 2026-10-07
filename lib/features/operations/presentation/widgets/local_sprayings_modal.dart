@@ -54,7 +54,9 @@ class LocalSprayingsModal extends StatelessWidget {
                       width: 36,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                        color: colorScheme.outlineVariant.withValues(
+                          alpha: 0.6,
+                        ),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -68,8 +70,9 @@ class LocalSprayingsModal extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: colorScheme.primaryContainer
-                                .withValues(alpha: 0.5),
+                            color: colorScheme.primaryContainer.withValues(
+                              alpha: 0.5,
+                            ),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
@@ -113,7 +116,9 @@ class LocalSprayingsModal extends StatelessWidget {
                   // Feedback message if any
                   if (viewModel.feedbackMessage case final message?)
                     Container(
-                      color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                      color: colorScheme.primaryContainer.withValues(
+                        alpha: 0.3,
+                      ),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
                         vertical: 10,
@@ -138,6 +143,32 @@ class LocalSprayingsModal extends StatelessWidget {
                         ],
                       ),
                     ),
+                  if (viewModel.errorMessage case final message?)
+                    Container(
+                      color: colorScheme.errorContainer,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 18,
+                            color: colorScheme.onErrorContainer,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              message,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onErrorContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
                   // Lista de pulverizações
                   Expanded(
@@ -156,10 +187,11 @@ class LocalSprayingsModal extends StatelessWidget {
                                   const SizedBox(height: 12),
                                   Text(
                                     'Nenhum registro local',
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: colorScheme.onSurface,
-                                    ),
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                          color: colorScheme.onSurface,
+                                        ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
@@ -231,6 +263,11 @@ class _SprayingOperationCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSyncing = viewModel.isSyncing;
+    final operatorName = operation.operatorName.trim();
+    final displayedOperatorName =
+        operatorName.isEmpty || operatorName == 'Operador'
+        ? 'A definir'
+        : operatorName;
 
     return Material(
       color: colorScheme.surface,
@@ -261,7 +298,7 @@ class _SprayingOperationCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Operador: ${operation.operatorName}',
+              'Operador: $displayedOperatorName',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -290,11 +327,7 @@ class _SprayingOperationCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 14),
-                Icon(
-                  Icons.eco_outlined,
-                  size: 14,
-                  color: colorScheme.outline,
-                ),
+                Icon(Icons.eco_outlined, size: 14, color: colorScheme.outline),
                 const SizedBox(width: 4),
                 Text(
                   '${operation.confirmedPlants.length} plantas',
@@ -380,7 +413,8 @@ class _SprayingOperationCard extends StatelessWidget {
                       await viewModel.startReviewingOperation(operation);
                     },
                   ),
-                ] else if (operation.syncStatus == SprayingSyncStatus.reviewed ||
+                ] else if (operation.syncStatus ==
+                        SprayingSyncStatus.reviewed ||
                     operation.syncStatus == SprayingSyncStatus.error) ...[
                   const SizedBox(width: 8),
                   OutlinedButton.icon(

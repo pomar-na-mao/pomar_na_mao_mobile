@@ -32,4 +32,46 @@ void main() {
     expect(isInsideSprayingFocusArea(bounds, const LatLng(0, 180)), isTrue);
     expect(isInsideSprayingFocusArea(bounds, const LatLng(0, -170)), isFalse);
   });
+
+  test('rotates around the current target without changing zoom', () {
+    const current = CameraPosition(
+      target: LatLng(-21.17, -47.81),
+      zoom: 20.5,
+      bearing: 0,
+    );
+    final next = sprayingFollowCameraPosition(
+      current: current,
+      user: const LatLng(-21.171, -47.811),
+      outsideFocusArea: false,
+      bearing: 60,
+    );
+    expect(next?.target, current.target);
+    expect(next?.zoom, 20.5);
+    expect(next?.bearing, 60);
+  });
+
+  test('repositions only when the user leaves the focus area', () {
+    const current = CameraPosition(
+      target: LatLng(-21.17, -47.81),
+      zoom: 20.5,
+      bearing: 90,
+    );
+    const user = LatLng(-21.171, -47.811);
+    expect(
+      sprayingFollowCameraPosition(
+        current: current,
+        user: user,
+        outsideFocusArea: false,
+      ),
+      isNull,
+    );
+    final next = sprayingFollowCameraPosition(
+      current: current,
+      user: user,
+      outsideFocusArea: true,
+    );
+    expect(next?.target, user);
+    expect(next?.zoom, current.zoom);
+    expect(next?.bearing, current.bearing);
+  });
 }

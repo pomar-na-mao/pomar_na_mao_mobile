@@ -9,6 +9,7 @@ import '../../farm/domain/user_location.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
 import '../../farm/presentation/bounded_plant_markers.dart';
 import '../../farm/presentation/plant_spatial_index.dart';
+import '../../farm/presentation/user_map_navigation.dart';
 import '../../../core/ui/map_activity.dart';
 import '../../../core/ui/map_camera.dart';
 import '../data/inspection_database.dart';
@@ -65,6 +66,10 @@ class _InspectionViewState extends State<InspectionView> {
   BitmapDescriptor? _plantMarkerIcon;
   BitmapDescriptor? _nonExistentPlantMarkerIcon;
   BitmapDescriptor? _addedPlantMarkerIcon;
+  BitmapDescriptor? _userMarkerIcon;
+  final UserMapNavigator _userMapNavigator = UserMapNavigator();
+  UserLocation? _lastUserLocation;
+  bool _hasFocusedOnUser = false;
   Set<Marker> _markers = const {};
   final _plantLayer = BoundedPlantMarkers();
   String? _lastFittedFilterSignature;
@@ -73,6 +78,8 @@ class _InspectionViewState extends State<InspectionView> {
 
   bool _hasSetInitialCamera = false;
   bool _userHasInteractedWithMap = false;
+  String? _focusedZoneFilterId;
+  String? _focusedOccurrenceFilterId;
 
   void _markersChanged() {
     if (mounted) setState(() => _markers = _plantLayer.markers);
@@ -83,6 +90,7 @@ class _InspectionViewState extends State<InspectionView> {
     super.initState();
     _plantLayer.addListener(_markersChanged);
     unawaited(_loadPlantMarkerIcon());
+    unawaited(_loadUserMarkerIcon());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final vm = _effectiveViewModel;
@@ -123,6 +131,39 @@ class _InspectionViewState extends State<InspectionView> {
     _mapController = null;
     _fallbackVm?.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUserMarkerIcon() async {
+    final icon = await createUserLocationMarkerIcon();
+    if (mounted) setState(() => _userMarkerIcon = icon);
+  }
+
+  void _followUser(UserLocation location) {
+    final controller = _mapController;
+    if (controller == null) return;
+    if (!_hasFocusedOnUser) {
+      _hasFocusedOnUser = true;
+      final vm = _effectiveViewModel;
+      _focusedZoneFilterId = vm.selectedZoneFilterId;
+      _focusedOccurrenceFilterId = vm.selectedOccurrenceFilterId;
+      unawaited(
+        _userMapNavigator.focus(
+          controller,
+          location,
+          tilt: _savedCamera?.tilt ?? 0,
+          bearing: _savedCamera?.bearing ?? 0,
+        ),
+      );
+      return;
+    }
+    unawaited(
+      _userMapNavigator.follow(
+        location: location,
+        controller: controller,
+        camera: () => _savedCamera,
+        isActive: () => mounted && _mapController == controller,
+      ),
+    );
   }
 
   Future<void> _loadPlantMarkerIcon() async {
@@ -229,6 +270,11 @@ class _InspectionViewState extends State<InspectionView> {
   Future<void> _fitCamera(InspectionViewModel vm) async {
     final controller = _mapController;
     if (controller == null) return;
+    if (_hasFocusedOnUser &&
+        _focusedZoneFilterId == vm.selectedZoneFilterId &&
+        _focusedOccurrenceFilterId == vm.selectedOccurrenceFilterId) {
+      return;
+    }
 
     final currentSignature =
         '${vm.selectedOccurrenceFilterId}_${vm.selectedZoneFilterId}_${vm.selectedZonePoints.length}_'
@@ -242,6 +288,8 @@ class _InspectionViewState extends State<InspectionView> {
     }
 
     _lastFittedFilterSignature = currentSignature;
+    _focusedZoneFilterId = vm.selectedZoneFilterId;
+    _focusedOccurrenceFilterId = vm.selectedOccurrenceFilterId;
 
     final userLoc = vm.userLocation;
     final zonePoints = vm.selectedZonePoints;
@@ -309,9 +357,14 @@ class _InspectionViewState extends State<InspectionView> {
     final loc = vm.userLocation;
     final controller = _mapController;
     if (loc != null && controller != null) {
-      animateMapCamera(
-        controller,
-        CameraUpdate.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 17),
+      _hasFocusedOnUser = true;
+      unawaited(
+        _userMapNavigator.focus(
+          controller,
+          loc,
+          tilt: _savedCamera?.tilt ?? 0,
+          bearing: _savedCamera?.bearing ?? 0,
+        ),
       );
     }
   }
@@ -369,8 +422,8 @@ class _InspectionViewState extends State<InspectionView> {
     var nonExistent = false;
     String? selectedZoneId =
         vm.zones.any((z) => z.id == vm.selectedZoneFilterId)
-            ? vm.selectedZoneFilterId
-            : null;
+        ? vm.selectedZoneFilterId
+        : null;
     final shouldSave = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -382,7 +435,9 @@ class _InspectionViewState extends State<InspectionView> {
           builder: (context, setModalState) {
             return Material(
               color: colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
               clipBehavior: Clip.antiAlias,
               child: SafeArea(
                 top: false,
@@ -397,7 +452,9 @@ class _InspectionViewState extends State<InspectionView> {
                           width: 36,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                            color: colorScheme.outlineVariant.withValues(
+                              alpha: 0.6,
+                            ),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -575,6 +632,21 @@ class _InspectionViewState extends State<InspectionView> {
       builder: (context, _) {
         _updateMarkers(vm);
 
+        final location = vm.userLocation;
+        if (location == null) {
+          if (_lastUserLocation != null) _userMapNavigator.reset();
+          _lastUserLocation = null;
+          _hasFocusedOnUser = false;
+        } else {
+          _userMapNavigator.observe(location);
+          if (!identical(_lastUserLocation, location)) {
+            _lastUserLocation = location;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _followUser(location);
+            });
+          }
+        }
+
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) unawaited(_fitCamera(vm));
         });
@@ -638,11 +710,35 @@ class _InspectionViewState extends State<InspectionView> {
                                   target: _fallbackPosition,
                                   zoom: 17,
                                 ),
-                            onCameraIdle: _plantLayer.cameraIdle,
+                            onCameraIdle: () {
+                              _plantLayer.cameraIdle();
+                              if (vm.userLocation case final location?) {
+                                _userMapNavigator.invalidate();
+                                _followUser(location);
+                              }
+                            },
                             onCameraMove: (position) => _savedCamera = position,
-                            markers: {..._markers, ..._addedPlantMarkers(vm)},
+                            markers: {
+                              ..._markers,
+                              ..._addedPlantMarkers(vm),
+                              if (vm.userLocation case final location?)
+                                Marker(
+                                  markerId: const MarkerId('inspection_user'),
+                                  position: LatLng(
+                                    location.latitude,
+                                    location.longitude,
+                                  ),
+                                  icon:
+                                      _userMarkerIcon ??
+                                      BitmapDescriptor.defaultMarkerWithHue(
+                                        BitmapDescriptor.hueAzure,
+                                      ),
+                                  anchor: const Offset(0.5, 0.5),
+                                  zIndexInt: 1000,
+                                ),
+                            },
                             polygons: vm.polygons,
-                            myLocationEnabled: vm.canShowUserLocation,
+                            myLocationEnabled: false,
                             myLocationButtonEnabled: false,
                             onLongPress: (position) =>
                                 _showAddPlantModal(vm, position),
@@ -651,6 +747,9 @@ class _InspectionViewState extends State<InspectionView> {
                               _plantLayer.controller = controller;
                               _plantLayer.cameraIdle();
                               unawaited(_fitCamera(vm));
+                              if (vm.userLocation case final location?) {
+                                _followUser(location);
+                              }
                             },
                           ),
                         ),

@@ -29,6 +29,7 @@ class _SprayingInputsModalState extends State<SprayingInputsModal> {
   final _inputs = <SprayingInput>[];
   final _generalFormKey = GlobalKey<FormState>();
   final _inputFormKey = GlobalKey<FormState>();
+  String? _saveError;
 
   late final TextEditingController _operatorCtrl;
   late final TextEditingController _machineCtrl;
@@ -213,7 +214,7 @@ class _SprayingInputsModalState extends State<SprayingInputsModal> {
       return;
     }
 
-    await widget.viewModel.saveInputsAndComplete(
+    final saved = await widget.viewModel.saveInputsAndComplete(
       inputs: _inputs,
       operatorName: _operatorCtrl.text.trim(),
       title: _titleCtrl.text.trim().isNotEmpty ? _titleCtrl.text.trim() : null,
@@ -226,8 +227,15 @@ class _SprayingInputsModalState extends State<SprayingInputsModal> {
       notes: _notesCtrl.text.trim().isNotEmpty ? _notesCtrl.text.trim() : null,
     );
 
-    if (mounted) {
+    if (!mounted) return;
+    if (saved) {
       Navigator.pop(context);
+    } else {
+      setState(() {
+        _saveError =
+            widget.viewModel.errorMessage ??
+            'Não foi possível salvar. Revise as plantas selecionadas.';
+      });
     }
   }
 
@@ -857,20 +865,33 @@ class _SprayingInputsModalState extends State<SprayingInputsModal> {
               // FOOTER: Salvar e Confirmar
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: FilledButton.icon(
-                  key: const ValueKey('btn-confirm-save-spraying'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_saveError case final message?) ...[
+                      Text(message, style: TextStyle(color: colorScheme.error)),
+                      const SizedBox(height: 8),
+                    ],
+                    FilledButton.icon(
+                      key: const ValueKey('btn-confirm-save-spraying'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      icon: const Icon(Icons.check_rounded),
+                      label: const Text(
+                        'Confirmar e Salvar Pulverização',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      onPressed: _onSave,
                     ),
-                  ),
-                  icon: const Icon(Icons.check_rounded),
-                  label: const Text(
-                    'Confirmar e Salvar Pulverização',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  onPressed: _onSave,
+                  ],
                 ),
               ),
             ],

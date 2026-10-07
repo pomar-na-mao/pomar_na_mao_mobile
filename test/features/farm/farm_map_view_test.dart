@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/farm_point.dart';
@@ -34,8 +36,18 @@ Plant _createPlant({
 
 class _FakePlantsRepository implements PlantsRepository {
   List<Plant> plants = [
-    _createPlant(id: 'plant-1', zoneId: 'zone-a', latitude: -23.0, longitude: -47.0),
-    _createPlant(id: 'plant-2', zoneId: 'zone-b', latitude: -23.1, longitude: -47.1),
+    _createPlant(
+      id: 'plant-1',
+      zoneId: 'zone-a',
+      latitude: -23.0,
+      longitude: -47.0,
+    ),
+    _createPlant(
+      id: 'plant-2',
+      zoneId: 'zone-b',
+      latitude: -23.1,
+      longitude: -47.1,
+    ),
   ];
 
   @override
@@ -52,7 +64,8 @@ class _FakeZonesRepository implements ZonesRepository {
   Future<List<Zone>> fetchZones() async => zones;
 
   @override
-  Future<List<RegionPoint>> fetchRegionsForZone(String zoneId) async => const [];
+  Future<List<RegionPoint>> fetchRegionsForZone(String zoneId) async =>
+      const [];
 }
 
 class _FakeFarmRepository implements FarmRepository {
@@ -61,15 +74,57 @@ class _FakeFarmRepository implements FarmRepository {
 }
 
 class _FakeLocationService implements LocationService {
+  final controller = StreamController<LocationResult>.broadcast();
+
   @override
   Future<LocationResult> getCurrentLocation() async =>
       const LocationResult.serviceDisabled();
 
   @override
-  Stream<LocationResult> watchLocation() => const Stream.empty();
+  Stream<LocationResult> watchLocation() => controller.stream;
 }
 
 void main() {
+  test('farm map waits for stable GPS and filters a jump', () async {
+    final service = _FakeLocationService();
+    final vm = FarmMapViewModel(
+      _FakePlantsRepository(),
+      _FakeZonesRepository(),
+      service,
+      _FakeFarmRepository(),
+    );
+    addTearDown(vm.dispose);
+    addTearDown(service.controller.close);
+    await vm.loadUserLocation();
+    final now = DateTime.now().toUtc();
+    for (var secondsAgo = 2; secondsAgo >= 0; secondsAgo--) {
+      service.controller.add(
+        LocationResult.available(
+          UserLocation(
+            latitude: -23.5,
+            longitude: -46.5,
+            accuracy: 3,
+            timestamp: now.subtract(Duration(seconds: secondsAgo)),
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(vm.userLocation == null, secondsAgo > 0);
+    }
+    service.controller.add(
+      LocationResult.available(
+        UserLocation(
+          latitude: -23.4995,
+          longitude: -46.5,
+          accuracy: 3,
+          timestamp: now.add(const Duration(seconds: 1)),
+        ),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(vm.userLocation?.latitude, -23.5);
+  });
+
   test('sorts zones alphabetically by code without changing the source', () {
     const zones = [
       Zone(id: 'zone-c', name: 'Terceira', code: 'C'),
@@ -89,61 +144,82 @@ void main() {
     expect(zones.first.id, 'zone-c');
   });
 
-  testWidgets('FarmActionCard renders below map and opens FarmZoneFilterModal', (
-    tester,
-  ) async {
-    final plantsRepo = _FakePlantsRepository();
-    final zonesRepo = _FakeZonesRepository();
-    final farmRepo = _FakeFarmRepository();
-    final locationService = _FakeLocationService();
-    final vm = FarmMapViewModel(plantsRepo, zonesRepo, locationService, farmRepo);
+  testWidgets(
+    'FarmActionCard renders below map and opens FarmZoneFilterModal',
+    (tester) async {
+      final plantsRepo = _FakePlantsRepository();
+      final zonesRepo = _FakeZonesRepository();
+      final farmRepo = _FakeFarmRepository();
+      final locationService = _FakeLocationService();
+      final vm = FarmMapViewModel(
+        plantsRepo,
+        zonesRepo,
+        locationService,
+        farmRepo,
+      );
 
-    await vm.loadFarmData();
+      await vm.loadFarmData();
 
-    await tester.binding.setSurfaceSize(const Size(420, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.binding.setSurfaceSize(const Size(420, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: FarmMapView(viewModel: vm),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(MaterialApp(home: FarmMapView(viewModel: vm)));
+      await tester.pumpAndSettle();
 
-    // Verify FarmActionCard is displayed
-    expect(find.byType(FarmActionCard), findsOneWidget);
-    expect(find.byKey(const ValueKey('action-farm-load-plants')), findsOneWidget);
-    expect(find.byKey(const ValueKey('action-farm-filter-zone')), findsOneWidget);
+      // Verify FarmActionCard is displayed
+      expect(find.byType(FarmActionCard), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('action-farm-load-plants')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('action-farm-filter-zone')),
+        findsOneWidget,
+      );
 
-    // Tap on filter button
-    await tester.tap(find.byKey(const ValueKey('action-farm-filter-zone')));
-    await tester.pumpAndSettle();
+      // Tap on filter button
+      await tester.tap(find.byKey(const ValueKey('action-farm-filter-zone')));
+      await tester.pumpAndSettle();
 
-    // Verify modal is open
-    expect(find.text('Filtros de Plantas'), findsOneWidget);
-    expect(find.text('2 de 2 plantas visíveis'), findsOneWidget);
-    expect(find.byKey(const ValueKey('farm-filter-zone-dropdown')), findsOneWidget);
+      // Verify modal is open
+      expect(find.text('Filtros de Plantas'), findsOneWidget);
+      expect(find.text('2 de 2 plantas visíveis'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('farm-filter-zone-dropdown')),
+        findsOneWidget,
+      );
 
-    // Tap on "Ver no mapa"
-    await tester.tap(find.byKey(const ValueKey('apply-farm-zone-filter-button')));
-    await tester.pumpAndSettle();
+      // Tap on "Ver no mapa"
+      await tester.tap(
+        find.byKey(const ValueKey('apply-farm-zone-filter-button')),
+      );
+      await tester.pumpAndSettle();
 
-    // Modal closed
-    expect(find.text('Filtros de Plantas'), findsNothing);
+      // Modal closed
+      expect(find.text('Filtros de Plantas'), findsNothing);
 
-    // Filter by zone directly on vm
-    vm.selectZone('zone-a');
-    await tester.pumpAndSettle();
+      // Filter by zone directly on vm
+      vm.selectZone('zone-a');
+      await tester.pumpAndSettle();
 
-    // Check active zone badge appears on map
-    expect(find.byKey(const ValueKey('clear-farm-zone-badge-button')), findsOneWidget);
-    expect(find.text('Zona Alfa'), findsOneWidget);
+      // Check active zone badge appears on map
+      expect(
+        find.byKey(const ValueKey('clear-farm-zone-badge-button')),
+        findsOneWidget,
+      );
+      expect(find.text('Zona Alfa'), findsOneWidget);
 
-    // Tap close on badge to clear filter
-    await tester.tap(find.byKey(const ValueKey('clear-farm-zone-badge-button')));
-    await tester.pumpAndSettle();
+      // Tap close on badge to clear filter
+      await tester.tap(
+        find.byKey(const ValueKey('clear-farm-zone-badge-button')),
+      );
+      await tester.pumpAndSettle();
 
-    expect(vm.selectedZoneId, isNull);
-    expect(find.byKey(const ValueKey('clear-farm-zone-badge-button')), findsNothing);
-  });
+      expect(vm.selectedZoneId, isNull);
+      expect(
+        find.byKey(const ValueKey('clear-farm-zone-badge-button')),
+        findsNothing,
+      );
+    },
+  );
 }

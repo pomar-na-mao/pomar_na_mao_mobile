@@ -71,7 +71,9 @@ class SprayingSessionModal extends StatelessWidget {
                       width: 36,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                        color: colorScheme.outlineVariant.withValues(
+                          alpha: 0.6,
+                        ),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -85,8 +87,9 @@ class SprayingSessionModal extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: colorScheme.primaryContainer
-                                .withValues(alpha: 0.5),
+                            color: colorScheme.primaryContainer.withValues(
+                              alpha: 0.5,
+                            ),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
@@ -207,8 +210,8 @@ class SprayingSessionModal extends StatelessWidget {
                               ),
                             ),
                             onPressed: () {
-                              vm.startSession();
                               Navigator.of(context).pop();
+                              vm.prepareSessionStart();
                             },
                           ),
                         ] else ...[
@@ -238,8 +241,8 @@ class SprayingSessionModal extends StatelessWidget {
                                     ),
                                     Text(
                                       'Pontos GPS',
-                                      style:
-                                          theme.textTheme.bodySmall?.copyWith(
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
                                             color: colorScheme.outline,
                                           ),
                                     ),
@@ -262,8 +265,8 @@ class SprayingSessionModal extends StatelessWidget {
                                     ),
                                     Text(
                                       'Distância',
-                                      style:
-                                          theme.textTheme.bodySmall?.copyWith(
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
                                             color: colorScheme.outline,
                                           ),
                                     ),
@@ -287,8 +290,9 @@ class SprayingSessionModal extends StatelessWidget {
                                             vertical: 14,
                                           ),
                                           shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(14),
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
                                           ),
                                         ),
                                         icon: const Icon(Icons.pause_rounded),
@@ -304,8 +308,9 @@ class SprayingSessionModal extends StatelessWidget {
                                             vertical: 14,
                                           ),
                                           shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(14),
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
                                           ),
                                         ),
                                         icon: const Icon(
@@ -350,7 +355,8 @@ class SprayingSessionModal extends StatelessWidget {
                                   ),
                                   actions: [
                                     TextButton(
-                                      onPressed: () => Navigator.pop(ctx, false),
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
                                       child: const Text('Voltar'),
                                     ),
                                     FilledButton(

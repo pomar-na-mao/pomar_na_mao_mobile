@@ -105,7 +105,9 @@ class DefaultSprayingRepository implements SprayingRepository {
       final geojson = effectiveOp.route!.geojson;
       final coords = geojson['geometry']?['coordinates'] as List?;
       if (coords != null && coords.length >= 2) {
-        final duration = effectiveOp.finishedAt.difference(effectiveOp.startedAt);
+        final duration = effectiveOp.finishedAt.difference(
+          effectiveOp.startedAt,
+        );
         final stepMs = coords.length > 1
             ? (duration.inMilliseconds / (coords.length - 1)).round()
             : 0;
@@ -117,13 +119,18 @@ class DefaultSprayingRepository implements SprayingRepository {
           reconstructed.add(
             SprayingTrackPoint(
               localId: const Uuid().v4(),
-              recordedAt: effectiveOp.startedAt.add(Duration(milliseconds: stepMs * i)),
+              recordedAt: effectiveOp.startedAt.add(
+                Duration(milliseconds: stepMs * i),
+              ),
               latitude: lat,
               longitude: lon,
             ),
           );
         }
-        await localStore.insertTrackPointsBatch(operationLocalId, reconstructed);
+        await localStore.insertTrackPointsBatch(
+          operationLocalId,
+          reconstructed,
+        );
         effectiveOp = effectiveOp.copyWith(trackPoints: reconstructed);
       }
     }
@@ -145,6 +152,16 @@ class DefaultSprayingRepository implements SprayingRepository {
       final deviceId = await localStore.getDeviceId();
       final payload = effectiveOp.toRpcPayload(deviceId: deviceId);
       final result = await remoteDataSource.syncSprayingOperation(payload);
+
+      if (result.inputsCount != effectiveOp.inputs.length ||
+          result.confirmedPlantsCount != effectiveOp.confirmedPlants.length) {
+        throw StateError(
+          'O servidor confirmou ${result.confirmedPlantsCount} de '
+          '${effectiveOp.confirmedPlants.length} plantas e '
+          '${result.inputsCount} de ${effectiveOp.inputs.length} insumos. '
+          'Confira o talhão e as plantas antes de sincronizar novamente.',
+        );
+      }
 
       await localStore.updateSyncStatus(
         operationLocalId,

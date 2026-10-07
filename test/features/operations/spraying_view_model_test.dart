@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/region_point.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/user_location.dart';
@@ -10,7 +11,10 @@ import 'package:pomar_na_mao_mobile/features/operations/data/spraying_repository
 import 'package:pomar_na_mao_mobile/features/operations/domain/inspection_models.dart';
 import 'package:pomar_na_mao_mobile/features/operations/domain/spraying_geometry_service.dart';
 import 'package:pomar_na_mao_mobile/features/operations/domain/spraying_models.dart';
+import 'package:pomar_na_mao_mobile/features/operations/presentation/spraying_view.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/spraying_view_model.dart';
+import 'package:pomar_na_mao_mobile/features/operations/presentation/widgets/local_sprayings_modal.dart';
+import 'package:pomar_na_mao_mobile/features/operations/presentation/widgets/spraying_review_action_bar.dart';
 
 class FakeLocationService implements LocationService {
   final _controller = StreamController<LocationResult>.broadcast();
@@ -241,6 +245,42 @@ class FakeZonesRepository implements ZonesRepository {
 }
 
 void main() {
+  testWidgets('start button shows translucent signal wait and can cancel', (
+    tester,
+  ) async {
+    final phone = FakeLocationService();
+    final vm = SprayingViewModel(
+      sprayingRepository: FakeSprayingRepository(),
+      inspectionRepository: FakeInspectionRepository(),
+      locationService: phone,
+      zonesRepository: FakeZonesRepository(),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SprayingView(
+          viewModel: vm,
+          mapBuilder: (_, _) => const SizedBox.expand(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('action-spraying-session')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('btn-start-spraying')));
+    await tester.pump();
+    expect(find.text('Aguardando sinal estabilizar'), findsOneWidget);
+    expect(vm.sessionState, SprayingSessionState.idle);
+
+    await tester.tap(find.text('Cancelar'));
+    await tester.pump();
+    expect(vm.isPreparingSession, isFalse);
+    expect(vm.currentOperation, isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    vm.dispose();
+    phone.dispose();
+  });
+
   group('Spraying RPC Serialization', () {
     test('toRpcPayload produces compliant JSON structure', () {
       final now = DateTime.utc(2026, 10, 2, 10, 0, 0);
@@ -362,6 +402,16 @@ void main() {
         expect(res2.trackPointsCount, equals(5));
         expect(res2.inputsCount, equals(1));
         expect(res2.confirmedPlantsCount, equals(8));
+
+        expect(
+          () => SprayingSyncResult.fromRpc({
+            'field_operation_id': 'op-remote-3',
+            'route_id': 'route-remote-3',
+            'track_points_count': 5,
+            'synced_at': '2026-10-02T12:30:00.000Z',
+          }),
+          throwsFormatException,
+        );
       },
     );
   });
@@ -416,6 +466,54 @@ void main() {
       expect(viewModel.currentOperation!.zoneId, equals('zone-1'));
       expect(viewModel.currentOperation!.operatorName, equals('João da Silva'));
       expect(viewModel.currentOperation!.title, equals('Aplicação 1'));
+    });
+
+    test('prepares session until fresh GPS samples stabilize', () async {
+      final now = DateTime.now().toUtc();
+      viewModel.prepareSessionStart();
+      expect(viewModel.isPreparingSession, isTrue);
+      expect(viewModel.sessionState, SprayingSessionState.idle);
+
+      for (var seconds = -2; seconds <= 0; seconds++) {
+        locationService.emit(
+          LocationResult.available(
+            UserLocation(
+              latitude: -21.177,
+              longitude: -47.81,
+              accuracy: 5,
+              timestamp: now.add(Duration(seconds: seconds)),
+            ),
+          ),
+        );
+      }
+      await pumpEventQueue();
+
+      expect(viewModel.isPreparingSession, isFalse);
+      expect(viewModel.sessionState, SprayingSessionState.recording);
+      expect(viewModel.activeTrackPoints, hasLength(1));
+    });
+
+    test('cancelled preparation never creates a spraying session', () async {
+      viewModel.prepareSessionStart();
+      viewModel.cancelSessionPreparation();
+      expect(viewModel.isPreparingSession, isFalse);
+
+      final now = DateTime.now().toUtc();
+      for (var seconds = -2; seconds <= 0; seconds++) {
+        locationService.emit(
+          LocationResult.available(
+            UserLocation(
+              latitude: -21.177,
+              longitude: -47.81,
+              accuracy: 5,
+              timestamp: now.add(Duration(seconds: seconds)),
+            ),
+          ),
+        );
+      }
+      await pumpEventQueue();
+      expect(viewModel.sessionState, SprayingSessionState.idle);
+      expect(viewModel.currentOperation, isNull);
     });
 
     test('GPS tracking records track points when recording', () async {
@@ -772,6 +870,220 @@ void main() {
         );
       },
     );
+
+    test(
+      'uses the reviewed plants zone when completing an operation',
+      () async {
+        final now = DateTime.now().toUtc();
+        inspectionRepo.snapshot = InspectionSnapshot(
+          plants: [InspectionPlant(id: 'plant-b', zoneId: 'zone-b')],
+          types: const [],
+          loadedAt: now,
+        );
+        final operation = SprayingOperation(
+          localId: 'op-zone',
+          zoneId: 'zone-a',
+          startedAt: now,
+          finishedAt: now,
+          operatorName: 'Operador',
+          confirmedPlants: const [
+            SprayingConfirmedPlant(
+              localId: 'match-b',
+              plantId: 'plant-b',
+              matchSource: SprayingMatchSource.autoMatched,
+            ),
+          ],
+        );
+        await sprayingRepo.saveOperation(operation);
+        await viewModel.startReviewingOperation(operation);
+
+        final saved = await viewModel.saveInputsAndComplete(
+          inputs: const [
+            SprayingInput(
+              localId: 'input-1',
+              inputType: 'fungicide',
+              productName: 'Produto',
+            ),
+          ],
+        );
+
+        expect(saved, isTrue);
+        expect(sprayingRepo.operations['op-zone']?.zoneId, 'zone-b');
+        expect(sprayingRepo.operations['op-zone']?.confirmedPlants.length, 1);
+        expect(sprayingRepo.operations['op-zone']?.inputs.length, 1);
+      },
+    );
+
+    test('keeps review open when selected plants span zones', () async {
+      final now = DateTime.now().toUtc();
+      inspectionRepo.snapshot = InspectionSnapshot(
+        plants: [
+          InspectionPlant(id: 'plant-a', zoneId: 'zone-a'),
+          InspectionPlant(id: 'plant-b', zoneId: 'zone-b'),
+        ],
+        types: const [],
+        loadedAt: now,
+      );
+      final operation = SprayingOperation(
+        localId: 'op-mixed',
+        zoneId: 'zone-a',
+        startedAt: now,
+        finishedAt: now,
+        operatorName: 'Operador',
+        confirmedPlants: const [
+          SprayingConfirmedPlant(
+            localId: 'match-a',
+            plantId: 'plant-a',
+            matchSource: SprayingMatchSource.autoMatched,
+          ),
+          SprayingConfirmedPlant(
+            localId: 'match-b',
+            plantId: 'plant-b',
+            matchSource: SprayingMatchSource.autoMatched,
+          ),
+        ],
+      );
+      await sprayingRepo.saveOperation(operation);
+      await viewModel.startReviewingOperation(operation);
+
+      final saved = await viewModel.saveInputsAndComplete(
+        inputs: const [
+          SprayingInput(
+            localId: 'input-1',
+            inputType: 'fungicide',
+            productName: 'Produto',
+          ),
+        ],
+      );
+
+      expect(saved, isFalse);
+      expect(viewModel.isReviewing, isTrue);
+      expect(viewModel.errorMessage, contains('talhões diferentes'));
+      expect(
+        sprayingRepo.operations['op-mixed']?.syncStatus,
+        SprayingSyncStatus.draft,
+      );
+    });
+
+    testWidgets('review count and actions stay aligned across widths', (
+      tester,
+    ) async {
+      final now = DateTime.now().toUtc();
+      final operation = SprayingOperation(
+        localId: 'op-layout',
+        zoneId: 'zone-a',
+        startedAt: now,
+        finishedAt: now,
+        operatorName: 'Operador',
+        confirmedPlants: const [
+          SprayingConfirmedPlant(
+            localId: 'match-a',
+            plantId: 'plant-a',
+            matchSource: SprayingMatchSource.autoMatched,
+          ),
+        ],
+      );
+      await viewModel.startReviewingOperation(operation);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      for (final width in [320.0, 384.0, 420.0, 768.0, 1024.0, 1440.0]) {
+        await tester.binding.setSurfaceSize(Size(width, 800));
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: SprayingReviewActionBar(viewModel: viewModel),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final count = tester.getRect(
+          find.byKey(const ValueKey('review-plants-count')),
+        );
+        final list = tester.getRect(
+          find.byKey(const ValueKey('btn-review-plants-list')),
+        );
+        final inputs = tester.getRect(
+          find.byKey(const ValueKey('btn-review-proceed-inputs')),
+        );
+        expect(find.text('1'), findsOneWidget);
+        expect(find.text('Plantas atingidas'), findsOneWidget);
+        expect(list.top - count.bottom, greaterThanOrEqualTo(8));
+        expect(inputs.left - list.right, greaterThanOrEqualTo(8));
+        expect(inputs.top, list.top);
+        expect(inputs.width, list.width);
+        expect(list.height, greaterThanOrEqualTo(44));
+        expect(tester.takeException(), isNull, reason: 'width: $width');
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('saved operations show an undefined operator placeholder', (
+      tester,
+    ) async {
+      final now = DateTime.now().toUtc();
+      await sprayingRepo.saveOperation(
+        SprayingOperation(
+          localId: 'op-without-operator',
+          zoneId: 'zone-a',
+          startedAt: now,
+          finishedAt: now,
+          operatorName: 'Operador',
+        ),
+      );
+      await sprayingRepo.saveOperation(
+        SprayingOperation(
+          localId: 'op-with-operator',
+          zoneId: 'zone-a',
+          startedAt: now,
+          finishedAt: now,
+          operatorName: 'Maria',
+        ),
+      );
+      await viewModel.loadLocalOperations();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: LocalSprayingsModal(viewModel: viewModel)),
+        ),
+      );
+
+      expect(find.text('Operador: A definir'), findsOneWidget);
+      expect(find.text('Operador: Maria'), findsOneWidget);
+      expect(find.text('Operador: Operador'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('sync errors remain visible in the saved operations sheet', (
+      tester,
+    ) async {
+      final now = DateTime.now().toUtc();
+      await sprayingRepo.saveOperation(
+        SprayingOperation(
+          localId: 'op-sync-error',
+          zoneId: 'zone-a',
+          startedAt: now,
+          finishedAt: now,
+          operatorName: 'Operador',
+          syncStatus: SprayingSyncStatus.reviewed,
+        ),
+      );
+      await viewModel.loadLocalOperations();
+      sprayingRepo.syncShouldSucceed = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: LocalSprayingsModal(viewModel: viewModel)),
+        ),
+      );
+
+      await viewModel.syncOperation('op-sync-error');
+      await tester.pump();
+
+      expect(find.textContaining('Network error during sync'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
 
     test('cancelSession removes ongoing operation and resets state', () async {
       await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
