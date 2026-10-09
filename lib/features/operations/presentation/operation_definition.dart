@@ -9,7 +9,6 @@ class OperationDefinition {
     required this.icon,
     required this.accent,
     required this.isEnabled,
-    required this.statusLabel,
   });
 
   final String id;
@@ -18,7 +17,6 @@ class OperationDefinition {
   final IconData icon;
   final Color accent;
   final bool isEnabled;
-  final String statusLabel;
 }
 
 const operationDefinitions = <OperationDefinition>[
@@ -29,16 +27,14 @@ const operationDefinitions = <OperationDefinition>[
     icon: Icons.fact_check_outlined,
     accent: Color(0xFF2F6B45),
     isEnabled: true,
-    statusLabel: 'Disponível agora',
   ),
   OperationDefinition(
     id: 'spraying',
     title: 'Pulverização',
     description: 'Acompanhe a aplicação, insumos e rota no mapa.',
     icon: Icons.pest_control_outlined,
-    accent: Color(0xFF2E7D32),
+    accent: Color(0xFFB77900),
     isEnabled: true,
-    statusLabel: 'Disponível agora',
   ),
   OperationDefinition(
     id: 'irrigation',
@@ -47,16 +43,14 @@ const operationDefinitions = <OperationDefinition>[
     icon: Icons.water_drop_outlined,
     accent: Color(0xFF176B87),
     isEnabled: false,
-    statusLabel: 'Em breve',
   ),
   OperationDefinition(
     id: 'harvest',
     title: 'Colheita',
     description: 'Controle de etapas e registros de produção.',
-    icon: Icons.agriculture_outlined,
-    accent: Color(0xFF9A4F18),
+    icon: Icons.shopping_basket_outlined,
+    accent: Color(0xFFB83A3A),
     isEnabled: false,
-    statusLabel: 'Em breve',
   ),
   OperationDefinition(
     id: 'soil-analysis',
@@ -65,6 +59,5 @@ const operationDefinitions = <OperationDefinition>[
     icon: Icons.science_outlined,
     accent: Color(0xFF6B4A35),
     isEnabled: false,
-    statusLabel: 'Em breve',
   ),
 ];

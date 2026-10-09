@@ -21,7 +21,7 @@ class OperationsView extends StatelessWidget {
   final SprayingViewModel? sprayingViewModel;
   final SprayingMapBuilder? sprayingMapBuilder;
 
-  static const _backgroundColor = Color(0xFFF4F7F2);
+  static const _backgroundColor = Color(0xFFF2F6EF);
 
   void _openOperation(BuildContext context, OperationDefinition operation) {
     if (!operation.isEnabled) return;
@@ -49,13 +49,6 @@ class OperationsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final available = operationDefinitions
-        .where((item) => item.isEnabled)
-        .toList();
-    final future = operationDefinitions
-        .where((item) => !item.isEnabled)
-        .toList();
-
     return Scaffold(
       backgroundColor: _backgroundColor,
       appBar: AppBar(
@@ -64,7 +57,7 @@ class OperationsView extends StatelessWidget {
         title: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.grid_view_outlined),
+            Icon(Icons.agriculture_rounded),
             SizedBox(width: 8),
             Flexible(child: Text('Operações', overflow: TextOverflow.ellipsis)),
           ],
@@ -72,102 +65,67 @@ class OperationsView extends StatelessWidget {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final horizontalPadding = constraints.maxWidth >= 720 ? 28.0 : 16.0;
+          final horizontalPadding = constraints.maxWidth >= 720 ? 28.0 : 14.0;
           final contentWidth = constraints.maxWidth - horizontalPadding * 2;
-          final primaryHeight = constraints.maxWidth >= 720 ? 238.0 : 228.0;
-          final futureCardHeight = constraints.maxWidth >= 720 ? 202.0 : 196.0;
-          final futureColumns = contentWidth >= 560 ? 2 : 1;
+          final columns = contentWidth >= 900
+              ? 3
+              : contentWidth >= 560
+              ? 2
+              : 1;
 
           return Align(
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1080),
-              child: CustomScrollView(
-                key: const ValueKey('operations-scroll-view'),
-                slivers: [
-                  SliverPadding(
+              child: Column(
+                children: [
+                  Padding(
                     padding: EdgeInsets.fromLTRB(
                       horizontalPadding,
-                      8,
+                      6,
                       horizontalPadding,
-                      14,
+                      12,
                     ),
-                    sliver: SliverToBoxAdapter(
-                      child: _OperationsSummary(
-                        availableCount: available.length,
-                        futureCount: future.length,
-                      ),
+                    child: const _OperationsHeader(
+                      key: ValueKey('operations-header'),
                     ),
                   ),
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      0,
-                      horizontalPadding,
-                      18,
-                    ),
-                    sliver: SliverToBoxAdapter(
-                      child: KeyedSubtree(
-                        key: const ValueKey('primary-operation-section'),
-                        child: Column(
-                          children: [
-                            for (var i = 0; i < available.length; i++) ...[
-                              if (i > 0) const SizedBox(height: 16),
-                              SizedBox(
-                                height: primaryHeight,
-                                child: OperationCard(
-                                  key: ValueKey(
-                                    'operation-card-${available[i].id}',
-                                  ),
-                                  operation: available[i],
-                                  prominent: true,
-                                  onTap: () =>
-                                      _openOperation(context, available[i]),
+                  Expanded(
+                    child: CustomScrollView(
+                      key: const ValueKey('operations-scroll-view'),
+                      slivers: [
+                        SliverPadding(
+                          padding: EdgeInsets.fromLTRB(
+                            horizontalPadding,
+                            0,
+                            horizontalPadding,
+                            20,
+                          ),
+                          sliver: SliverGrid(
+                            key: const ValueKey('operations-grid'),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: columns,
+                                  mainAxisExtent: 142,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
                                 ),
-                              ),
-                            ],
-                          ],
+                            delegate: SliverChildBuilderDelegate((
+                              context,
+                              index,
+                            ) {
+                              final operation = operationDefinitions[index];
+                              return OperationCard(
+                                key: ValueKey('operation-card-${operation.id}'),
+                                operation: operation,
+                                onTap: operation.isEnabled
+                                    ? () => _openOperation(context, operation)
+                                    : null,
+                              );
+                            }, childCount: operationDefinitions.length),
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      0,
-                      horizontalPadding,
-                      10,
-                    ),
-                    sliver: const SliverToBoxAdapter(
-                      child: _SectionHeader(
-                        title: 'Próximas rotinas',
-                        subtitle: 'Planejadas para evoluir o manejo do pomar.',
-                      ),
-                    ),
-                  ),
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      0,
-                      horizontalPadding,
-                      32,
-                    ),
-                    sliver: SliverGrid(
-                      key: const ValueKey('future-operations-grid'),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: futureColumns,
-                        mainAxisExtent: futureCardHeight,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                      ),
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final operation = future[index];
-                        return OperationCard(
-                          key: ValueKey('operation-card-${operation.id}'),
-                          operation: operation,
-                          onTap: null,
-                        );
-                      }, childCount: future.length),
+                      ],
                     ),
                   ),
                 ],
@@ -180,135 +138,93 @@ class OperationsView extends StatelessWidget {
   }
 }
 
-class _OperationsSummary extends StatelessWidget {
-  const _OperationsSummary({
-    required this.availableCount,
-    required this.futureCount,
-  });
-
-  final int availableCount;
-  final int futureCount;
+class _OperationsHeader extends StatelessWidget {
+  const _OperationsHeader({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    return DecoratedBox(
+    return Container(
+      height: 112,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colorScheme.outlineVariant),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF245C3E), Color(0xFF4E914D)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF245C3E).withValues(alpha: 0.18),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Rotinas de campo',
-              style: textTheme.titleLarge?.copyWith(
-                color: colorScheme.onSurface,
-                fontWeight: FontWeight.w900,
-              ),
+      child: Stack(
+        children: [
+          const Positioned(
+            right: -14,
+            bottom: -18,
+            child: Icon(
+              Icons.agriculture_rounded,
+              size: 118,
+              color: Color(0x24FFFFFF),
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Acesse o manejo disponível e acompanhe as próximas rotinas do pomar.',
-              style: textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.35,
-              ),
+          ),
+          const Positioned(
+            right: 94,
+            top: 14,
+            child: Icon(
+              Icons.wb_sunny_outlined,
+              size: 24,
+              color: Color(0x66FFFFFF),
             ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _SummaryChip(
-                  icon: Icons.check_circle_outline,
-                  label: availableCount == 1
-                      ? '1 disponível'
-                      : '$availableCount disponíveis',
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.eco_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'Trabalho no pomar',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.titleLarge?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                _SummaryChip(
-                  icon: Icons.schedule_outlined,
-                  label: '$futureCount em breve',
+                const SizedBox(height: 6),
+                Text(
+                  'Escolha uma atividade para começar.',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.88),
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SummaryChip extends StatelessWidget {
-  const _SummaryChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      constraints: const BoxConstraints(minHeight: 34),
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-      decoration: BoxDecoration(
-        color: colorScheme.primaryContainer.withValues(alpha: 0.42),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: colorScheme.onPrimaryContainer),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: colorScheme.onPrimaryContainer,
-              fontWeight: FontWeight.w800,
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, required this.subtitle});
-
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: textTheme.titleMedium?.copyWith(
-            color: colorScheme.onSurface,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          subtitle,
-          style: textTheme.bodySmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            height: 1.25,
-          ),
-        ),
-      ],
     );
   }
 }

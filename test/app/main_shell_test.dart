@@ -137,7 +137,7 @@ void main() {
 
     await tester.tap(find.text('Operações'));
     await tester.pumpAndSettle();
-    expect(find.text('Rotinas de campo'), findsOneWidget);
+    expect(find.text('Trabalho no pomar'), findsOneWidget);
 
     await tester.tap(find.text('Sobre'));
     await tester.pumpAndSettle();

@@ -36,23 +36,16 @@ Future<void> setSurfaceSize(WidgetTester tester, Size size) async {
 }
 
 void main() {
-  testWidgets('shows operation hierarchy and availability', (tester) async {
+  testWidgets('shows a compact unified operations grid', (tester) async {
     final semantics = tester.ensureSemantics();
     await setSurfaceSize(tester, const Size(768, 1024));
     await tester.pumpWidget(buildSubject());
     await tester.pumpAndSettle();
 
-    expect(find.text('Rotinas de campo'), findsOneWidget);
-    expect(find.text('2 disponíveis'), findsOneWidget);
-    expect(find.text('3 em breve'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('primary-operation-section')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('future-operations-grid')),
-      findsOneWidget,
-    );
+    expect(find.text('Trabalho no pomar'), findsOneWidget);
+    expect(find.byKey(const ValueKey('operations-grid')), findsOneWidget);
+    expect(find.textContaining('disponível'), findsNothing);
+    expect(find.textContaining('em breve'), findsNothing);
 
     for (final title in [
       'Inspeção',
@@ -63,16 +56,22 @@ void main() {
     ]) {
       expect(find.text(title), findsOneWidget);
     }
-    expect(find.text('Disponível agora'), findsNWidgets(2));
-    expect(find.text('Em breve'), findsNWidgets(3));
+    expect(find.byIcon(Icons.lock_outline_rounded), findsNWidgets(3));
 
-    final primaryTop = tester.getTopLeft(
-      find.byKey(const ValueKey('operation-card-inspection')),
+    final enabledOpacity = tester.widget<AnimatedOpacity>(
+      find.descendant(
+        of: find.byKey(const ValueKey('operation-card-inspection')),
+        matching: find.byType(AnimatedOpacity),
+      ),
     );
-    final futureTop = tester.getTopLeft(
-      find.byKey(const ValueKey('operation-card-irrigation')),
+    final disabledOpacity = tester.widget<AnimatedOpacity>(
+      find.descendant(
+        of: find.byKey(const ValueKey('operation-card-irrigation')),
+        matching: find.byType(AnimatedOpacity),
+      ),
     );
-    expect(primaryTop.dy, lessThan(futureTop.dy));
+    expect(enabledOpacity.opacity, 1);
+    expect(disabledOpacity.opacity, lessThan(1));
 
     expect(
       tester.getSemantics(
@@ -80,7 +79,7 @@ void main() {
       ),
       matchesSemantics(
         label: 'Inspeção',
-        hint: 'Disponível. Toque duas vezes para abrir',
+        hint: 'Toque duas vezes para abrir',
         isButton: true,
         hasEnabledState: true,
         isEnabled: true,
@@ -92,10 +91,21 @@ void main() {
       ),
       matchesSemantics(
         label: 'Pulverização',
-        hint: 'Disponível. Toque duas vezes para abrir',
+        hint: 'Toque duas vezes para abrir',
         isButton: true,
         hasEnabledState: true,
         isEnabled: true,
+      ),
+    );
+    expect(
+      tester.getSemantics(
+        find.byKey(const ValueKey('operation-card-irrigation')),
+      ),
+      matchesSemantics(
+        label: 'Irrigação',
+        hint: 'Operação indisponível',
+        isButton: true,
+        hasEnabledState: true,
       ),
     );
     semantics.dispose();
@@ -115,6 +125,26 @@ void main() {
       expect(find.byType(SprayingView), findsNothing);
       expect(find.byType(OperationsView), findsOneWidget);
     }
+  });
+
+  testWidgets('keeps the green header fixed while activities scroll', (
+    tester,
+  ) async {
+    await setSurfaceSize(tester, const Size(320, 520));
+    await tester.pumpWidget(buildSubject());
+    await tester.pumpAndSettle();
+
+    final header = find.byKey(const ValueKey('operations-header'));
+    final initialTop = tester.getTopLeft(header).dy;
+
+    await tester.drag(
+      find.byKey(const ValueKey('operations-scroll-view')),
+      const Offset(0, -280),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('operation-card-harvest')), findsOneWidget);
+    expect(tester.getTopLeft(header).dy, initialTop);
   });
 
   testWidgets('spraying action opens and returns to operations', (

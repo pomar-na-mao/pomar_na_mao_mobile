@@ -124,8 +124,8 @@ class _MainShellState extends State<MainShell> {
                   label: 'Fazenda',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.grid_view_outlined),
-                  selectedIcon: Icon(Icons.grid_view),
+                  icon: Icon(Icons.agriculture_outlined),
+                  selectedIcon: Icon(Icons.agriculture_rounded),
                   label: 'Operações',
                 ),
                 NavigationDestination(
