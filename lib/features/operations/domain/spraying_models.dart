@@ -248,7 +248,6 @@ class SprayingConfirmedPlant {
 class SprayingOperation {
   const SprayingOperation({
     required this.localId,
-    required this.zoneId,
     required this.startedAt,
     required this.finishedAt,
     required this.operatorName,
@@ -266,7 +265,6 @@ class SprayingOperation {
   });
 
   final String localId;
-  final String zoneId;
   final DateTime startedAt;
   final DateTime finishedAt;
   final String operatorName;
@@ -285,7 +283,6 @@ class SprayingOperation {
 
   SprayingOperation copyWith({
     String? localId,
-    String? zoneId,
     DateTime? startedAt,
     DateTime? finishedAt,
     String? operatorName,
@@ -302,7 +299,6 @@ class SprayingOperation {
     List<SprayingConfirmedPlant>? confirmedPlants,
   }) => SprayingOperation(
     localId: localId ?? this.localId,
-    zoneId: zoneId ?? this.zoneId,
     startedAt: startedAt ?? this.startedAt,
     finishedAt: finishedAt ?? this.finishedAt,
     operatorName: operatorName ?? this.operatorName,
@@ -329,7 +325,7 @@ class SprayingOperation {
       'localOperationId': localId,
       'deviceId': deviceId,
       'operation': {
-        'zoneId': zoneId,
+        'zoneId': null,
         'startedAt': startedAt.toUtc().toIso8601String(),
         'finishedAt': finishedAt.toUtc().toIso8601String(),
         'operatorName': operatorName,

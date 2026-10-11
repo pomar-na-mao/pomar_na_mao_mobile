@@ -9,7 +9,6 @@ import 'package:pomar_na_mao_mobile/features/farm/domain/farm_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/plant.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/plants_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/region_point.dart';
-import 'package:pomar_na_mao_mobile/features/farm/domain/user_location.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/zone.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/zones_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/presentation/farm_map_view_model.dart';
@@ -54,15 +53,6 @@ class ShellZonesRepository implements ZonesRepository {
       const [];
 }
 
-class ShellLocationService implements LocationService {
-  @override
-  Future<LocationResult> getCurrentLocation() async =>
-      const LocationResult.serviceDisabled();
-
-  @override
-  Stream<LocationResult> watchLocation() => const Stream.empty();
-}
-
 void main() {
   testWidgets('shows the four destinations in order and selects each one', (
     tester,
@@ -83,6 +73,7 @@ void main() {
       tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
       0,
     );
+    expect(find.byIcon(Icons.cottage_outlined), findsOneWidget);
 
     for (final (label, index) in [
       ('Fazenda', 1),
@@ -115,7 +106,6 @@ void main() {
     final farmViewModel = FarmMapViewModel(
       ShellPlantsRepository(),
       zonesRepository,
-      ShellLocationService(),
       farmRepository,
     );
     await tester.binding.setSurfaceSize(const Size(420, 900));

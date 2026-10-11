@@ -174,7 +174,6 @@ class AppDependencies {
       FarmMapViewModel(
         plantsRepository,
         zonesRepository,
-        locationService,
         farmRepository,
         plantChanges: sharedReadRepository?.plantChanges,
       );

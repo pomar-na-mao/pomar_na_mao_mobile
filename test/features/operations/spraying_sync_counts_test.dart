@@ -3,6 +3,7 @@ import 'package:pomar_na_mao_mobile/features/operations/data/spraying_database.d
 import 'package:pomar_na_mao_mobile/features/operations/data/spraying_local_store.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/spraying_remote_data_source.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/spraying_repository.dart';
+import 'package:pomar_na_mao_mobile/features/operations/domain/inspection_models.dart';
 import 'package:pomar_na_mao_mobile/features/operations/domain/spraying_models.dart';
 
 class _Store extends SprayingLocalStore {
@@ -38,6 +39,8 @@ class _Remote implements SprayingRemoteDataSource {
 
   final SprayingSyncResult result;
   Map<String, dynamic>? payload;
+  bool recalculationCalled = false;
+  String? recalculationZoneId;
 
   @override
   Future<SprayingSyncResult> syncSprayingOperation(
@@ -52,7 +55,11 @@ class _Remote implements SprayingRemoteDataSource {
     required Map<String, dynamic> geojson,
     String? zoneId,
     double maxDistanceMeters = 9,
-  }) async => const [];
+  }) async {
+    recalculationCalled = true;
+    recalculationZoneId = zoneId;
+    return const [];
+  }
 }
 
 void main() {
@@ -60,7 +67,6 @@ void main() {
 
   SprayingOperation operation() => SprayingOperation(
     localId: 'op-1',
-    zoneId: 'zone-b',
     startedAt: now,
     finishedAt: now.add(const Duration(minutes: 1)),
     operatorName: 'Operador',
@@ -137,7 +143,7 @@ void main() {
         expect(store.operation.syncStatus, SprayingSyncStatus.error);
         expect((remote.payload!['confirmedPlants'] as List).length, 16);
         expect((remote.payload!['inputs'] as List).length, 2);
-        expect((remote.payload!['operation'] as Map)['zoneId'], 'zone-b');
+        expect((remote.payload!['operation'] as Map)['zoneId'], isNull);
       },
     );
   }
@@ -154,5 +160,21 @@ void main() {
     expect(synced.confirmedPlantsCount, 16);
     expect(synced.inputsCount, 2);
     expect(store.operation.syncStatus, SprayingSyncStatus.synced);
+  });
+
+  test('affected-plants RPC receives a null zoneId', () async {
+    final remote = _Remote(result(plants: 16, inputs: 2));
+    final repository = DefaultSprayingRepository(
+      localStore: _Store(operation()),
+      remoteDataSource: remote,
+    );
+
+    await repository.calculateAffectedPlants(
+      operation: operation(),
+      candidatePlants: const <InspectionPlant>[],
+    );
+
+    expect(remote.recalculationCalled, isTrue);
+    expect(remote.recalculationZoneId, isNull);
   });
 }

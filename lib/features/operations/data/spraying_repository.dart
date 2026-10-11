@@ -212,7 +212,7 @@ class DefaultSprayingRepository implements SprayingRepository {
       try {
         final remoteMatches = await remoteDataSource.recalculateAffectedPlants(
           geojson: operation.route!.geojson,
-          zoneId: operation.zoneId.isNotEmpty ? operation.zoneId : null,
+          zoneId: null,
           maxDistanceMeters: maxDistanceMeters,
         );
 
