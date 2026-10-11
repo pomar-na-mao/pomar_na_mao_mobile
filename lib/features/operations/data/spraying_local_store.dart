@@ -22,7 +22,8 @@ class SprayingLocalStore {
         'local_spraying_operations',
         {
           'local_id': op.localId,
-          'zone_id': op.zoneId,
+          // Compatibilidade com a coluna legada NOT NULL do banco local.
+          'zone_id': '',
           'operator_name': op.operatorName,
           'started_at': op.startedAt.toUtc().toIso8601String(),
           'finished_at': op.finishedAt.toUtc().toIso8601String(),
@@ -284,7 +285,6 @@ class SprayingLocalStore {
 
     return SprayingOperation(
       localId: opRow['local_id'] as String,
-      zoneId: opRow['zone_id'] as String,
       startedAt: DateTime.parse(opRow['started_at'] as String),
       finishedAt: DateTime.parse(opRow['finished_at'] as String),
       operatorName: opRow['operator_name'] as String,
@@ -342,7 +342,6 @@ class SprayingLocalStore {
       result.add(
         SprayingOperation(
           localId: opId,
-          zoneId: opRow['zone_id'] as String,
           startedAt: DateTime.parse(opRow['started_at'] as String),
           finishedAt: DateTime.parse(opRow['finished_at'] as String),
           operatorName: opRow['operator_name'] as String,

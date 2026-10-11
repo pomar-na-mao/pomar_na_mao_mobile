@@ -430,7 +430,6 @@ class SprayingViewModel extends ChangeNotifier {
 
   /// Inicia uma nova sessão de pulverização.
   Future<void> startSession({
-    String? zoneId,
     String? operatorName,
     String? title,
     String? machineName,
@@ -439,10 +438,6 @@ class SprayingViewModel extends ChangeNotifier {
   }) async {
     final opId = const Uuid().v4();
     final now = DateTime.now().toUtc();
-    final resolvedZoneId =
-        zoneId ??
-        _selectedZoneFilterId ??
-        (_zones.isNotEmpty ? _zones.first.id : 'geral');
     final resolvedOperator =
         (operatorName != null && operatorName.trim().isNotEmpty)
         ? operatorName.trim()
@@ -450,7 +445,6 @@ class SprayingViewModel extends ChangeNotifier {
 
     _currentOperation = SprayingOperation(
       localId: opId,
-      zoneId: resolvedZoneId,
       startedAt: now,
       finishedAt: now,
       operatorName: resolvedOperator,
@@ -678,23 +672,11 @@ class SprayingViewModel extends ChangeNotifier {
       return false;
     }
 
-    final reviewedZoneIds = _reviewedPlants
-        .map((plant) => plantById(plant.plantId)?.zoneId)
-        .whereType<String>()
-        .toSet();
-    if (reviewedZoneIds.length > 1) {
-      _errorMessage = 'As plantas atingidas pertencem a talhões diferentes. Revise a seleção antes de salvar.';
-      notifyListeners();
-      return false;
-    }
-    final operationZoneId = reviewedZoneIds.singleOrNull ?? targetOp.zoneId;
-
     final opId = targetOp.localId;
     await sprayingRepository.saveInputs(opId, inputs);
     await sprayingRepository.saveConfirmedPlants(opId, _reviewedPlants);
 
     final updatedOp = targetOp.copyWith(
-      zoneId: operationZoneId,
       operatorName: operatorName ?? targetOp.operatorName,
       title: title ?? targetOp.title,
       machineName: machineName ?? targetOp.machineName,
