@@ -5,12 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../domain/zone.dart';
-import '../domain/user_location.dart';
 import 'farm_map_geometry.dart';
 import 'farm_map_view_model.dart';
 import 'bounded_plant_markers.dart';
 import 'plant_spatial_index.dart';
-import 'user_map_navigation.dart';
 import 'widgets/farm_action_card.dart';
 import '../../../core/ui/map_activity.dart';
 import '../../../core/ui/map_camera.dart';
@@ -58,10 +56,6 @@ class _FarmMapViewState extends State<FarmMapView> {
   var _hasSetInitialCamera = false;
   BitmapDescriptor? _plantMarkerIcon;
   BitmapDescriptor? _nonExistentPlantMarkerIcon;
-  BitmapDescriptor? _userMarkerIcon;
-  final UserMapNavigator _userMapNavigator = UserMapNavigator();
-  UserLocation? _lastUserLocation;
-  bool _hasFocusedOnUser = false;
 
   Set<Marker> _cachedMarkers = const {};
   final _plantLayer = BoundedPlantMarkers();
@@ -75,7 +69,6 @@ class _FarmMapViewState extends State<FarmMapView> {
     super.initState();
     _plantLayer.addListener(_markersChanged);
     unawaited(_loadPlantMarkerIcon());
-    unawaited(_loadUserMarkerIcon());
     unawaited(widget.viewModel.initialize());
   }
 
@@ -92,36 +85,6 @@ class _FarmMapViewState extends State<FarmMapView> {
     _plantLayer.dispose();
     _mapController = null;
     super.dispose();
-  }
-
-  Future<void> _loadUserMarkerIcon() async {
-    final icon = await createUserLocationMarkerIcon();
-    if (mounted) setState(() => _userMarkerIcon = icon);
-  }
-
-  void _followUser(UserLocation location) {
-    final controller = _mapController;
-    if (controller == null) return;
-    if (!_hasFocusedOnUser) {
-      _hasFocusedOnUser = true;
-      unawaited(
-        _userMapNavigator.focus(
-          controller,
-          location,
-          tilt: _savedCamera?.tilt ?? 0,
-          bearing: _savedCamera?.bearing ?? 0,
-        ),
-      );
-      return;
-    }
-    unawaited(
-      _userMapNavigator.follow(
-        location: location,
-        controller: controller,
-        camera: () => _savedCamera,
-        isActive: () => mounted && _mapController == controller,
-      ),
-    );
   }
 
   void _updateMarkersIfNeeded() {
@@ -240,10 +203,6 @@ class _FarmMapViewState extends State<FarmMapView> {
   Future<void> _fitCameraToAvailableCoordinates() async {
     final controller = _mapController;
     if (controller == null) return;
-    if (_hasFocusedOnUser &&
-        _lastCameraZoneId == widget.viewModel.selectedZoneId) {
-      return;
-    }
     final dataSignature = (
       widget.viewModel.allPlants,
       widget.viewModel.selectedZoneId,
@@ -259,16 +218,12 @@ class _FarmMapViewState extends State<FarmMapView> {
     final farmBoundaryCoordinates = widget.viewModel.farmBoundaryPoints
         .map((point) => LatLng(point.latitude, point.longitude))
         .toList(growable: false);
-    final userLocation = widget.viewModel.userLocation;
-    final userPosition = userLocation == null
-        ? null
-        : LatLng(userLocation.latitude, userLocation.longitude);
 
     if (!_hasSetInitialCamera) {
       final farmDataFinished =
           widget.viewModel.plantsStatus != PlantsLoadStatus.initial &&
           widget.viewModel.plantsStatus != PlantsLoadStatus.loading;
-      if (!farmDataFinished && widget.viewModel.locationResult == null) return;
+      if (!farmDataFinished) return;
 
       _hasSetInitialCamera = true;
       _lastCameraZoneId = widget.viewModel.selectedZoneId;
@@ -318,7 +273,7 @@ class _FarmMapViewState extends State<FarmMapView> {
 
     final viewport = calculateMapCameraViewport(
       cameraCoordinates,
-      fallback: userPosition ?? _fallbackPosition,
+      fallback: _fallbackPosition,
     );
     final bounds = viewport.bounds;
     await animateMapCamera(
@@ -350,22 +305,6 @@ class _FarmMapViewState extends State<FarmMapView> {
     );
   }
 
-  void _recenterOnUser() {
-    final loc = widget.viewModel.userLocation;
-    final controller = _mapController;
-    if (loc != null && controller != null) {
-      _hasFocusedOnUser = true;
-      unawaited(
-        _userMapNavigator.focus(
-          controller,
-          loc,
-          tilt: _savedCamera?.tilt ?? 0,
-          bearing: _savedCamera?.bearing ?? 0,
-        ),
-      );
-    }
-  }
-
   String _selectedZoneName(FarmMapViewModel vm) {
     final zoneId = vm.selectedZoneId;
     if (zoneId == null) return '';
@@ -379,20 +318,6 @@ class _FarmMapViewState extends State<FarmMapView> {
       listenable: widget.viewModel,
       builder: (context, _) {
         _updateMarkersIfNeeded();
-        final location = widget.viewModel.userLocation;
-        if (location == null) {
-          if (_lastUserLocation != null) _userMapNavigator.reset();
-          _lastUserLocation = null;
-          _hasFocusedOnUser = false;
-        } else {
-          _userMapNavigator.observe(location);
-          if (!identical(_lastUserLocation, location)) {
-            _lastUserLocation = location;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _followUser(location);
-            });
-          }
-        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) unawaited(_fitCameraToAvailableCoordinates());
         });
@@ -405,21 +330,13 @@ class _FarmMapViewState extends State<FarmMapView> {
             title: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.eco),
+                Icon(Icons.cottage_rounded),
                 SizedBox(width: 8),
                 Flexible(
                   child: Text('Fazenda', overflow: TextOverflow.ellipsis),
                 ),
               ],
             ),
-            actions: [
-              if (widget.viewModel.userLocation != null)
-                IconButton(
-                  icon: const Icon(Icons.my_location),
-                  tooltip: 'Minha localização',
-                  onPressed: _recenterOnUser,
-                ),
-            ],
           ),
           body: Column(
             children: [
@@ -428,10 +345,7 @@ class _FarmMapViewState extends State<FarmMapView> {
                   children: [
                     ActiveMapSurface(
                       onActivityChanged: (active) {
-                        if (active) {
-                          unawaited(widget.viewModel.loadUserLocation());
-                        } else {
-                          widget.viewModel.pauseLocation();
+                        if (!active) {
                           _mapController = null;
                           _plantLayer.controller = null;
                         }
@@ -446,32 +360,9 @@ class _FarmMapViewState extends State<FarmMapView> {
                             ),
                         onCameraIdle: () {
                           _plantLayer.cameraIdle();
-                          if (widget.viewModel.userLocation
-                              case final location?) {
-                            _userMapNavigator.invalidate();
-                            _followUser(location);
-                          }
                         },
                         onCameraMove: (position) => _savedCamera = position,
-                        markers: {
-                          ..._cachedMarkers,
-                          if (widget.viewModel.userLocation
-                              case final location?)
-                            Marker(
-                              markerId: const MarkerId('farm_user'),
-                              position: LatLng(
-                                location.latitude,
-                                location.longitude,
-                              ),
-                              icon:
-                                  _userMarkerIcon ??
-                                  BitmapDescriptor.defaultMarkerWithHue(
-                                    BitmapDescriptor.hueAzure,
-                                  ),
-                              anchor: const Offset(0.5, 0.5),
-                              zIndexInt: 1000,
-                            ),
-                        },
+                        markers: _cachedMarkers,
                         polygons: _polygons,
                         myLocationEnabled: false,
                         myLocationButtonEnabled: false,
@@ -480,10 +371,6 @@ class _FarmMapViewState extends State<FarmMapView> {
                           _plantLayer.controller = controller;
                           _plantLayer.cameraIdle();
                           unawaited(_fitCameraToAvailableCoordinates());
-                          if (widget.viewModel.userLocation
-                              case final location?) {
-                            _followUser(location);
-                          }
                         },
                       ),
                     ),
@@ -570,8 +457,6 @@ class _FarmMapViewState extends State<FarmMapView> {
                             ? 64
                             : 24,
                       ),
-                    if (widget.viewModel.locationMessage case final message?)
-                      _StatusCard(message: message, alignBottom: true),
                   ],
                 ),
               ),
@@ -589,20 +474,18 @@ class _StatusCard extends StatelessWidget {
     required this.message,
     this.actionLabel,
     this.onAction,
-    this.alignBottom = false,
     this.topPadding = 16,
   });
 
   final String message;
   final String? actionLabel;
   final VoidCallback? onAction;
-  final bool alignBottom;
   final double topPadding;
 
   @override
   Widget build(BuildContext context) {
     return Align(
-      alignment: alignBottom ? Alignment.bottomCenter : Alignment.topCenter,
+      alignment: Alignment.topCenter,
       child: SafeArea(
         minimum: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
         child: Card(

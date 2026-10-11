@@ -6,7 +6,6 @@ import 'package:pomar_na_mao_mobile/features/farm/domain/farm_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/plant.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/plants_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/region_point.dart';
-import 'package:pomar_na_mao_mobile/features/farm/domain/user_location.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/zone.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/zones_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/presentation/farm_map_view_model.dart';
@@ -49,36 +48,7 @@ class MockFarmRepository implements FarmRepository {
   }
 }
 
-class MockLocationService implements LocationService {
-  int subscriptions = 0;
-  @override
-  Future<LocationResult> getCurrentLocation() async =>
-      const LocationResult.serviceDisabled();
-
-  @override
-  Stream<LocationResult> watchLocation() {
-    subscriptions++;
-    return const Stream.empty();
-  }
-}
-
 void main() {
-  test('GPS follows explicit visibility, not data initialization', () async {
-    final service = MockLocationService();
-    final vm = FarmMapViewModel(MockPlantsRepository(), MockZonesRepository(), service, MockFarmRepository());
-    await vm.initialize();
-    expect(service.subscriptions, 0);
-    await vm.loadUserLocation();
-    await vm.loadUserLocation();
-    expect(service.subscriptions, 1);
-    vm.pauseLocation();
-    vm.pauseLocation();
-    await vm.loadUserLocation();
-    expect(service.subscriptions, 2);
-    vm.dispose();
-    await vm.loadUserLocation();
-    expect(service.subscriptions, 2);
-  });
   group('RegionPoint.fromJson', () {
     test('instantiates with valid json', () {
       final json = {
@@ -119,7 +89,6 @@ void main() {
     test('loads and sets selectedZonePoints when zone is selected', () async {
       final plantsRepo = MockPlantsRepository();
       final zonesRepo = MockZonesRepository();
-      final locationService = MockLocationService();
       final farmRepo = MockFarmRepository();
 
       zonesRepo.regionsByZone['zone-a'] = [
@@ -135,12 +104,7 @@ void main() {
         ),
       ];
 
-      final viewModel = FarmMapViewModel(
-        plantsRepo,
-        zonesRepo,
-        locationService,
-        farmRepo,
-      );
+      final viewModel = FarmMapViewModel(plantsRepo, zonesRepo, farmRepo);
       await viewModel.initialize();
 
       expect(viewModel.selectedZoneId, isNull);
@@ -188,7 +152,6 @@ void main() {
       final viewModel = FarmMapViewModel(
         MockPlantsRepository(),
         MockZonesRepository(),
-        MockLocationService(),
         farmRepo,
       );
 
@@ -223,7 +186,6 @@ void main() {
         final viewModel = FarmMapViewModel(
           MockPlantsRepository(),
           zonesRepo,
-          MockLocationService(),
           MockFarmRepository()..error = Exception('farm boundary failed'),
         );
 
@@ -249,7 +211,6 @@ void main() {
       final viewModel = FarmMapViewModel(
         plants,
         MockZonesRepository(),
-        MockLocationService(),
         MockFarmRepository(),
         plantChanges: changes.stream,
       );

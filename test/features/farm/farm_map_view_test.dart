@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/farm_point.dart';
@@ -7,7 +5,6 @@ import 'package:pomar_na_mao_mobile/features/farm/domain/farm_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/plant.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/plants_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/region_point.dart';
-import 'package:pomar_na_mao_mobile/features/farm/domain/user_location.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/zone.dart';
 import 'package:pomar_na_mao_mobile/features/farm/domain/zones_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/presentation/farm_map_view.dart';
@@ -73,58 +70,7 @@ class _FakeFarmRepository implements FarmRepository {
   Future<List<FarmPoint>> fetchFarmBoundary() async => const [];
 }
 
-class _FakeLocationService implements LocationService {
-  final controller = StreamController<LocationResult>.broadcast();
-
-  @override
-  Future<LocationResult> getCurrentLocation() async =>
-      const LocationResult.serviceDisabled();
-
-  @override
-  Stream<LocationResult> watchLocation() => controller.stream;
-}
-
 void main() {
-  test('farm map waits for stable GPS and filters a jump', () async {
-    final service = _FakeLocationService();
-    final vm = FarmMapViewModel(
-      _FakePlantsRepository(),
-      _FakeZonesRepository(),
-      service,
-      _FakeFarmRepository(),
-    );
-    addTearDown(vm.dispose);
-    addTearDown(service.controller.close);
-    await vm.loadUserLocation();
-    final now = DateTime.now().toUtc();
-    for (var secondsAgo = 2; secondsAgo >= 0; secondsAgo--) {
-      service.controller.add(
-        LocationResult.available(
-          UserLocation(
-            latitude: -23.5,
-            longitude: -46.5,
-            accuracy: 3,
-            timestamp: now.subtract(Duration(seconds: secondsAgo)),
-          ),
-        ),
-      );
-      await Future<void>.delayed(Duration.zero);
-      expect(vm.userLocation == null, secondsAgo > 0);
-    }
-    service.controller.add(
-      LocationResult.available(
-        UserLocation(
-          latitude: -23.4995,
-          longitude: -46.5,
-          accuracy: 3,
-          timestamp: now.add(const Duration(seconds: 1)),
-        ),
-      ),
-    );
-    await Future<void>.delayed(Duration.zero);
-    expect(vm.userLocation?.latitude, -23.5);
-  });
-
   test('sorts zones alphabetically by code without changing the source', () {
     const zones = [
       Zone(id: 'zone-c', name: 'Terceira', code: 'C'),
@@ -150,13 +96,7 @@ void main() {
       final plantsRepo = _FakePlantsRepository();
       final zonesRepo = _FakeZonesRepository();
       final farmRepo = _FakeFarmRepository();
-      final locationService = _FakeLocationService();
-      final vm = FarmMapViewModel(
-        plantsRepo,
-        zonesRepo,
-        locationService,
-        farmRepo,
-      );
+      final vm = FarmMapViewModel(plantsRepo, zonesRepo, farmRepo);
 
       await vm.loadFarmData();
 
@@ -165,6 +105,9 @@ void main() {
 
       await tester.pumpWidget(MaterialApp(home: FarmMapView(viewModel: vm)));
       await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.cottage_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.my_location), findsNothing);
 
       // Verify FarmActionCard is displayed
       expect(find.byType(FarmActionCard), findsOneWidget);

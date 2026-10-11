@@ -119,8 +119,8 @@ class _MainShellState extends State<MainShell> {
                   label: 'Inventário',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.eco_outlined),
-                  selectedIcon: Icon(Icons.eco),
+                  icon: Icon(Icons.cottage_outlined),
+                  selectedIcon: Icon(Icons.cottage_rounded),
                   label: 'Fazenda',
                 ),
                 NavigationDestination(
