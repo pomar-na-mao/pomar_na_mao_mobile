@@ -7,8 +7,6 @@ import '../domain/farm_repository.dart';
 import '../domain/plant.dart';
 import '../domain/plants_repository.dart';
 import '../domain/region_point.dart';
-import '../domain/user_location.dart';
-import '../domain/user_position_tracker.dart';
 import '../domain/zone.dart';
 import '../domain/zones_repository.dart';
 
@@ -18,7 +16,6 @@ class FarmMapViewModel extends ChangeNotifier {
   FarmMapViewModel(
     this._plantsRepository,
     this._zonesRepository,
-    this._locationService,
     this._farmRepository, {
     Stream<void>? plantChanges,
   }) {
@@ -33,10 +30,7 @@ class FarmMapViewModel extends ChangeNotifier {
 
   final PlantsRepository _plantsRepository;
   final ZonesRepository _zonesRepository;
-  final LocationService _locationService;
   final FarmRepository _farmRepository;
-  StreamSubscription<LocationResult>? _locationSubscription;
-  final UserPositionTracker _positionTracker = UserPositionTracker();
   StreamSubscription<void>? _plantChangesSubscription;
   bool _disposed = false;
 
@@ -81,15 +75,8 @@ class FarmMapViewModel extends ChangeNotifier {
   String? _selectedZoneId;
   String? get selectedZoneId => _selectedZoneId;
 
-  LocationResult? _locationResult;
-  LocationResult? get locationResult => _locationResult;
-
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
-
-  UserLocation? get userLocation => _locationResult?.location;
-  bool get canShowUserLocation =>
-      _locationResult?.availability == LocationAvailability.available;
 
   Future<void> initialize() async {
     if (_plantsStatus != PlantsLoadStatus.initial) return;
@@ -176,62 +163,14 @@ class FarmMapViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> loadUserLocation() async {
-    if (_disposed || _locationSubscription != null) return;
-    _positionTracker.reset();
-    final hadResult = _locationResult != null;
-    _locationResult = null;
-    if (hadResult) scheduleMicrotask(notifyListeners);
-    _locationSubscription = _locationService.watchLocation().listen(
-      (result) {
-        if (_disposed || _locationSubscription == null) return;
-        if (result.location case final location?) {
-          final accepted = _positionTracker.add(location);
-          if (accepted == null) return;
-          _locationResult = LocationResult.available(accepted);
-        } else {
-          _positionTracker.reset();
-          _locationResult = result;
-        }
-        notifyListeners();
-      },
-      onError: (Object _) {
-        if (_disposed) return;
-        _positionTracker.reset();
-        _locationResult = const LocationResult.error();
-        notifyListeners();
-      },
-    );
-  }
-
-  void pauseLocation() {
-    final subscription = _locationSubscription;
-    _locationSubscription = null;
-    unawaited(subscription?.cancel());
-    _positionTracker.reset();
-    final hadResult = _locationResult != null;
-    _locationResult = null;
-    if (hadResult) scheduleMicrotask(notifyListeners);
-  }
-
   @override
   void notifyListeners() {
     if (!_disposed) super.notifyListeners();
   }
 
-  String? get locationMessage => switch (_locationResult?.availability) {
-    LocationAvailability.permissionDenied =>
-      'Permita o acesso à localização para ver sua posição.',
-    LocationAvailability.serviceDisabled =>
-      'Ative o serviço de localização para ver sua posição.',
-    LocationAvailability.error => 'Não foi possível obter sua localização.',
-    LocationAvailability.available || null => null,
-  };
-
   @override
   void dispose() {
     _disposed = true;
-    pauseLocation();
     unawaited(_plantChangesSubscription?.cancel());
     super.dispose();
   }

@@ -286,7 +286,6 @@ void main() {
       final now = DateTime.utc(2026, 10, 2, 10, 0, 0);
       final operation = SprayingOperation(
         localId: 'op-local-123',
-        zoneId: 'zone-abc-456',
         startedAt: now,
         finishedAt: now.add(const Duration(minutes: 30)),
         operatorName: 'Carlos Silva',
@@ -345,7 +344,7 @@ void main() {
       expect(payload['deviceId'], equals('device-xyz-789'));
 
       final opMap = payload['operation'] as Map<String, dynamic>;
-      expect(opMap['zoneId'], equals('zone-abc-456'));
+      expect(opMap['zoneId'], isNull);
       expect(opMap['operatorName'], equals('Carlos Silva'));
       expect(opMap['title'], equals('Pulverização Talhão 2'));
       expect(opMap['machineName'], equals('Jacto Advance'));
@@ -454,7 +453,6 @@ void main() {
 
     test('startSession initializes operation and recording state', () async {
       await viewModel.startSession(
-        zoneId: 'zone-1',
         operatorName: 'João da Silva',
         title: 'Aplicação 1',
         machineName: 'Jacto',
@@ -463,7 +461,6 @@ void main() {
 
       expect(viewModel.sessionState, equals(SprayingSessionState.recording));
       expect(viewModel.currentOperation, isNotNull);
-      expect(viewModel.currentOperation!.zoneId, equals('zone-1'));
       expect(viewModel.currentOperation!.operatorName, equals('João da Silva'));
       expect(viewModel.currentOperation!.title, equals('Aplicação 1'));
     });
@@ -519,7 +516,7 @@ void main() {
     test('GPS tracking records track points when recording', () async {
       viewModel.startLocationTracking();
 
-      await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
+      await viewModel.startSession(operatorName: 'João');
 
       // Emit first location
       locationService.emit(
@@ -569,7 +566,7 @@ void main() {
 
     test('GPS excursion does not move marker or recorded route', () async {
       viewModel.startLocationTracking();
-      await viewModel.startSession(zoneId: 'zone-1');
+      await viewModel.startSession();
 
       locationService.emit(
         const LocationResult.available(
@@ -601,7 +598,7 @@ void main() {
     });
 
     test('pauseSession and resumeSession manage state correctly', () async {
-      await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
+      await viewModel.startSession(operatorName: 'João');
       expect(viewModel.sessionState, equals(SprayingSessionState.recording));
 
       viewModel.pauseSession();
@@ -627,7 +624,7 @@ void main() {
       'finishSession saves operation locally in draft status offline',
       () async {
         viewModel.startLocationTracking();
-        await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
+        await viewModel.startSession(operatorName: 'João');
 
         locationService.emit(
           const LocationResult.available(
@@ -697,7 +694,7 @@ void main() {
       await viewModel.loadPlants();
 
       viewModel.startLocationTracking();
-      await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
+      await viewModel.startSession(operatorName: 'João');
 
       locationService.emit(
         const LocationResult.available(
@@ -772,7 +769,7 @@ void main() {
       'saveInputsAndComplete validates inputs and saves to repository',
       () async {
         viewModel.startLocationTracking();
-        await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
+        await viewModel.startSession(operatorName: 'João');
         locationService.emit(
           const LocationResult.available(
             UserLocation(
@@ -842,7 +839,6 @@ void main() {
         // Create a reviewed operation in local repo
         final op = SprayingOperation(
           localId: 'op-ready-1',
-          zoneId: 'zone-1',
           startedAt: DateTime.now().toUtc(),
           finishedAt: DateTime.now().toUtc(),
           operatorName: 'João',
@@ -872,7 +868,7 @@ void main() {
     );
 
     test(
-      'uses the reviewed plants zone when completing an operation',
+      'completes an operation with plants from one zone',
       () async {
         final now = DateTime.now().toUtc();
         inspectionRepo.snapshot = InspectionSnapshot(
@@ -882,7 +878,6 @@ void main() {
         );
         final operation = SprayingOperation(
           localId: 'op-zone',
-          zoneId: 'zone-a',
           startedAt: now,
           finishedAt: now,
           operatorName: 'Operador',
@@ -908,13 +903,12 @@ void main() {
         );
 
         expect(saved, isTrue);
-        expect(sprayingRepo.operations['op-zone']?.zoneId, 'zone-b');
         expect(sprayingRepo.operations['op-zone']?.confirmedPlants.length, 1);
         expect(sprayingRepo.operations['op-zone']?.inputs.length, 1);
       },
     );
 
-    test('keeps review open when selected plants span zones', () async {
+    test('saves reviewed plants that span multiple zones', () async {
       final now = DateTime.now().toUtc();
       inspectionRepo.snapshot = InspectionSnapshot(
         plants: [
@@ -926,7 +920,6 @@ void main() {
       );
       final operation = SprayingOperation(
         localId: 'op-mixed',
-        zoneId: 'zone-a',
         startedAt: now,
         finishedAt: now,
         operatorName: 'Operador',
@@ -956,13 +949,15 @@ void main() {
         ],
       );
 
-      expect(saved, isFalse);
-      expect(viewModel.isReviewing, isTrue);
-      expect(viewModel.errorMessage, contains('talhões diferentes'));
+      expect(saved, isTrue);
+      expect(viewModel.isReviewing, isFalse);
+      expect(viewModel.errorMessage, isNull);
       expect(
         sprayingRepo.operations['op-mixed']?.syncStatus,
-        SprayingSyncStatus.draft,
+        SprayingSyncStatus.reviewed,
       );
+      expect(sprayingRepo.operations['op-mixed']?.confirmedPlants.length, 2);
+      expect(sprayingRepo.operations['op-mixed']?.inputs.length, 1);
     });
 
     testWidgets('review count and actions stay aligned across widths', (
@@ -971,7 +966,6 @@ void main() {
       final now = DateTime.now().toUtc();
       final operation = SprayingOperation(
         localId: 'op-layout',
-        zoneId: 'zone-a',
         startedAt: now,
         finishedAt: now,
         operatorName: 'Operador',
@@ -1028,7 +1022,6 @@ void main() {
       await sprayingRepo.saveOperation(
         SprayingOperation(
           localId: 'op-without-operator',
-          zoneId: 'zone-a',
           startedAt: now,
           finishedAt: now,
           operatorName: 'Operador',
@@ -1037,7 +1030,6 @@ void main() {
       await sprayingRepo.saveOperation(
         SprayingOperation(
           localId: 'op-with-operator',
-          zoneId: 'zone-a',
           startedAt: now,
           finishedAt: now,
           operatorName: 'Maria',
@@ -1063,7 +1055,6 @@ void main() {
       await sprayingRepo.saveOperation(
         SprayingOperation(
           localId: 'op-sync-error',
-          zoneId: 'zone-a',
           startedAt: now,
           finishedAt: now,
           operatorName: 'Operador',
@@ -1086,7 +1077,7 @@ void main() {
     });
 
     test('cancelSession removes ongoing operation and resets state', () async {
-      await viewModel.startSession(zoneId: 'zone-1', operatorName: 'João');
+      await viewModel.startSession(operatorName: 'João');
       final opId = viewModel.currentOperation!.localId;
       expect(sprayingRepo.operations.containsKey(opId), isTrue);
 
