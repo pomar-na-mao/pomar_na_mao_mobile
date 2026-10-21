@@ -240,7 +240,7 @@ void main() {
     );
     final raw = await migrated.database;
 
-    expect(await raw.getVersion(), 7);
+    expect(await raw.getVersion(), 8);
     expect(await migrated.deviceId, 'legacy-device');
     expect(await raw.query('local_inspections'), hasLength(1));
     expect(await raw.query('local_inspection_changes'), hasLength(1));
@@ -251,8 +251,9 @@ void main() {
         where: 'cache_key = ?',
         whereArgs: ['occurrence_types'],
       ),
-      hasLength(1),
+      isEmpty,
     );
+    expect(await raw.query('occurrence_types'), isEmpty);
     expect(
       await raw.query(
         'cache_metadata',
@@ -349,7 +350,7 @@ void main() {
           row['local_id'] as String: row,
       };
 
-      expect(await raw.getVersion(), 7);
+      expect(await raw.getVersion(), 8);
       expect(inspections['pending-1']!['sync_status'], 'pending');
       expect(inspections['error-1']!['sync_status'], 'error');
       expect(inspections['syncing-1']!['sync_status'], 'pending');

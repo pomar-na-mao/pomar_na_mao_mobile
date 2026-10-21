@@ -33,6 +33,7 @@ class SupabaseInspectionRemoteDataSource implements InspectionRemoteDataSource {
     final rows = await _client
         .from('occurrence_types')
         .select('id, name, code')
+        .neq('category', 'PEST_DISEASE')
         .order('name');
     return (rows as List<dynamic>)
         .map(

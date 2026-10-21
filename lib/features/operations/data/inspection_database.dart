@@ -47,7 +47,7 @@ class InspectionDatabase {
     final db = await resolvedFactory.openDatabase(
       p.join(root, 'inspections_$fileId.db'),
       options: OpenDatabaseOptions(
-        version: 7,
+        version: 8,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) => _migrate(db, 0, version),
         onUpgrade: _migrate,
@@ -135,6 +135,11 @@ class InspectionDatabase {
         await db.execute(sql);
       }
     }
+    if (oldVersion < 8) {
+      for (final sql in _versionEight) {
+        await db.execute(sql);
+      }
+    }
   }
 
   Future<String> get deviceId async =>
@@ -180,6 +185,11 @@ class InspectionDatabase {
       FOREIGN KEY(inspection_local_id, plant_id)
         REFERENCES local_inspection_loaded_plants(inspection_local_id, plant_id))''',
     'CREATE INDEX changes_plant ON local_inspection_changes(inspection_local_id, plant_id, sequence)',
+  ];
+
+  static const _versionEight = [
+    "DELETE FROM cache_metadata WHERE cache_key = 'occurrence_types'",
+    'DELETE FROM occurrence_types',
   ];
 
   static const _versionTwo = [
