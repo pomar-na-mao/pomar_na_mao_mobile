@@ -44,7 +44,8 @@ class SupabaseInspectionRemoteDataSource implements InspectionRemoteDataSource {
 
   @override
   Future<List<InspectionPlant>> fetchPlants({int pageSize = 1000}) async {
-    const columns = 'id, latitude, longitude, description, zone_id, non_existent';
+    const columns =
+        'id, latitude, longitude, description, zone_id, non_existent';
     final rows = await fetchAllPlantPages((from, to) async {
       final rows = await _client
           .from('plants')

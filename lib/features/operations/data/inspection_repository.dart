@@ -66,14 +66,14 @@ class DefaultInspectionRepository implements InspectionRepository {
         return local;
       }
 
-      final catalog = await shared.getOccurrenceTypes();
-      if (catalog.isEmpty) {
+      await shared.refreshCache();
+      final refreshed = await localStore.readSnapshot();
+      if (refreshed == null || refreshed.types.isEmpty) {
         throw StateError(
           'Catálogo indisponível. Verifique o acesso e carregue novamente.',
         );
       }
-      await shared.refreshPlantRows();
-      return await localStore.readSnapshot();
+      return refreshed;
     }
 
     if (!forceRemote && local != null) {

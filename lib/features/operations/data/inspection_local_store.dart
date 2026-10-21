@@ -469,8 +469,12 @@ class InspectionLocalStore {
   }
 
   Future<void> saveCatalog(List<OccurrenceType> types) async {
+    if (types.isEmpty) {
+      throw StateError('Catálogo remoto de ocorrências vazio.');
+    }
     final db = await database.database;
     await db.transaction((txn) async {
+      await txn.delete('occurrence_types');
       for (final type in types) {
         await txn.insert(
           'occurrence_types',

@@ -27,7 +27,7 @@ O aplicativo SHALL apresentar um card com os botões Carregar plantas, Ocorrênc
 
 ### Requirement: Carregar plantas existentes
 
-A ação Carregar plantas SHALL atualizar remotamente todas as páginas de `plants`, persistir o conjunto completo compartilhado e disponibilizar na Inspeção registros com coordenadas válidas. O carregamento SHALL obter o estado de ocorrências abertas das plantas para permitir edição correta offline e SHALL reutilizar `occurrence_types` localmente, consultando o catálogo remoto somente quando ele ainda não possuir cache utilizável. Dados incompletos SHALL NOT ser publicados como ausência de plantas ou ocorrências.
+A ação Carregar plantas SHALL atualizar remotamente o cache compartilhado completo usado pela Inspeção, incluindo fazenda, zonas, regiões, `occurrence_types`, todas as páginas de `plants` e o estado de ocorrências abertas das plantas. O catálogo remoto atualizado SHALL substituir o catálogo local anterior, e a tela SHALL reler os dados somente após a conclusão da atualização. Dados incompletos SHALL NOT ser publicados como ausência de plantas ou ocorrências.
 
 #### Scenario: Resultado maior que uma página
 - **WHEN** a consulta retorna mais plantas que o limite de uma página
@@ -36,7 +36,7 @@ A ação Carregar plantas SHALL atualizar remotamente todas as páginas de `plan
 
 #### Scenario: Repetir o carregamento explícito
 - **WHEN** o usuário aciona Carregar plantas e já existe uma versão local
-- **THEN** o aplicativo solicita uma nova versão remota de plantas e ocorrências abertas, mantendo o catálogo local já disponível
+- **THEN** o aplicativo solicita uma nova versão remota de fazenda, zonas, regiões, catálogo, plantas e ocorrências abertas, substituindo os respectivos caches após cargas válidas
 
 #### Scenario: Consulta vazia ou falha sem cache
 - **WHEN** a consulta completa termina vazia ou falha sem dados locais utilizáveis

@@ -271,8 +271,8 @@ class InspectionViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      unawaited(loadZones());
       final snapshot = await repository.loadSnapshot(forceRemote: forceRemote);
+      await loadZones();
       if (snapshot == null || snapshot.plants.isEmpty) {
         _plants = const [];
         _mergeSyncedAddedPlantsIntoInspectionPlants();

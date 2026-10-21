@@ -219,9 +219,7 @@ class SharedReadRepository {
           .whereType<String>()
           .map((zoneId) => refreshRegionRows(zoneId)),
     );
-    try {
-      await refreshOccurrenceTypes();
-    } catch (_) {}
+    await refreshOccurrenceTypes();
     await refreshPlantRows();
   }
 

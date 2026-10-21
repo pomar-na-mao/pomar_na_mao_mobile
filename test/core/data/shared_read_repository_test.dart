@@ -720,10 +720,24 @@ void main() {
   });
 
   test(
-    'inspection refresh filters unavailable plants and reuses catalog',
+    'inspection refresh replaces the complete shared cache',
     () async {
       inspectionRemote.types = const [
-        OccurrenceType(id: 'type-1', name: 'Praga', code: 'pest'),
+        OccurrenceType(id: 'type-1', name: 'Antigo', code: 'old'),
+        OccurrenceType(id: 'stale', name: 'Removido', code: 'stale'),
+      ];
+      await repository.getOccurrenceTypes();
+      inspectionRemote.types = const [
+        OccurrenceType(id: 'type-1', name: 'Atualizado', code: 'updated'),
+      ];
+      farmRemote.farmRows = const [
+        {'id': 1, 'latitude': -23.0, 'longitude': -46.0, 'order': 1},
+      ];
+      farmRemote.zoneRows = const [
+        {'id': 'zone-1', 'name': 'Zona 1'},
+      ];
+      farmRemote.regionRows['zone-1'] = const [
+        {'id': 1, 'latitude': -23.0, 'longitude': -46.0, 'order': 1},
       ];
       farmRemote.plantRows = const [
         {
@@ -751,12 +765,19 @@ void main() {
       );
       expect(refreshed!.plants.map((plant) => plant.id), ['p-1', 'p-2']);
       expect(refreshed.types, hasLength(1));
-      expect(inspectionRemote.catalogCalls, 1);
+      expect(refreshed.types.single.code, 'updated');
+      expect(inspectionRemote.catalogCalls, 2);
+      expect(farmRemote.farmCalls, 1);
+      expect(farmRemote.zoneCalls, 1);
+      expect(farmRemote.regionCalls['zone-1'], 1);
       expect(farmRemote.plantCalls, 1);
 
       expect((await inspectionRepository.loadSnapshot())!.plants, hasLength(2));
       expect(await inspectionRepository.getCatalog(), hasLength(1));
-      expect(inspectionRemote.catalogCalls, 1);
+      expect(inspectionRemote.catalogCalls, 2);
+      expect(farmRemote.farmCalls, 1);
+      expect(farmRemote.zoneCalls, 1);
+      expect(farmRemote.regionCalls['zone-1'], 1);
       expect(farmRemote.plantCalls, 1);
     },
   );

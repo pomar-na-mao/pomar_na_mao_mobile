@@ -68,6 +68,21 @@ void main() {
     expect(inspections.single.plantsCount, 0);
   });
 
+  test('saveCatalog replaces stale entries and preserves cache on empty input', () async {
+    await store.saveCatalog(sampleTypes);
+    await store.saveCatalog([
+      const OccurrenceType(id: 't-2', name: 'Seca atualizada', code: 'dry'),
+    ]);
+
+    final refreshed = await store.readCatalog();
+    expect(refreshed, hasLength(1));
+    expect(refreshed.single.id, 't-2');
+    expect(refreshed.single.code, 'dry');
+
+    await expectLater(store.saveCatalog(const []), throwsStateError);
+    expect((await store.readCatalog()).single.code, 'dry');
+  });
+
   test('toggle records changes in strict sequence even with freeze clock', () async {
     await store.replaceSnapshot(
       InspectionSnapshot(plants: samplePlants, types: sampleTypes, loadedAt: currentTime),
