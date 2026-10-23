@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -18,6 +17,7 @@ import '../data/inspection_remote_data_source.dart';
 import '../data/inspection_repository.dart';
 import '../domain/inspection_models.dart';
 import 'inspection_view_model.dart';
+import 'operation_map_style.dart';
 import 'widgets/inspection_action_card.dart';
 import 'widgets/plant_editor_modal.dart';
 import 'widgets/spraying_signal_overlay.dart';
@@ -201,17 +201,17 @@ class _InspectionViewState extends State<InspectionView> {
 
   Future<void> _loadPlantMarkerIcon() async {
     final icons = await Future.wait([
-      _createPlantMarkerIcon(
-        color: const Color(0xFF2E7D32),
-        highlightColor: const Color(0xFF66BB6A),
+      OperationMapStyle.createPlantMarkerIcon(
+        color: OperationMapStyle.plantColor,
+        highlightColor: OperationMapStyle.plantHighlightColor,
       ),
-      _createPlantMarkerIcon(
-        color: const Color(0xFFF9A825),
-        highlightColor: const Color(0xFFFFD54F),
+      OperationMapStyle.createPlantMarkerIcon(
+        color: OperationMapStyle.nonExistentPlantColor,
+        highlightColor: OperationMapStyle.nonExistentPlantHighlightColor,
       ),
-      _createPlantMarkerIcon(
-        color: const Color(0xFF0F766E),
-        highlightColor: const Color(0xFF5EEAD4),
+      OperationMapStyle.createPlantMarkerIcon(
+        color: OperationMapStyle.addedPlantColor,
+        highlightColor: OperationMapStyle.addedPlantHighlightColor,
       ),
     ]);
     if (!mounted) return;
@@ -220,36 +220,6 @@ class _InspectionViewState extends State<InspectionView> {
     _addedPlantMarkerIcon = icons[2];
     _updateMarkers(_effectiveViewModel);
     setState(() {});
-  }
-
-  Future<BitmapDescriptor> _createPlantMarkerIcon({
-    required Color color,
-    required Color highlightColor,
-  }) async {
-    const size = 64;
-    const center = Offset(size / 2, size / 2);
-    const radius = 22.0;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-
-    canvas.drawCircle(center, radius + 5, Paint()..color = Colors.white);
-    canvas.drawCircle(center, radius, Paint()..color = color);
-    canvas.drawCircle(
-      center.translate(-7, -7),
-      6,
-      Paint()..color = highlightColor,
-    );
-
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(size, size);
-    picture.dispose();
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    image.dispose();
-    return BitmapDescriptor.bytes(
-      bytes!.buffer.asUint8List(),
-      width: 28,
-      height: 28,
-    );
   }
 
   void _updateMarkers(InspectionViewModel vm) {
@@ -286,7 +256,7 @@ class _InspectionViewState extends State<InspectionView> {
           position: LatLng(node.latitude, node.longitude),
           icon: isNonExistent ? nonExistentIcon : regularIcon,
           infoWindow: InfoWindow(title: plant?.label),
-          anchor: const Offset(0.5, 0.5),
+          anchor: OperationMapStyle.markerAnchor,
           onTap: () => select(node.plantId!),
         );
       },
@@ -333,7 +303,7 @@ class _InspectionViewState extends State<InspectionView> {
         controller,
         CameraUpdate.newLatLngZoom(
           LatLng(userLoc.latitude, userLoc.longitude),
-          17,
+          OperationMapStyle.initialZoom,
         ),
       );
       return;
@@ -364,8 +334,14 @@ class _InspectionViewState extends State<InspectionView> {
       await animateMapCamera(
         controller,
         bounds == null
-            ? CameraUpdate.newLatLngZoom(viewport.target, 17)
-            : CameraUpdate.newLatLngBounds(bounds, 64),
+            ? CameraUpdate.newLatLngZoom(
+                viewport.target,
+                OperationMapStyle.initialZoom,
+              )
+            : CameraUpdate.newLatLngBounds(
+                bounds,
+                OperationMapStyle.boundsPadding,
+              ),
       );
     }
   }
@@ -374,7 +350,7 @@ class _InspectionViewState extends State<InspectionView> {
     if (!bounds.hasArea) {
       return CameraUpdate.newLatLngZoom(
         LatLng(bounds.centerLatitude, bounds.centerLongitude),
-        17,
+        OperationMapStyle.initialZoom,
       );
     }
     return CameraUpdate.newLatLngBounds(
@@ -382,7 +358,7 @@ class _InspectionViewState extends State<InspectionView> {
         southwest: LatLng(bounds.south, bounds.west),
         northeast: LatLng(bounds.north, bounds.east),
       ),
-      64,
+      OperationMapStyle.boundsPadding,
     );
   }
 
@@ -734,12 +710,12 @@ class _InspectionViewState extends State<InspectionView> {
                                     key: const ValueKey(
                                       'inspection-google-map',
                                     ),
-                                    mapType: MapType.satellite,
+                                    mapType: OperationMapStyle.mapType,
                                     initialCameraPosition:
                                         _savedCamera ??
                                         const CameraPosition(
                                           target: _fallbackPosition,
-                                          zoom: 17,
+                                          zoom: OperationMapStyle.initialZoom,
                                         ),
                                     onCameraIdle: () {
                                       _plantLayer.cameraIdle();
@@ -768,8 +744,10 @@ class _InspectionViewState extends State<InspectionView> {
                                               BitmapDescriptor.defaultMarkerWithHue(
                                                 BitmapDescriptor.hueAzure,
                                               ),
-                                          anchor: const Offset(0.5, 0.5),
-                                          zIndexInt: 1000,
+                                          anchor:
+                                              OperationMapStyle.markerAnchor,
+                                          zIndexInt: OperationMapStyle
+                                              .userMarkerZIndex,
                                         ),
                                     },
                                     polygons: vm.polygons,

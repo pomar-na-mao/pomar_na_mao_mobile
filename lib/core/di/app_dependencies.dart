@@ -19,13 +19,20 @@ import '../../features/operations/data/inspection_database.dart';
 import '../../features/operations/data/inspection_local_store.dart';
 import '../../features/operations/data/inspection_remote_data_source.dart';
 import '../../features/operations/data/inspection_repository.dart';
+import '../../features/operations/data/mipd_database.dart';
+import '../../features/operations/data/mipd_local_store.dart';
+import '../../features/operations/data/mipd_photo_service.dart';
+import '../../features/operations/data/mipd_remote_data_source.dart';
+import '../../features/operations/data/mipd_repository.dart';
 import '../../features/operations/data/spraying_database.dart';
 import '../../features/operations/data/spraying_local_store.dart';
 import '../../features/operations/data/spraying_remote_data_source.dart';
 import '../../features/operations/data/spraying_repository.dart';
 import '../../features/operations/domain/inspection_models.dart';
+import '../../features/operations/domain/mipd_models.dart';
 import '../../features/operations/domain/spraying_models.dart';
 import '../../features/operations/presentation/inspection_view_model.dart';
+import '../../features/operations/presentation/mipd_view_model.dart';
 import '../../features/operations/presentation/spraying_view_model.dart';
 import '../config/app_config.dart';
 import '../data/shared_read_repository.dart';
@@ -47,18 +54,23 @@ class AppDependencies {
     this.inspectionDatabase,
     SprayingRepository? sprayingRepository,
     this.sprayingDatabase,
+    MipdRepository? mipdRepository,
+    this.mipdDatabase,
     this.sharedReadRepository,
     InventoryViewModel? inventoryViewModel,
     FarmMapViewModel? farmMapViewModel,
     InspectionViewModel? inspectionViewModel,
     SprayingViewModel? sprayingViewModel,
+    MipdViewModel? mipdViewModel,
   }) : loadingController = loadingController ?? AppLoadingController(),
        _injectedInspectionRepository = inspectionRepository,
        _injectedSprayingRepository = sprayingRepository,
+       _injectedMipdRepository = mipdRepository,
        _injectedInventoryViewModel = inventoryViewModel,
        _injectedFarmMapViewModel = farmMapViewModel,
        _injectedInspectionViewModel = inspectionViewModel,
-       _injectedSprayingViewModel = sprayingViewModel;
+       _injectedSprayingViewModel = sprayingViewModel,
+       _injectedMipdViewModel = mipdViewModel;
 
   factory AppDependencies.fromSupabaseClient(
     SupabaseClient supabaseClient, {
@@ -93,13 +105,21 @@ class AppDependencies {
       loadingController: loadingController,
     );
 
-    final sprayDb =
-        SprayingDatabase(projectUrl: supabaseClient.rest.url.toString());
+    final sprayDb = SprayingDatabase(
+      projectUrl: supabaseClient.rest.url.toString(),
+    );
     final sprayStore = SprayingLocalStore(sprayDb);
     final sprayRemote = SupabaseSprayingRemoteDataSource(supabaseClient);
     final sprayRepo = DefaultSprayingRepository(
       localStore: sprayStore,
       remoteDataSource: sprayRemote,
+    );
+    final mipdDb = MipdDatabase(projectUrl: supabaseClient.rest.url.toString());
+    final mipdRepo = DefaultMipdRepository(
+      localStore: MipdLocalStore(mipdDb),
+      remoteDataSource: SupabaseMipdRemoteDataSource(supabaseClient),
+      inspectionLocalStore: inspStore,
+      refreshSharedCache: sharedReadRepo.refreshCache,
     );
 
     return AppDependencies(
@@ -111,9 +131,11 @@ class AppDependencies {
       loadingController: loadingController,
       inspectionDatabase: inspDb,
       sprayingDatabase: sprayDb,
+      mipdDatabase: mipdDb,
       sharedReadRepository: sharedReadRepo,
       inspectionRepository: inspRepo,
       sprayingRepository: sprayRepo,
+      mipdRepository: mipdRepo,
       inventoryViewModel: InventoryViewModel(
         inventoryRepo,
         farmRepo,
@@ -132,9 +154,11 @@ class AppDependencies {
   final AppLoadingController loadingController;
   final InspectionDatabase? inspectionDatabase;
   final SprayingDatabase? sprayingDatabase;
+  final MipdDatabase? mipdDatabase;
   final SharedReadRepository? sharedReadRepository;
   final InspectionRepository? _injectedInspectionRepository;
   final SprayingRepository? _injectedSprayingRepository;
+  final MipdRepository? _injectedMipdRepository;
 
   InspectionRepository get inspectionRepository =>
       _injectedInspectionRepository ??
@@ -154,10 +178,24 @@ class AppDependencies {
         remoteDataSource: const _FakeEmptySprayingRemoteDataSource(),
       );
 
+  late final MipdRepository mipdRepository =
+      _injectedMipdRepository ??
+      DefaultMipdRepository(
+        localStore: MipdLocalStore(
+          mipdDatabase ?? MipdDatabase(projectUrl: ''),
+        ),
+        remoteDataSource: const _FakeEmptyMipdRemoteDataSource(),
+        inspectionLocalStore: InspectionLocalStore(
+          inspectionDatabase ?? InspectionDatabase(projectUrl: ''),
+        ),
+        refreshSharedCache: () async {},
+      );
+
   final InventoryViewModel? _injectedInventoryViewModel;
   final FarmMapViewModel? _injectedFarmMapViewModel;
   final InspectionViewModel? _injectedInspectionViewModel;
   final SprayingViewModel? _injectedSprayingViewModel;
+  final MipdViewModel? _injectedMipdViewModel;
 
   late final InventoryViewModel inventoryViewModel =
       _injectedInventoryViewModel ??
@@ -196,16 +234,43 @@ class AppDependencies {
         zonesRepository: zonesRepository,
       );
 
+  MipdViewModel? _createdMipdViewModel;
+  MipdViewModel get mipdViewModel =>
+      _injectedMipdViewModel ??
+      (_createdMipdViewModel ??= MipdViewModel(
+        repository: mipdRepository,
+        locationService: locationService,
+        photoService: MipdPhotoService(picker: ImagePickerMipdPhotoPicker()),
+      ));
+
   /// Libera recursos e encerra listeners dos ViewModels criados.
   void dispose() {
     inventoryViewModel.dispose();
     farmMapViewModel.dispose();
     inspectionViewModel.dispose();
     _injectedSprayingViewModel?.dispose();
+    (_injectedMipdViewModel ?? _createdMipdViewModel)?.dispose();
     unawaited(sharedReadRepository?.dispose());
     unawaited(inspectionDatabase?.close());
     unawaited(sprayingDatabase?.close());
+    unawaited(mipdDatabase?.close());
   }
+}
+
+class _FakeEmptyMipdRemoteDataSource implements MipdRemoteDataSource {
+  const _FakeEmptyMipdRemoteDataSource();
+
+  @override
+  Future<List<MipdSyncResult>> syncMarkings(
+    Map<String, dynamic> payload,
+  ) async => const [];
+
+  @override
+  Future<String> uploadPhoto({
+    required String deviceId,
+    required String localId,
+    required String localPath,
+  }) async => '';
 }
 
 class _FakeEmptySprayingRemoteDataSource implements SprayingRemoteDataSource {

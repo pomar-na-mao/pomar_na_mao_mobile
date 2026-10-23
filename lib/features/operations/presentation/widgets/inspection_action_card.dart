@@ -4,12 +4,10 @@ import '../inspection_view_model.dart';
 import 'inspection_filters_modal.dart';
 import 'local_added_plants_modal.dart';
 import 'local_inspections_modal.dart';
+import 'operation_action_button.dart';
 
 class InspectionActionCard extends StatelessWidget {
-  const InspectionActionCard({
-    required this.viewModel,
-    super.key,
-  });
+  const InspectionActionCard({required this.viewModel, super.key});
 
   final InspectionViewModel viewModel;
 
@@ -41,18 +39,22 @@ class InspectionActionCard extends StatelessWidget {
                 ],
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 child: Row(
                   children: [
                     // Button 1: Carregar plantas (Blue / Ocean tone)
                     Expanded(
-                      child: _ActionButton(
+                      child: OperationActionButton(
                         key: const ValueKey('action-load-plants'),
                         tooltip: 'Carregar plantas',
                         backgroundColor: const Color(0xFFE0F2FE),
                         borderColor: const Color(0xFFBAE6FD),
                         iconColor: const Color(0xFF0284C7),
-                        icon: viewModel.loadStatus == InspectionLoadStatus.loading
+                        icon:
+                            viewModel.loadStatus == InspectionLoadStatus.loading
                             ? const SizedBox(
                                 width: 22,
                                 height: 22,
@@ -61,8 +63,12 @@ class InspectionActionCard extends StatelessWidget {
                                   color: Color(0xFF0284C7),
                                 ),
                               )
-                            : const Icon(Icons.cloud_download_outlined, size: 24),
-                        onPressed: viewModel.loadStatus == InspectionLoadStatus.loading
+                            : const Icon(
+                                Icons.cloud_download_outlined,
+                                size: 24,
+                              ),
+                        onPressed:
+                            viewModel.loadStatus == InspectionLoadStatus.loading
                             ? null
                             : () => viewModel.loadPlants(),
                       ),
@@ -73,7 +79,7 @@ class InspectionActionCard extends StatelessWidget {
                     Expanded(
                       child: KeyedSubtree(
                         key: const ValueKey('action-occurrences'),
-                        child: _ActionButton(
+                        child: OperationActionButton(
                           key: const ValueKey('action-filters'),
                           tooltip: 'Filtros',
                           backgroundColor: const Color(0xFFFEF3C7),
@@ -87,7 +93,8 @@ class InspectionActionCard extends StatelessWidget {
                             backgroundColor: const Color(0xFFD97706),
                             child: const Icon(Icons.tune_rounded, size: 24),
                           ),
-                          onPressed: () => InspectionFiltersModal.show(context, viewModel),
+                          onPressed: () =>
+                              InspectionFiltersModal.show(context, viewModel),
                         ),
                       ),
                     ),
@@ -95,7 +102,7 @@ class InspectionActionCard extends StatelessWidget {
 
                     // Button 3: Inspeções salvas (Purple / Violet tone)
                     Expanded(
-                      child: _ActionButton(
+                      child: OperationActionButton(
                         key: const ValueKey('action-added-plants'),
                         tooltip: 'Plantas adicionadas',
                         backgroundColor: const Color(0xFFCCFBF1),
@@ -105,83 +112,30 @@ class InspectionActionCard extends StatelessWidget {
                           isLabelVisible: viewModel.addedPlants.isNotEmpty,
                           smallSize: 8,
                           backgroundColor: const Color(0xFF0F766E),
-                          child: const Icon(Icons.add_location_alt_outlined, size: 24),
+                          child: const Icon(
+                            Icons.add_location_alt_outlined,
+                            size: 24,
+                          ),
                         ),
-                        onPressed: () => LocalAddedPlantsModal.show(context, viewModel),
+                        onPressed: () =>
+                            LocalAddedPlantsModal.show(context, viewModel),
                       ),
                     ),
                     const SizedBox(width: 10),
 
                     Expanded(
-                      child: _ActionButton(
+                      child: OperationActionButton(
                         key: const ValueKey('action-saved-inspections'),
                         tooltip: 'Inspeções salvas',
                         backgroundColor: const Color(0xFFEDE9FE),
                         borderColor: const Color(0xFFDDD6FE),
                         iconColor: const Color(0xFF7C3AED),
                         icon: const Icon(Icons.folder_outlined, size: 24),
-                        onPressed: () => LocalInspectionsModal.show(context, viewModel),
+                        onPressed: () =>
+                            LocalInspectionsModal.show(context, viewModel),
                       ),
                     ),
                   ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.icon,
-    required this.tooltip,
-    required this.backgroundColor,
-    required this.borderColor,
-    required this.iconColor,
-    required this.onPressed,
-    super.key,
-  });
-
-  final Widget icon;
-  final String tooltip;
-  final Color backgroundColor;
-  final Color borderColor;
-  final Color iconColor;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final isEnabled = onPressed != null;
-
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: isEnabled ? backgroundColor : backgroundColor.withValues(alpha: 0.4),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: isEnabled ? borderColor : borderColor.withValues(alpha: 0.4),
-            width: 1.5,
-          ),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onPressed,
-          splashColor: iconColor.withValues(alpha: 0.15),
-          highlightColor: iconColor.withValues(alpha: 0.08),
-          child: Semantics(
-            button: true,
-            label: tooltip,
-            enabled: isEnabled,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 52, minWidth: 48),
-              child: Center(
-                child: IconTheme(
-                  data: IconThemeData(color: iconColor, size: 24),
-                  child: icon,
                 ),
               ),
             ),

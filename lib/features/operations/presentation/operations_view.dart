@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'inspection_view.dart';
 import 'inspection_view_model.dart';
+import 'mipd_view.dart';
+import 'mipd_view_model.dart';
 import 'operation_definition.dart';
 import 'spraying_view.dart';
 import 'spraying_view_model.dart';
@@ -13,6 +15,8 @@ class OperationsView extends StatelessWidget {
     this.inspectionMapBuilder,
     this.sprayingViewModel,
     this.sprayingMapBuilder,
+    this.mipdViewModel,
+    this.mipdMapBuilder,
     super.key,
   });
 
@@ -20,6 +24,8 @@ class OperationsView extends StatelessWidget {
   final InspectionMapBuilder? inspectionMapBuilder;
   final SprayingViewModel? sprayingViewModel;
   final SprayingMapBuilder? sprayingMapBuilder;
+  final MipdViewModel? mipdViewModel;
+  final MipdMapBuilder? mipdMapBuilder;
 
   static const _backgroundColor = Color(0xFFF2F6EF);
 
@@ -42,6 +48,13 @@ class OperationsView extends StatelessWidget {
             viewModel: sprayingViewModel,
             mapBuilder: sprayingMapBuilder,
           ),
+        ),
+      );
+    } else if (operation.id == 'mipd' && mipdViewModel != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              MipdView(viewModel: mipdViewModel!, mapBuilder: mipdMapBuilder),
         ),
       );
     }

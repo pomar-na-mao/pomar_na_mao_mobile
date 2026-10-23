@@ -40,85 +40,117 @@ void main() {
   ];
 
   final samplePlants = [
-    InspectionPlant(id: 'p-1', latitude: -23.1, longitude: -46.1, description: 'Planta 1'),
-    InspectionPlant(id: 'p-2', latitude: -23.2, longitude: -46.2, description: 'Planta 2'),
-    InspectionPlant(id: 'p-3', latitude: -23.3, longitude: -46.3, description: 'Planta 3'),
+    InspectionPlant(
+      id: 'p-1',
+      latitude: -23.1,
+      longitude: -46.1,
+      description: 'Planta 1',
+    ),
+    InspectionPlant(
+      id: 'p-2',
+      latitude: -23.2,
+      longitude: -46.2,
+      description: 'Planta 2',
+    ),
+    InspectionPlant(
+      id: 'p-3',
+      latitude: -23.3,
+      longitude: -46.3,
+      description: 'Planta 3',
+    ),
   ];
 
-  test('replaceSnapshot persists plants and catalog, creates active draft', () async {
-    final snapshot = InspectionSnapshot(
-      plants: samplePlants,
-      types: sampleTypes,
-      loadedAt: currentTime,
-    );
+  test(
+    'replaceSnapshot persists plants and catalog, creates active draft',
+    () async {
+      final snapshot = InspectionSnapshot(
+        plants: samplePlants,
+        types: sampleTypes,
+        loadedAt: currentTime,
+      );
 
-    await store.replaceSnapshot(snapshot);
+      await store.replaceSnapshot(snapshot);
 
-    final read = await store.readSnapshot();
-    expect(read, isNotNull);
-    expect(read!.plants.length, 3);
-    expect(read.types.length, 2);
+      final read = await store.readSnapshot();
+      expect(read, isNotNull);
+      expect(read!.plants.length, 3);
+      expect(read.types.length, 2);
 
-    final catalog = await store.readCatalog();
-    expect(catalog.length, 2);
+      final catalog = await store.readCatalog();
+      expect(catalog.length, 2);
 
-    final inspections = await store.list();
-    expect(inspections.length, 1);
-    expect(inspections.single.isDraft, isTrue);
-    expect(inspections.single.plantsCount, 0);
-  });
+      final inspections = await store.list();
+      expect(inspections.length, 1);
+      expect(inspections.single.isDraft, isTrue);
+      expect(inspections.single.plantsCount, 0);
+    },
+  );
 
-  test('saveCatalog replaces stale entries and preserves cache on empty input', () async {
-    await store.saveCatalog(sampleTypes);
-    await store.saveCatalog([
-      const OccurrenceType(id: 't-2', name: 'Seca atualizada', code: 'dry'),
-    ]);
+  test(
+    'saveCatalog replaces stale entries and persists confirmed empty input',
+    () async {
+      await store.saveCatalog(sampleTypes);
+      await store.saveCatalog([
+        const OccurrenceType(id: 't-2', name: 'Seca atualizada', code: 'dry'),
+      ]);
 
-    final refreshed = await store.readCatalog();
-    expect(refreshed, hasLength(1));
-    expect(refreshed.single.id, 't-2');
-    expect(refreshed.single.code, 'dry');
+      final refreshed = await store.readCatalog();
+      expect(refreshed, hasLength(1));
+      expect(refreshed.single.id, 't-2');
+      expect(refreshed.single.code, 'dry');
 
-    await expectLater(store.saveCatalog(const []), throwsStateError);
-    expect((await store.readCatalog()).single.code, 'dry');
-  });
+      await store.saveCatalog(const []);
+      expect(await store.readCatalog(), isEmpty);
+    },
+  );
 
-  test('toggle records changes in strict sequence even with freeze clock', () async {
-    await store.replaceSnapshot(
-      InspectionSnapshot(plants: samplePlants, types: sampleTypes, loadedAt: currentTime),
-    );
+  test(
+    'toggle records changes in strict sequence even with freeze clock',
+    () async {
+      await store.replaceSnapshot(
+        InspectionSnapshot(
+          plants: samplePlants,
+          types: sampleTypes,
+          loadedAt: currentTime,
+        ),
+      );
 
-    // Freeze clock: same timestamp
-    await store.toggle('p-1', 't-1');
-    await store.toggle('p-1', 't-2');
-    await store.toggle('p-1', 't-1'); // Remove t-1
+      // Freeze clock: same timestamp
+      await store.toggle('p-1', 't-1');
+      await store.toggle('p-1', 't-2');
+      await store.toggle('p-1', 't-1'); // Remove t-1
 
-    final draft = (await store.list()).single;
-    expect(draft.changesCount, 3);
-    expect(draft.plantsCount, 1);
+      final draft = (await store.list()).single;
+      expect(draft.changesCount, 3);
+      expect(draft.plantsCount, 1);
 
-    final changes = await store.changes(draft.id);
-    expect(changes.length, 3);
-    expect(changes[0].sequence, 1);
-    expect(changes[1].sequence, 2);
-    expect(changes[2].sequence, 3);
-    expect(changes[0].added, isTrue);
-    expect(changes[1].added, isTrue);
-    expect(changes[2].added, isFalse);
+      final changes = await store.changes(draft.id);
+      expect(changes.length, 3);
+      expect(changes[0].sequence, 1);
+      expect(changes[1].sequence, 2);
+      expect(changes[2].sequence, 3);
+      expect(changes[0].added, isTrue);
+      expect(changes[1].added, isTrue);
+      expect(changes[2].added, isFalse);
 
-    // Timestamps must be strictly increasing
-    expect(changes[1].changedAt.isAfter(changes[0].changedAt), isTrue);
-    expect(changes[2].changedAt.isAfter(changes[1].changedAt), isTrue);
+      // Timestamps must be strictly increasing
+      expect(changes[1].changedAt.isAfter(changes[0].changedAt), isTrue);
+      expect(changes[2].changedAt.isAfter(changes[1].changedAt), isTrue);
 
-    // Current plant state should have t-2 but not t-1
-    final plants = (await store.readSnapshot())!.plants;
-    final p1 = plants.firstWhere((p) => p.id == 'p-1');
-    expect(p1.openTypeIds, {'t-2'});
-  });
+      // Current plant state should have t-2 but not t-1
+      final plants = (await store.readSnapshot())!.plants;
+      final p1 = plants.firstWhere((p) => p.id == 'p-1');
+      expect(p1.openTypeIds, {'t-2'});
+    },
+  );
 
   test('toggle fails and rolls back if plant is unknown', () async {
     await store.replaceSnapshot(
-      InspectionSnapshot(plants: samplePlants, types: sampleTypes, loadedAt: currentTime),
+      InspectionSnapshot(
+        plants: samplePlants,
+        types: sampleTypes,
+        loadedAt: currentTime,
+      ),
     );
 
     expect(
@@ -132,7 +164,11 @@ void main() {
 
   test('finalize groups only changed plants and locks payload', () async {
     await store.replaceSnapshot(
-      InspectionSnapshot(plants: samplePlants, types: sampleTypes, loadedAt: currentTime),
+      InspectionSnapshot(
+        plants: samplePlants,
+        types: sampleTypes,
+        loadedAt: currentTime,
+      ),
     );
 
     // Change p-1 and p-2; p-3 is untouched
@@ -149,7 +185,8 @@ void main() {
     final payload = finalized.payload;
     expect(payload['localInspectionId'], finalized.id);
     expect(payload['deviceId'], isNotEmpty);
-    final plantsChanged = (payload['plantsChanged'] as List).cast<Map<String, dynamic>>();
+    final plantsChanged = (payload['plantsChanged'] as List)
+        .cast<Map<String, dynamic>>();
     expect(plantsChanged.length, 2);
     final changedPlantIds = plantsChanged.map((p) => p['plantId']).toSet();
     expect(changedPlantIds, {'p-1', 'p-2'});
@@ -165,7 +202,11 @@ void main() {
 
   test('acknowledge marks inspection and changes as synced', () async {
     await store.replaceSnapshot(
-      InspectionSnapshot(plants: samplePlants, types: sampleTypes, loadedAt: currentTime),
+      InspectionSnapshot(
+        plants: samplePlants,
+        types: sampleTypes,
+        loadedAt: currentTime,
+      ),
     );
     await store.toggle('p-1', 't-1');
     final finalized = (await store.finalize())!;
@@ -195,13 +236,22 @@ void main() {
 
   test('markError with network error marks status as pending and message as Sem internet', () async {
     await store.replaceSnapshot(
-      InspectionSnapshot(plants: samplePlants, types: sampleTypes, loadedAt: currentTime),
+      InspectionSnapshot(
+        plants: samplePlants,
+        types: sampleTypes,
+        loadedAt: currentTime,
+      ),
     );
     await store.toggle('p-1', 't-1');
     final finalized = (await store.finalize())!;
 
-    await store.markError(finalized.id, 'SocketException: Failed host lookup: supabase.co');
-    final current = (await store.list()).firstWhere((i) => i.id == finalized.id);
+    await store.markError(
+      finalized.id,
+      'SocketException: Failed host lookup: supabase.co',
+    );
+    final current = (await store.list()).firstWhere(
+      (i) => i.id == finalized.id,
+    );
     expect(current.status, InspectionSyncStatus.pending);
     expect(current.error, 'Sem internet');
     expect(current.displayErrorMessage, 'Sem internet');
@@ -213,7 +263,11 @@ void main() {
 
   test('removePlantFromInspection updates inspection counts and deletes inspection when last plant is removed', () async {
     await store.replaceSnapshot(
-      InspectionSnapshot(plants: samplePlants, types: sampleTypes, loadedAt: currentTime),
+      InspectionSnapshot(
+        plants: samplePlants,
+        types: sampleTypes,
+        loadedAt: currentTime,
+      ),
     );
     await store.toggle('p-1', 't-1');
     await store.toggle('p-2', 't-2');
@@ -248,7 +302,11 @@ void main() {
 
   test('setPlantNonExistent updates plant and finalize includes nonExistent in plantsChanged', () async {
     await store.replaceSnapshot(
-      InspectionSnapshot(plants: samplePlants, types: sampleTypes, loadedAt: currentTime),
+      InspectionSnapshot(
+        plants: samplePlants,
+        types: sampleTypes,
+        loadedAt: currentTime,
+      ),
     );
 
     // Set p-1 as non_existent
@@ -256,12 +314,16 @@ void main() {
 
     final snapshot = await store.readSnapshot();
     expect(snapshot!.plants.any((p) => p.id == 'p-1'), isTrue);
-    expect(snapshot.plants.firstWhere((p) => p.id == 'p-1').nonExistent, isTrue);
+    expect(
+      snapshot.plants.firstWhere((p) => p.id == 'p-1').nonExistent,
+      isTrue,
+    );
 
     final finalized = await store.finalize();
     expect(finalized, isNotNull);
     final payload = finalized!.payload;
-    final plantsChanged = (payload['plantsChanged'] as List).cast<Map<String, dynamic>>();
+    final plantsChanged = (payload['plantsChanged'] as List)
+        .cast<Map<String, dynamic>>();
     expect(plantsChanged.length, 1);
     expect(plantsChanged.first['plantId'], 'p-1');
     expect(plantsChanged.first['nonExistent'], isTrue);
@@ -271,8 +333,18 @@ void main() {
     await store.saveCatalog(sampleTypes);
     final genId = await store.beginPlantStaging(loadedAt: currentTime);
     await store.appendStagedPlantRows(genId, [
-      {'id': 'p-exist', 'latitude': -23.1, 'longitude': -46.1, 'non_existent': false},
-      {'id': 'p-non-exist', 'latitude': -23.2, 'longitude': -46.2, 'non_existent': true},
+      {
+        'id': 'p-exist',
+        'latitude': -23.1,
+        'longitude': -46.1,
+        'non_existent': false,
+      },
+      {
+        'id': 'p-non-exist',
+        'latitude': -23.2,
+        'longitude': -46.2,
+        'non_existent': true,
+      },
     ]);
     await store.publishPlantStaging(genId);
 
@@ -287,95 +359,101 @@ void main() {
     expect(pNonExist.nonExistent, isTrue);
   });
 
-  test('addPlant persists local queue item and rejects invalid coordinates', () async {
-    final added = await store.addPlant(
-      latitude: -23.45,
-      longitude: -46.67,
-      nonExistent: true,
-      zoneId: 'zone-1',
-    );
+  test(
+    'addPlant persists local queue item and rejects invalid coordinates',
+    () async {
+      final added = await store.addPlant(
+        latitude: -23.45,
+        longitude: -46.67,
+        nonExistent: true,
+        zoneId: 'zone-1',
+      );
 
-    expect(added.localId, isNotEmpty);
-    expect(added.latitude, -23.45);
-    expect(added.longitude, -46.67);
-    expect(added.nonExistent, isTrue);
-    expect(added.zoneId, 'zone-1');
-    expect(added.status, InspectionSyncStatus.pending);
-    expect(added.createdAt, currentTime);
+      expect(added.localId, isNotEmpty);
+      expect(added.latitude, -23.45);
+      expect(added.longitude, -46.67);
+      expect(added.nonExistent, isTrue);
+      expect(added.zoneId, 'zone-1');
+      expect(added.status, InspectionSyncStatus.pending);
+      expect(added.createdAt, currentTime);
 
-    final list = await store.listAddedPlants();
-    expect(list, hasLength(1));
-    expect(list.single.localId, added.localId);
-    expect(list.single.zoneId, 'zone-1');
+      final list = await store.listAddedPlants();
+      expect(list, hasLength(1));
+      expect(list.single.localId, added.localId);
+      expect(list.single.zoneId, 'zone-1');
 
-    expect(
-      () => store.addPlant(
-        latitude: 95,
+      expect(
+        () =>
+            store.addPlant(latitude: 95, longitude: -46.67, nonExistent: false),
+        throwsA(isA<ArgumentError>()),
+      );
+    },
+  );
+
+  test(
+    'added plant sync state supports syncing, retry error and acknowledge',
+    () async {
+      final first = await store.addPlant(
+        latitude: -23.45,
         longitude: -46.67,
         nonExistent: false,
-      ),
-      throwsA(isA<ArgumentError>()),
-    );
-  });
+      );
+      currentTime = currentTime.add(const Duration(minutes: 1));
+      final second = await store.addPlant(
+        latitude: -23.46,
+        longitude: -46.68,
+        nonExistent: true,
+      );
 
-  test('added plant sync state supports syncing, retry error and acknowledge', () async {
-    final first = await store.addPlant(
-      latitude: -23.45,
-      longitude: -46.67,
-      nonExistent: false,
-    );
-    currentTime = currentTime.add(const Duration(minutes: 1));
-    final second = await store.addPlant(
-      latitude: -23.46,
-      longitude: -46.68,
-      nonExistent: true,
-    );
+      var pending = await store.pendingAddedPlants();
+      expect(pending.map((p) => p.localId), [first.localId, second.localId]);
 
-    var pending = await store.pendingAddedPlants();
-    expect(pending.map((p) => p.localId), [first.localId, second.localId]);
+      await store.markAddedPlantsSyncing([first.localId, second.localId]);
+      var listed = await store.listAddedPlants();
+      expect(listed.map((p) => p.status).toSet(), {
+        InspectionSyncStatus.syncing,
+      });
 
-    await store.markAddedPlantsSyncing([first.localId, second.localId]);
-    var listed = await store.listAddedPlants();
-    expect(
-      listed.map((p) => p.status).toSet(),
-      {InspectionSyncStatus.syncing},
-    );
+      await store.markAddedPlantError(
+        first.localId,
+        'SocketException: Failed host lookup: supabase.co',
+      );
+      await store.markAddedPlantError(second.localId, 'RPC recusou payload');
 
-    await store.markAddedPlantError(
-      first.localId,
-      'SocketException: Failed host lookup: supabase.co',
-    );
-    await store.markAddedPlantError(second.localId, 'RPC recusou payload');
+      listed = await store.listAddedPlants();
+      final erroredFirst = listed.firstWhere((p) => p.localId == first.localId);
+      final erroredSecond = listed.firstWhere(
+        (p) => p.localId == second.localId,
+      );
+      expect(erroredFirst.status, InspectionSyncStatus.pending);
+      expect(erroredFirst.error, 'Sem internet');
+      expect(erroredSecond.status, InspectionSyncStatus.error);
+      expect(erroredSecond.error, contains('RPC recusou payload'));
 
-    listed = await store.listAddedPlants();
-    final erroredFirst = listed.firstWhere((p) => p.localId == first.localId);
-    final erroredSecond = listed.firstWhere((p) => p.localId == second.localId);
-    expect(erroredFirst.status, InspectionSyncStatus.pending);
-    expect(erroredFirst.error, 'Sem internet');
-    expect(erroredSecond.status, InspectionSyncStatus.error);
-    expect(erroredSecond.error, contains('RPC recusou payload'));
+      currentTime = currentTime.add(const Duration(minutes: 1));
+      await store.acknowledgeAddedPlants([
+        AddedPlantSyncResult(
+          localId: first.localId,
+          plantId: 'remote-first',
+          latitude: first.latitude,
+          longitude: first.longitude,
+          nonExistent: first.nonExistent,
+          status: InspectionSyncStatus.synced,
+        ),
+      ]);
 
-    currentTime = currentTime.add(const Duration(minutes: 1));
-    await store.acknowledgeAddedPlants([
-      AddedPlantSyncResult(
-        localId: first.localId,
-        plantId: 'remote-first',
-        latitude: first.latitude,
-        longitude: first.longitude,
-        nonExistent: first.nonExistent,
-        status: InspectionSyncStatus.synced,
-      ),
-    ]);
-
-    listed = await store.listAddedPlants();
-    final synced = listed.firstWhere((p) => p.localId == first.localId);
-    final stillPending = listed.firstWhere((p) => p.localId == second.localId);
-    expect(synced.status, InspectionSyncStatus.synced);
-    expect(synced.remotePlantId, 'remote-first');
-    expect(synced.syncedAt, currentTime);
-    expect(synced.error, isNull);
-    expect(stillPending.status, InspectionSyncStatus.error);
-  });
+      listed = await store.listAddedPlants();
+      final synced = listed.firstWhere((p) => p.localId == first.localId);
+      final stillPending = listed.firstWhere(
+        (p) => p.localId == second.localId,
+      );
+      expect(synced.status, InspectionSyncStatus.synced);
+      expect(synced.remotePlantId, 'remote-first');
+      expect(synced.syncedAt, currentTime);
+      expect(synced.error, isNull);
+      expect(stillPending.status, InspectionSyncStatus.error);
+    },
+  );
 
   test('removeAddedPlant deletes only the requested added plant', () async {
     final first = await store.addPlant(
@@ -396,84 +474,80 @@ void main() {
     expect(listed.single.localId, second.localId);
   });
 
-  test(
-    'acknowledgeAddedPlants populates cached_plants and allows occurrences and finalization',
-    () async {
-      await store.replaceSnapshot(
-        InspectionSnapshot(
-          plants: [
-            InspectionPlant(
-              id: 'initial-plant',
-              latitude: -23.1,
-              longitude: -46.1,
-              eligible: true,
-            ),
-          ],
-          types: const [
-            OccurrenceType(id: 'type-pest', name: 'Praga', code: 'pest'),
-          ],
-          loadedAt: currentTime,
-        ),
-      );
+  test('acknowledgeAddedPlants populates cached_plants and allows occurrences and finalization', () async {
+    await store.replaceSnapshot(
+      InspectionSnapshot(
+        plants: [
+          InspectionPlant(
+            id: 'initial-plant',
+            latitude: -23.1,
+            longitude: -46.1,
+            eligible: true,
+          ),
+        ],
+        types: const [
+          OccurrenceType(id: 'type-pest', name: 'Praga', code: 'pest'),
+        ],
+        loadedAt: currentTime,
+      ),
+    );
 
-      final added = await store.addPlant(
-        latitude: -23.2,
-        longitude: -46.2,
-        nonExistent: false,
-        zoneId: 'zone-1',
-      );
+    final added = await store.addPlant(
+      latitude: -23.2,
+      longitude: -46.2,
+      nonExistent: false,
+      zoneId: 'zone-1',
+    );
 
-      await store.acknowledgeAddedPlants([
-        AddedPlantSyncResult(
-          localId: added.localId,
-          plantId: 'remote-added-plant',
-          latitude: added.latitude,
-          longitude: added.longitude,
-          nonExistent: added.nonExistent,
-          status: InspectionSyncStatus.synced,
-          zoneId: added.zoneId,
-        ),
-      ]);
+    await store.acknowledgeAddedPlants([
+      AddedPlantSyncResult(
+        localId: added.localId,
+        plantId: 'remote-added-plant',
+        latitude: added.latitude,
+        longitude: added.longitude,
+        nonExistent: added.nonExistent,
+        status: InspectionSyncStatus.synced,
+        zoneId: added.zoneId,
+      ),
+    ]);
 
-      // Check plant exists in snapshot
-      final snapshot = await store.readSnapshot();
-      expect(snapshot, isNotNull);
-      final syncedPlant =
-          snapshot!.plants.firstWhere((p) => p.id == 'remote-added-plant');
-      expect(syncedPlant.latitude, -23.2);
-      expect(syncedPlant.longitude, -46.2);
-      expect(syncedPlant.zoneId, 'zone-1');
+    // Check plant exists in snapshot
+    final snapshot = await store.readSnapshot();
+    expect(snapshot, isNotNull);
+    final syncedPlant = snapshot!.plants.firstWhere(
+      (p) => p.id == 'remote-added-plant',
+    );
+    expect(syncedPlant.latitude, -23.2);
+    expect(syncedPlant.longitude, -46.2);
+    expect(syncedPlant.zoneId, 'zone-1');
 
-      // Check occurrences can be toggled on the new plant
-      await store.toggle('remote-added-plant', 'type-pest');
+    // Check occurrences can be toggled on the new plant
+    await store.toggle('remote-added-plant', 'type-pest');
 
-      final inspections = await store.list();
-      final draft = inspections.firstWhere((i) => i.id.isNotEmpty);
-      final changes = await store.changes(draft.id);
-      expect(changes, hasLength(1));
-      expect(changes.first.plantId, 'remote-added-plant');
-      expect(changes.first.typeId, 'type-pest');
-      expect(changes.first.added, isTrue);
+    final inspections = await store.list();
+    final draft = inspections.firstWhere((i) => i.id.isNotEmpty);
+    final changes = await store.changes(draft.id);
+    expect(changes, hasLength(1));
+    expect(changes.first.plantId, 'remote-added-plant');
+    expect(changes.first.typeId, 'type-pest');
+    expect(changes.first.added, isTrue);
 
-      // Finalize inspection
-      final finalized = await store.finalize();
-      expect(finalized, isNotNull);
-      expect(finalized!.plantsCount, 1);
-      expect(finalized.changesCount, 1);
-      final payload = jsonDecode(finalized.payloadJson!) as Map<String, dynamic>;
-      final plantsChanged = payload['plantsChanged'] as List;
-      expect(plantsChanged, hasLength(1));
-      expect(plantsChanged.first['plantId'], 'remote-added-plant');
+    // Finalize inspection
+    final finalized = await store.finalize();
+    expect(finalized, isNotNull);
+    expect(finalized!.plantsCount, 1);
+    expect(finalized.changesCount, 1);
+    final payload = jsonDecode(finalized.payloadJson!) as Map<String, dynamic>;
+    final plantsChanged = payload['plantsChanged'] as List;
+    expect(plantsChanged, hasLength(1));
+    expect(plantsChanged.first['plantId'], 'remote-added-plant');
 
-      // Remove added plant cleans up cached_plants
-      await store.removeAddedPlant(added.localId);
-      final snapshotAfter = await store.readSnapshot();
-      expect(
-        snapshotAfter!.plants.any((p) => p.id == 'remote-added-plant'),
-        isFalse,
-      );
-    },
-  );
+    // Remove added plant cleans up cached_plants
+    await store.removeAddedPlant(added.localId);
+    final snapshotAfter = await store.readSnapshot();
+    expect(
+      snapshotAfter!.plants.any((p) => p.id == 'remote-added-plant'),
+      isFalse,
+    );
+  });
 }
-
-

@@ -47,7 +47,7 @@ class InspectionDatabase {
     final db = await resolvedFactory.openDatabase(
       p.join(root, 'inspections_$fileId.db'),
       options: OpenDatabaseOptions(
-        version: 8,
+        version: 9,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) => _migrate(db, 0, version),
         onUpgrade: _migrate,
@@ -73,12 +73,14 @@ class InspectionDatabase {
         }, where: "sync_status = 'syncing'");
         await txn.delete('staged_plants');
         await txn.delete('cache_generations');
-        await txn.execute('''CREATE TABLE IF NOT EXISTS local_inspection_plant_status (
+        await txn.execute(
+          '''CREATE TABLE IF NOT EXISTS local_inspection_plant_status (
           inspection_local_id TEXT NOT NULL REFERENCES local_inspections(local_id) ON DELETE CASCADE,
           plant_id TEXT NOT NULL,
           non_existent INTEGER NOT NULL DEFAULT 0,
           initial_non_existent INTEGER NOT NULL DEFAULT 0,
-          PRIMARY KEY(inspection_local_id, plant_id))''');
+          PRIMARY KEY(inspection_local_id, plant_id))''',
+        );
         await txn.execute(_createLocalAddedPlants);
         await txn.execute(_createLocalAddedPlantsQueueIndex);
       });
@@ -140,6 +142,11 @@ class InspectionDatabase {
         await db.execute(sql);
       }
     }
+    if (oldVersion < 9) {
+      for (final sql in _versionNine) {
+        await db.execute(sql);
+      }
+    }
   }
 
   Future<String> get deviceId async =>
@@ -188,6 +195,14 @@ class InspectionDatabase {
   ];
 
   static const _versionEight = [
+    "DELETE FROM cache_metadata WHERE cache_key = 'occurrence_types'",
+    'DELETE FROM occurrence_types',
+  ];
+
+  static const _versionNine = [
+    '''ALTER TABLE occurrence_types ADD COLUMN category TEXT NOT NULL
+      DEFAULT 'STRUCTURAL'
+      CHECK(category IN ('STRUCTURAL','ENVIRONMENTAL','PEST_DISEASE','ANTHROPIC'))''',
     "DELETE FROM cache_metadata WHERE cache_key = 'occurrence_types'",
     'DELETE FROM occurrence_types',
   ];

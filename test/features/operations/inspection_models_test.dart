@@ -4,34 +4,64 @@ import 'package:pomar_na_mao_mobile/features/operations/domain/inspection_models
 void main() {
   group('OccurrenceType', () {
     test('serializes and deserializes correctly', () {
-      const type = OccurrenceType(id: 'type-1', name: 'Praga', code: 'pest');
+      const type = OccurrenceType(
+        id: 'type-1',
+        name: 'Praga',
+        code: 'pest',
+        category: OccurrenceType.pestDiseaseCategory,
+      );
       final json = type.toJson();
-      expect(json, {'id': 'type-1', 'name': 'Praga', 'code': 'pest'});
+      expect(json, {
+        'id': 'type-1',
+        'name': 'Praga',
+        'code': 'pest',
+        'category': 'PEST_DISEASE',
+      });
 
       final fromJson = OccurrenceType.fromJson(json);
       expect(fromJson.id, 'type-1');
       expect(fromJson.name, 'Praga');
       expect(fromJson.code, 'pest');
+      expect(fromJson.isPestDisease, isTrue);
     });
   });
 
   group('InspectionPlant', () {
     test('coordinate validation', () {
-      final valid = InspectionPlant(id: 'p-1', latitude: -23.5, longitude: -46.6);
+      final valid = InspectionPlant(
+        id: 'p-1',
+        latitude: -23.5,
+        longitude: -46.6,
+      );
       expect(valid.hasValidCoordinates, isTrue);
 
-      final noLat = InspectionPlant(id: 'p-2', latitude: null, longitude: -46.6);
+      final noLat = InspectionPlant(
+        id: 'p-2',
+        latitude: null,
+        longitude: -46.6,
+      );
       expect(noLat.hasValidCoordinates, isFalse);
 
-      final invalidLat = InspectionPlant(id: 'p-3', latitude: 95.0, longitude: -46.6);
+      final invalidLat = InspectionPlant(
+        id: 'p-3',
+        latitude: 95.0,
+        longitude: -46.6,
+      );
       expect(invalidLat.hasValidCoordinates, isFalse);
 
-      final invalidLng = InspectionPlant(id: 'p-4', latitude: -23.5, longitude: 185.0);
+      final invalidLng = InspectionPlant(
+        id: 'p-4',
+        latitude: -23.5,
+        longitude: 185.0,
+      );
       expect(invalidLng.hasValidCoordinates, isFalse);
     });
 
     test('label generation', () {
-      final withDesc = InspectionPlant(id: 'uuid-12345678', description: 'Árvore 42');
+      final withDesc = InspectionPlant(
+        id: 'uuid-12345678',
+        description: 'Árvore 42',
+      );
       expect(withDesc.label, 'Árvore 42');
 
       final withoutDesc = InspectionPlant(id: '12345678-abcd');
@@ -76,8 +106,16 @@ void main() {
         loadedAt: now,
       );
       expect(snapshot.loadedAt.isUtc, isTrue);
-      expect(() => snapshot.plants.add(InspectionPlant(id: 'p-2')), throwsUnsupportedError);
-      expect(() => snapshot.types.add(const OccurrenceType(id: 't-2', name: 'N', code: 'c')), throwsUnsupportedError);
+      expect(
+        () => snapshot.plants.add(InspectionPlant(id: 'p-2')),
+        throwsUnsupportedError,
+      );
+      expect(
+        () => snapshot.types.add(
+          const OccurrenceType(id: 't-2', name: 'N', code: 'c'),
+        ),
+        throwsUnsupportedError,
+      );
     });
   });
 
@@ -185,7 +223,7 @@ void main() {
           'created_occurrences_count': 1,
           'updated_occurrences_count': 2,
           'resolved_occurrences_count': 3,
-        }
+        },
       ];
       final result = InspectionSyncResult.fromRpc(response);
       expect(result.operationId, 'op-uuid-123');
@@ -195,8 +233,14 @@ void main() {
     });
 
     test('throws on invalid format or counts', () {
-      expect(() => InspectionSyncResult.fromRpc([]), throwsA(isA<FormatException>()));
-      expect(() => InspectionSyncResult.fromRpc({}), throwsA(isA<FormatException>()));
+      expect(
+        () => InspectionSyncResult.fromRpc([]),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => InspectionSyncResult.fromRpc({}),
+        throwsA(isA<FormatException>()),
+      );
       expect(
         () => InspectionSyncResult.fromRpc([
           {
@@ -204,7 +248,7 @@ void main() {
             'created_occurrences_count': 0,
             'updated_occurrences_count': 0,
             'resolved_occurrences_count': 0,
-          }
+          },
         ]),
         throwsA(isA<FormatException>()),
       );
@@ -215,7 +259,7 @@ void main() {
             'created_occurrences_count': -1,
             'updated_occurrences_count': 0,
             'resolved_occurrences_count': 0,
-          }
+          },
         ]),
         throwsA(isA<FormatException>()),
       );

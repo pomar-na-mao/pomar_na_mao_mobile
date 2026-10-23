@@ -719,68 +719,65 @@ void main() {
     expect(retained['openTypeIds'], contains('type-1'));
   });
 
-  test(
-    'inspection refresh replaces the complete shared cache',
-    () async {
-      inspectionRemote.types = const [
-        OccurrenceType(id: 'type-1', name: 'Antigo', code: 'old'),
-        OccurrenceType(id: 'stale', name: 'Removido', code: 'stale'),
-      ];
-      await repository.getOccurrenceTypes();
-      inspectionRemote.types = const [
-        OccurrenceType(id: 'type-1', name: 'Atualizado', code: 'updated'),
-      ];
-      farmRemote.farmRows = const [
-        {'id': 1, 'latitude': -23.0, 'longitude': -46.0, 'order': 1},
-      ];
-      farmRemote.zoneRows = const [
-        {'id': 'zone-1', 'name': 'Zona 1'},
-      ];
-      farmRemote.regionRows['zone-1'] = const [
-        {'id': 1, 'latitude': -23.0, 'longitude': -46.0, 'order': 1},
-      ];
-      farmRemote.plantRows = const [
-        {
-          'id': 'p-1',
-          'latitude': -23.1,
-          'longitude': -46.1,
-          'non_existent': false,
-        },
-        {
-          'id': 'p-2',
-          'latitude': -23.2,
-          'longitude': -46.2,
-          'non_existent': true,
-        },
-      ];
-      final inspectionRepository = DefaultInspectionRepository(
-        localStore: localStore,
-        remoteDataSource: inspectionRemote,
-        sharedReadRepository: repository,
-      );
+  test('inspection refresh replaces the complete shared cache', () async {
+    inspectionRemote.types = const [
+      OccurrenceType(id: 'type-1', name: 'Antigo', code: 'old'),
+      OccurrenceType(id: 'stale', name: 'Removido', code: 'stale'),
+    ];
+    await repository.getOccurrenceTypes();
+    inspectionRemote.types = const [
+      OccurrenceType(id: 'type-1', name: 'Atualizado', code: 'updated'),
+    ];
+    farmRemote.farmRows = const [
+      {'id': 1, 'latitude': -23.0, 'longitude': -46.0, 'order': 1},
+    ];
+    farmRemote.zoneRows = const [
+      {'id': 'zone-1', 'name': 'Zona 1'},
+    ];
+    farmRemote.regionRows['zone-1'] = const [
+      {'id': 1, 'latitude': -23.0, 'longitude': -46.0, 'order': 1},
+    ];
+    farmRemote.plantRows = const [
+      {
+        'id': 'p-1',
+        'latitude': -23.1,
+        'longitude': -46.1,
+        'non_existent': false,
+      },
+      {
+        'id': 'p-2',
+        'latitude': -23.2,
+        'longitude': -46.2,
+        'non_existent': true,
+      },
+    ];
+    final inspectionRepository = DefaultInspectionRepository(
+      localStore: localStore,
+      remoteDataSource: inspectionRemote,
+      sharedReadRepository: repository,
+    );
 
-      expect(await inspectionRepository.loadSnapshot(), isNull);
-      final refreshed = await inspectionRepository.loadSnapshot(
-        forceRemote: true,
-      );
-      expect(refreshed!.plants.map((plant) => plant.id), ['p-1', 'p-2']);
-      expect(refreshed.types, hasLength(1));
-      expect(refreshed.types.single.code, 'updated');
-      expect(inspectionRemote.catalogCalls, 2);
-      expect(farmRemote.farmCalls, 1);
-      expect(farmRemote.zoneCalls, 1);
-      expect(farmRemote.regionCalls['zone-1'], 1);
-      expect(farmRemote.plantCalls, 1);
+    expect(await inspectionRepository.loadSnapshot(), isNull);
+    final refreshed = await inspectionRepository.loadSnapshot(
+      forceRemote: true,
+    );
+    expect(refreshed!.plants.map((plant) => plant.id), ['p-1', 'p-2']);
+    expect(refreshed.types, hasLength(1));
+    expect(refreshed.types.single.code, 'updated');
+    expect(inspectionRemote.catalogCalls, 2);
+    expect(farmRemote.farmCalls, 1);
+    expect(farmRemote.zoneCalls, 1);
+    expect(farmRemote.regionCalls['zone-1'], 1);
+    expect(farmRemote.plantCalls, 1);
 
-      expect((await inspectionRepository.loadSnapshot())!.plants, hasLength(2));
-      expect(await inspectionRepository.getCatalog(), hasLength(1));
-      expect(inspectionRemote.catalogCalls, 2);
-      expect(farmRemote.farmCalls, 1);
-      expect(farmRemote.zoneCalls, 1);
-      expect(farmRemote.regionCalls['zone-1'], 1);
-      expect(farmRemote.plantCalls, 1);
-    },
-  );
+    expect((await inspectionRepository.loadSnapshot())!.plants, hasLength(2));
+    expect(await inspectionRepository.getCatalog(), hasLength(1));
+    expect(inspectionRemote.catalogCalls, 2);
+    expect(farmRemote.farmCalls, 1);
+    expect(farmRemote.zoneCalls, 1);
+    expect(farmRemote.regionCalls['zone-1'], 1);
+    expect(farmRemote.plantCalls, 1);
+  });
 
   test('reference replacement rolls back when a row is invalid', () async {
     await localStore.replaceZoneRows(const [
@@ -796,6 +793,83 @@ void main() {
 
     final cached = await localStore.readZoneRows();
     expect(cached!.single['id'], 'zone-a');
+  });
+
+  test(
+    'complete refresh keeps every previous set when a remote read fails',
+    () async {
+      await localStore.replaceSharedCache(
+        farmRows: const [
+          {'id': 1, 'name': 'Fazenda anterior'},
+        ],
+        zoneRows: const [
+          {'id': 'zone-old', 'name': 'Zona anterior'},
+        ],
+        regionRowsByZone: const {
+          'zone-old': [
+            {'id': 1, 'latitude': -23.0, 'longitude': -46.0},
+          ],
+        },
+        plantRows: const [
+          {'id': 'plant-old', 'non_existent': false},
+        ],
+        openOccurrences: const {},
+        occurrenceTypes: const [
+          OccurrenceType(id: 'type-old', name: 'Antiga', code: 'old'),
+        ],
+        loadedAt: DateTime.utc(2026, 1, 1),
+      );
+
+      farmRemote.farmRows = const [
+        {'id': 2, 'name': 'Fazenda nova'},
+      ];
+      farmRemote.zoneRows = const [
+        {'id': 'zone-new', 'name': 'Zona nova'},
+      ];
+      farmRemote.regionRows['zone-new'] = const [];
+      farmRemote.plantRows = const [
+        {'id': 'plant-new', 'non_existent': false},
+      ];
+      inspectionRemote.types = const [
+        OccurrenceType(id: 'type-new', name: 'Nova', code: 'new'),
+      ];
+      inspectionRemote.throwOpenOccurrences = true;
+
+      await expectLater(repository.refreshCache(), throwsException);
+
+      expect((await localStore.readFarmRows())!.single['id'], 1);
+      expect((await localStore.readZoneRows())!.single['id'], 'zone-old');
+      expect(
+        (await localStore.readSharedPlantRows())!.single['id'],
+        'plant-old',
+      );
+      expect((await localStore.readCachedCatalog())!.single.id, 'type-old');
+    },
+  );
+
+  test('deduplicates concurrent complete refreshes', () async {
+    farmRemote.farmRows = const [
+      {'id': 1, 'name': 'Fazenda'},
+    ];
+    farmRemote.zoneRows = const [
+      {'id': 'zone-1', 'name': 'Zona'},
+    ];
+    farmRemote.regionRows['zone-1'] = const [];
+    farmRemote.plantRows = const [
+      {'id': 'plant-1', 'non_existent': false},
+    ];
+    inspectionRemote.types = const [
+      OccurrenceType(id: 'type-1', name: 'Tipo', code: 'type'),
+    ];
+    farmRemote.remoteDelay = const Duration(milliseconds: 10);
+
+    await Future.wait([repository.refreshCache(), repository.refreshCache()]);
+
+    expect(farmRemote.farmCalls, 1);
+    expect(farmRemote.zoneCalls, 1);
+    expect(farmRemote.plantCalls, 1);
+    expect(inspectionRemote.catalogCalls, 1);
+    expect(inspectionRemote.openOccurrenceCalls, 1);
   });
 
   test('shares data across consumers and a repository restart', () async {

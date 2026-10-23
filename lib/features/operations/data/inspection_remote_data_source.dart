@@ -32,8 +32,7 @@ class SupabaseInspectionRemoteDataSource implements InspectionRemoteDataSource {
   Future<List<OccurrenceType>> fetchOccurrenceTypes() async {
     final rows = await _client
         .from('occurrence_types')
-        .select('id, name, code')
-        .neq('category', 'PEST_DISEASE')
+        .select('id, name, code, category')
         .order('name');
     return (rows as List<dynamic>)
         .map(

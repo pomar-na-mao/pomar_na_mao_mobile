@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomar_na_mao_mobile/core/config/app_config.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/inspection_remote_data_source.dart';
+import 'package:pomar_na_mao_mobile/features/operations/domain/inspection_models.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
@@ -18,9 +19,7 @@ void main() {
     expect(remoteDataSource.addedPlantsRpcName, 'custom_added_plants_rpc');
   });
 
-  test(
-    'fetchOccurrenceTypes and fetchPlants from Supabase',
-    () async {
+  test('fetchOccurrenceTypes and fetchPlants from Supabase', () async {
     final client = SupabaseClient(
       AppConfig.supabaseUrl,
       AppConfig.supabasePublishableKey,
@@ -29,18 +28,11 @@ void main() {
     final remoteDataSource = SupabaseInspectionRemoteDataSource(client);
 
     final types = await remoteDataSource.fetchOccurrenceTypes();
-    final pestDiseaseRows = await client
-        .from('occurrence_types')
-        .select('id')
-        .eq('category', 'PEST_DISEASE');
-    final pestDiseaseIds = (pestDiseaseRows as List<dynamic>)
-        .map((row) => (row as Map<String, dynamic>)['id'] as String)
-        .toSet();
     expect(types, isNotEmpty);
     expect(types.any((t) => t.code.isNotEmpty), isTrue);
     expect(
-      types.map((type) => type.id),
-      everyElement(isNot(isIn(pestDiseaseIds))),
+      types.every((type) => OccurrenceType.categories.contains(type.category)),
+      isTrue,
     );
 
     final plants = await remoteDataSource.fetchPlants(pageSize: 50);
