@@ -37,6 +37,14 @@ const operationDefinitions = <OperationDefinition>[
     isEnabled: true,
   ),
   OperationDefinition(
+    id: 'mipd',
+    title: 'MIPD',
+    description: 'Manejo integrado de pragas e doenças no pomar.',
+    icon: Icons.bug_report_outlined,
+    accent: Color(0xFF0F766E),
+    isEnabled: true,
+  ),
+  OperationDefinition(
     id: 'irrigation',
     title: 'Irrigação',
     description: 'Rotina de acompanhamento hídrico por área.',

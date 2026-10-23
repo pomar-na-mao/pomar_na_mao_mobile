@@ -50,3 +50,4 @@ app.*.map.json
 # Data
 database.md
 tenant_config.md
+/supabase

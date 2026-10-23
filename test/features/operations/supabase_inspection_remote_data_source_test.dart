@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomar_na_mao_mobile/core/config/app_config.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/inspection_remote_data_source.dart';
+import 'package:pomar_na_mao_mobile/features/operations/domain/inspection_models.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
@@ -18,9 +19,7 @@ void main() {
     expect(remoteDataSource.addedPlantsRpcName, 'custom_added_plants_rpc');
   });
 
-  test(
-    'fetchOccurrenceTypes and fetchPlants from Supabase',
-    () async {
+  test('fetchOccurrenceTypes and fetchPlants from Supabase', () async {
     final client = SupabaseClient(
       AppConfig.supabaseUrl,
       AppConfig.supabasePublishableKey,
@@ -31,6 +30,10 @@ void main() {
     final types = await remoteDataSource.fetchOccurrenceTypes();
     expect(types, isNotEmpty);
     expect(types.any((t) => t.code.isNotEmpty), isTrue);
+    expect(
+      types.every((type) => OccurrenceType.categories.contains(type.category)),
+      isTrue,
+    );
 
     final plants = await remoteDataSource.fetchPlants(pageSize: 50);
     expect(plants, isNotEmpty);

@@ -47,6 +47,7 @@ class _MainShellState extends State<MainShell> {
         widget.farmMapViewModel ?? scopeDeps?.farmMapViewModel;
     final effectiveInspectionVm =
         widget.inspectionViewModel ?? scopeDeps?.inspectionViewModel;
+    final effectiveMipdVm = scopeDeps?.mipdViewModel;
     final effectiveLoadingController =
         widget.loadingController ?? scopeDeps?.loadingController;
 
@@ -91,6 +92,7 @@ class _MainShellState extends State<MainShell> {
                             inspectionViewModel: effectiveInspectionVm,
                             inspectionMapBuilder: widget.inspectionMapBuilder,
                             sprayingViewModel: scopeDeps?.sprayingViewModel,
+                            mipdViewModel: scopeDeps?.mipdViewModel,
                           ),
                           settings: settings,
                         );
@@ -106,6 +108,7 @@ class _MainShellState extends State<MainShell> {
               onDestinationSelected: (index) {
                 if (index != 2) {
                   effectiveInspectionVm?.pauseLocation();
+                  effectiveMipdVm?.pauseLocation();
                 }
                 setState(() {
                   _selectedIndex = index;

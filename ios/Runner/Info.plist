@@ -30,6 +30,8 @@
 	<string>$(GOOGLE_MAPS_API_KEY)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Sua localização é usada para mostrar sua posição no mapa da fazenda.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>A câmera é usada para registrar fotos opcionais de pragas e doenças nas plantas.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -27,7 +27,7 @@ O aplicativo SHALL apresentar um card com os botões Carregar plantas, Ocorrênc
 
 ### Requirement: Carregar plantas existentes
 
-A ação Carregar plantas SHALL atualizar remotamente todas as páginas de `plants`, persistir o conjunto completo compartilhado e disponibilizar na Inspeção registros com coordenadas válidas. O carregamento SHALL obter o estado de ocorrências abertas das plantas para permitir edição correta offline e SHALL reutilizar `occurrence_types` localmente, consultando o catálogo remoto somente quando ele ainda não possuir cache utilizável. Dados incompletos SHALL NOT ser publicados como ausência de plantas ou ocorrências.
+A ação Carregar plantas SHALL atualizar remotamente o cache compartilhado completo usado pela Inspeção, incluindo fazenda, zonas, regiões, `occurrence_types`, todas as páginas de `plants` e o estado de ocorrências abertas das plantas. O catálogo remoto atualizado SHALL substituir o catálogo local anterior, e a tela SHALL reler os dados somente após a conclusão da atualização. Dados incompletos SHALL NOT ser publicados como ausência de plantas ou ocorrências.
 
 #### Scenario: Resultado maior que uma página
 - **WHEN** a consulta retorna mais plantas que o limite de uma página
@@ -36,7 +36,7 @@ A ação Carregar plantas SHALL atualizar remotamente todas as páginas de `plan
 
 #### Scenario: Repetir o carregamento explícito
 - **WHEN** o usuário aciona Carregar plantas e já existe uma versão local
-- **THEN** o aplicativo solicita uma nova versão remota de plantas e ocorrências abertas, mantendo o catálogo local já disponível
+- **THEN** o aplicativo solicita uma nova versão remota de fazenda, zonas, regiões, catálogo, plantas e ocorrências abertas, substituindo os respectivos caches após cargas válidas
 
 #### Scenario: Consulta vazia ou falha sem cache
 - **WHEN** a consulta completa termina vazia ou falha sem dados locais utilizáveis
@@ -52,7 +52,7 @@ A ação Carregar plantas SHALL atualizar remotamente todas as páginas de `plan
 - **THEN** o aplicativo mantém essa versão disponível, informa a falha da atualização e não substitui ocorrências por um estado parcial
 
 ### Requirement: Consultar catálogo e imprimir código
-O botão Ocorrências SHALL abrir um modal com as opções de `occurrence_types`, exibindo `name`. Selecionar uma opção SHALL imprimir exclusivamente seu `code` como mensagem de diagnóstico, sem prefixo, nome, UUID ou objeto serializado, e fechar o modal. Essa ação SHALL NOT alterar plantas, filtrar o mapa ou definir o alvo da inspeção.
+O botão Ocorrências SHALL abrir um modal com as opções de `occurrence_types`, exibindo `name` e excluindo registros cuja `category` seja `PEST_DISEASE`. Selecionar uma opção SHALL imprimir exclusivamente seu `code` como mensagem de diagnóstico, sem prefixo, nome, UUID ou objeto serializado, e fechar o modal. Essa ação SHALL NOT alterar plantas, filtrar o mapa ou definir o alvo da inspeção.
 
 #### Scenario: Selecionar uma ocorrência
 - **WHEN** o usuário escolhe a opção cujo nome é Galho Seco e cujo código é `stick`
@@ -64,7 +64,7 @@ O botão Ocorrências SHALL abrir um modal com as opções de `occurrence_types`
 - **THEN** o modal apresenta erro com nova tentativa, sem opções fictícias
 
 ### Requirement: Editar ocorrências independentemente por planta
-Tocar em uma planta individual SHALL abrir um modal identificado pela planta, apresentando no topo da tela um controle toggle "Planta Inexistente" posicionado acima da lista de ocorrências, seguido por todos os tipos de ocorrência por nome com indicadores circulares marcáveis independentemente. O toggle "Planta Inexistente" SHALL iniciar ativo se `non_existent` for `true` e desativado se for `false`. O estado inicial das ocorrências SHALL considerar ocorrências `open` e alterações locais ainda não sincronizadas; ocorrências `resolved` ou `ignored` SHALL NOT aparecer marcadas. A acessibilidade SHALL anunciar seleção múltipla e estado marcado/desmarcado de ocorrências e o estado do toggle de planta inexistente, sem comportamento de grupo radio exclusivo.
+Tocar em uma planta individual SHALL abrir um modal identificado pela planta, apresentando no topo da tela um controle toggle "Planta Inexistente" posicionado acima da lista de ocorrências, seguido pelos tipos de ocorrência por nome cuja `category` seja diferente de `PEST_DISEASE`, com indicadores circulares marcáveis independentemente. O toggle "Planta Inexistente" SHALL iniciar ativo se `non_existent` for `true` e desativado se for `false`. O estado inicial das ocorrências SHALL considerar ocorrências `open` e alterações locais ainda não sincronizadas; ocorrências `resolved` ou `ignored` SHALL NOT aparecer marcadas. A acessibilidade SHALL anunciar seleção múltipla e estado marcado/desmarcado de ocorrências e o estado do toggle de planta inexistente, sem comportamento de grupo radio exclusivo.
 
 #### Scenario: Selecionar planta após zoom
 - **WHEN** o usuário aproxima o mapa e toca no marcador de uma planta
