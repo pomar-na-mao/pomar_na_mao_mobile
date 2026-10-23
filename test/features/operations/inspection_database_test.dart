@@ -121,40 +121,43 @@ void main() {
     await reopened.close();
   });
 
-  test('recovers added plant syncing state to pending upon reopening', () async {
-    final db = InspectionDatabase(
-      projectUrl: 'https://uxschjkypkkzprbwuhxm.supabase.co',
-      factory: ffiFactory,
-      directory: tempDir.path,
-    );
+  test(
+    'recovers added plant syncing state to pending upon reopening',
+    () async {
+      final db = InspectionDatabase(
+        projectUrl: 'https://uxschjkypkkzprbwuhxm.supabase.co',
+        factory: ffiFactory,
+        directory: tempDir.path,
+      );
 
-    final rawDb = await db.database;
-    await rawDb.insert('local_added_plants', {
-      'local_id': 'added-1',
-      'latitude': -23.1,
-      'longitude': -46.1,
-      'non_existent': 0,
-      'sync_status': 'syncing',
-      'created_at': '2026-09-18T20:00:00.000Z',
-    });
+      final rawDb = await db.database;
+      await rawDb.insert('local_added_plants', {
+        'local_id': 'added-1',
+        'latitude': -23.1,
+        'longitude': -46.1,
+        'non_existent': 0,
+        'sync_status': 'syncing',
+        'created_at': '2026-09-18T20:00:00.000Z',
+      });
 
-    await db.close();
+      await db.close();
 
-    final reopened = InspectionDatabase(
-      projectUrl: 'https://uxschjkypkkzprbwuhxm.supabase.co',
-      factory: ffiFactory,
-      directory: tempDir.path,
-    );
+      final reopened = InspectionDatabase(
+        projectUrl: 'https://uxschjkypkkzprbwuhxm.supabase.co',
+        factory: ffiFactory,
+        directory: tempDir.path,
+      );
 
-    final row = (await (await reopened.database).query(
-      'local_added_plants',
-      where: 'local_id = ?',
-      whereArgs: ['added-1'],
-    )).single;
+      final row = (await (await reopened.database).query(
+        'local_added_plants',
+        where: 'local_id = ?',
+        whereArgs: ['added-1'],
+      )).single;
 
-    expect(row['sync_status'], 'pending');
-    await reopened.close();
-  });
+      expect(row['sync_status'], 'pending');
+      await reopened.close();
+    },
+  );
 
   test('isolates different projects into different database files', () async {
     final dbA = InspectionDatabase(
@@ -240,7 +243,7 @@ void main() {
     );
     final raw = await migrated.database;
 
-    expect(await raw.getVersion(), 7);
+    expect(await raw.getVersion(), 9);
     expect(await migrated.deviceId, 'legacy-device');
     expect(await raw.query('local_inspections'), hasLength(1));
     expect(await raw.query('local_inspection_changes'), hasLength(1));
@@ -251,7 +254,15 @@ void main() {
         where: 'cache_key = ?',
         whereArgs: ['occurrence_types'],
       ),
-      hasLength(1),
+      isEmpty,
+    );
+    expect(await raw.query('occurrence_types'), isEmpty);
+    final occurrenceColumns = await raw.rawQuery(
+      'PRAGMA table_info(occurrence_types)',
+    );
+    expect(
+      occurrenceColumns.map((column) => column['name']),
+      contains('category'),
     );
     expect(
       await raw.query(
@@ -273,12 +284,9 @@ void main() {
     );
     expect(
       tables.map((row) => row['name']),
-        containsAll(['cache_generations', 'staged_plants']),
-      );
-    expect(
-      tables.map((row) => row['name']),
-      contains('local_added_plants'),
+      containsAll(['cache_generations', 'staged_plants']),
     );
+    expect(tables.map((row) => row['name']), contains('local_added_plants'));
     final addedPlantColumns = await raw.rawQuery(
       'PRAGMA table_info(local_added_plants)',
     );
@@ -349,7 +357,7 @@ void main() {
           row['local_id'] as String: row,
       };
 
-      expect(await raw.getVersion(), 7);
+      expect(await raw.getVersion(), 9);
       expect(inspections['pending-1']!['sync_status'], 'pending');
       expect(inspections['error-1']!['sync_status'], 'error');
       expect(inspections['syncing-1']!['sync_status'], 'pending');

@@ -256,7 +256,7 @@ class InspectionViewModel extends ChangeNotifier {
       if (snapshot != null) {
         _plants = snapshot.plants;
         _mergeSyncedAddedPlantsIntoInspectionPlants();
-        _catalog = snapshot.types;
+        _catalog = _inspectionTypes(snapshot.types);
         _loadStatus = _plants.isEmpty
             ? InspectionLoadStatus.empty
             : InspectionLoadStatus.success;
@@ -271,19 +271,19 @@ class InspectionViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      unawaited(loadZones());
       final snapshot = await repository.loadSnapshot(forceRemote: forceRemote);
+      await loadZones();
       if (snapshot == null || snapshot.plants.isEmpty) {
         _plants = const [];
         _mergeSyncedAddedPlantsIntoInspectionPlants();
-        _catalog = snapshot?.types ?? const [];
+        _catalog = _inspectionTypes(snapshot?.types ?? const []);
         _loadStatus = _plants.isEmpty
             ? InspectionLoadStatus.empty
             : InspectionLoadStatus.success;
       } else {
         _plants = snapshot.plants;
         _mergeSyncedAddedPlantsIntoInspectionPlants();
-        _catalog = snapshot.types;
+        _catalog = _inspectionTypes(snapshot.types);
         _loadStatus = InspectionLoadStatus.success;
       }
       await refreshLocalInspections();
@@ -311,6 +311,10 @@ class InspectionViewModel extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  static List<OccurrenceType> _inspectionTypes(
+    Iterable<OccurrenceType> types,
+  ) => List.unmodifiable(types.where((type) => !type.isPestDisease));
 
   void selectPlantById(String id) {
     _selectedPlant = _plants.firstWhere(

@@ -310,6 +310,97 @@ class InspectionLocalStore {
     });
   }
 
+  /// Publica todos os conjuntos compartilhados em uma única transação.
+  Future<void> replaceSharedCache({
+    required List<Map<String, dynamic>> farmRows,
+    required List<Map<String, dynamic>> zoneRows,
+    required Map<String, List<Map<String, dynamic>>> regionRowsByZone,
+    required List<Map<String, dynamic>> plantRows,
+    required Map<String, Set<String>> openOccurrences,
+    required List<OccurrenceType> occurrenceTypes,
+    required DateTime loadedAt,
+  }) async {
+    final effective = <String, InspectionPlant>{};
+    for (final row in plantRows) {
+      final id = row['id'];
+      if (id is! String || id.isEmpty) {
+        throw const FormatException('Planta remota sem identificador válido');
+      }
+      effective[id] = InspectionPlant(
+        id: id,
+        latitude: (row['latitude'] as num?)?.toDouble(),
+        longitude: (row['longitude'] as num?)?.toDouble(),
+        description: row['description'] as String?,
+        zoneId: row['zone_id'] as String?,
+        openTypeIds: openOccurrences[id] ?? const <String>{},
+        nonExistent: row['non_existent'] as bool? ?? false,
+      );
+    }
+
+    final db = await database.database;
+    await db.transaction((txn) async {
+      final previous = <String, InspectionPlant>{
+        for (final row in await txn.query('cached_plants'))
+          row['id'] as String: InspectionPlant.fromJson(
+            decodeInspectionJson(row['snapshot']),
+          ),
+      };
+      await _overlayPendingChanges(txn, effective, previous);
+
+      await txn.delete('cached_farm');
+      final farmBatch = txn.batch();
+      for (var index = 0; index < farmRows.length; index++) {
+        farmBatch.insert('cached_farm', {
+          'sequence': index,
+          'snapshot': jsonEncode(farmRows[index]),
+        });
+      }
+      await farmBatch.commit(noResult: true);
+      await _writeCacheMetadata(txn, farmCacheKey, loadedAt);
+
+      await txn.delete('cached_zones');
+      final zoneBatch = txn.batch();
+      for (var index = 0; index < zoneRows.length; index++) {
+        final id = zoneRows[index]['id'];
+        if (id is! String || id.isEmpty) {
+          throw const FormatException('Zona remota sem identificador válido');
+        }
+        zoneBatch.insert('cached_zones', {
+          'id': id,
+          'sequence': index,
+          'snapshot': jsonEncode(zoneRows[index]),
+        });
+      }
+      await zoneBatch.commit(noResult: true);
+      await _writeCacheMetadata(txn, zonesCacheKey, loadedAt);
+
+      await txn.delete('cached_regions');
+      final regionBatch = txn.batch();
+      for (final entry in regionRowsByZone.entries) {
+        for (var index = 0; index < entry.value.length; index++) {
+          regionBatch.insert('cached_regions', {
+            'zone_id': entry.key,
+            'sequence': index,
+            'snapshot': jsonEncode(entry.value[index]),
+          });
+        }
+        await _writeCacheMetadata(txn, _regionsCacheKey(entry.key), loadedAt);
+      }
+      await regionBatch.commit(noResult: true);
+
+      await txn.delete('occurrence_types');
+      final catalogBatch = txn.batch();
+      for (final type in occurrenceTypes) {
+        catalogBatch.insert('occurrence_types', type.toJson());
+      }
+      await catalogBatch.commit(noResult: true);
+      await _writeCacheMetadata(txn, occurrenceTypesCacheKey, loadedAt);
+
+      await _replacePlants(txn, effective.values, loadedAt: loadedAt);
+    });
+    database.publishCommit();
+  }
+
   Future<List<Map<String, dynamic>>?> readFarmRows() =>
       _readReferenceRows(farmCacheKey, 'cached_farm', orderBy: 'sequence');
 
@@ -471,6 +562,7 @@ class InspectionLocalStore {
   Future<void> saveCatalog(List<OccurrenceType> types) async {
     final db = await database.database;
     await db.transaction((txn) async {
+      await txn.delete('occurrence_types');
       for (final type in types) {
         await txn.insert(
           'occurrence_types',
@@ -498,11 +590,6 @@ class InspectionLocalStore {
       )).map((r) => OccurrenceType.fromJson(r)).toList();
 
   Future<void> replaceSnapshot(InspectionSnapshot snapshot) async {
-    if (snapshot.types.isEmpty) {
-      throw StateError(
-        'Catálogo indisponível. Verifique o acesso e carregue novamente.',
-      );
-    }
     final db = await database.database;
     await db.transaction((txn) async {
       final effective = {for (final plant in snapshot.plants) plant.id: plant};
@@ -579,7 +666,8 @@ class InspectionLocalStore {
     );
     for (final s in pendingStatus) {
       final id = s['plant_id'] as String;
-      final plant = effective[id] ?? previous[id]?.withState({}, eligible: false);
+      final plant =
+          effective[id] ?? previous[id]?.withState({}, eligible: false);
       if (plant != null) {
         effective[id] = plant.withState(
           plant.openTypeIds,
@@ -742,10 +830,7 @@ class InspectionLocalStore {
     database.publishCommit();
   }
 
-  Future<void> setPlantNonExistent(
-    String plantId,
-    bool nonExistent,
-  ) async {
+  Future<void> setPlantNonExistent(String plantId, bool nonExistent) async {
     final db = await database.database;
     await db.transaction((txn) async {
       final rows = await txn.query(
@@ -870,14 +955,18 @@ class InspectionLocalStore {
 
       final statusRows = await txn.query(
         'local_inspection_plant_status',
-        where: 'inspection_local_id = ? AND non_existent != initial_non_existent',
+        where:
+            'inspection_local_id = ? AND non_existent != initial_non_existent',
         whereArgs: [id],
       );
       final nonExistentChangedIds = {
         for (final r in statusRows) r['plant_id'] as String,
       };
 
-      final allChangedPlantIds = <String>{...grouped.keys, ...nonExistentChangedIds};
+      final allChangedPlantIds = <String>{
+        ...grouped.keys,
+        ...nonExistentChangedIds,
+      };
       if (allChangedPlantIds.isEmpty) return null;
 
       final plantNonExistentMap = <String, bool>{
@@ -1123,26 +1212,18 @@ class InspectionLocalStore {
         );
         final plantJson = jsonEncode(plant.toJson());
 
-        await txn.insert(
-          'cached_plants',
-          {
-            'id': result.plantId,
-            'snapshot': plantJson,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await txn.insert('cached_plants', {
+          'id': result.plantId,
+          'snapshot': plantJson,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
 
         for (final draft in activeDrafts) {
           final draftId = draft['local_id'] as String;
-          await txn.insert(
-            'local_inspection_loaded_plants',
-            {
-              'inspection_local_id': draftId,
-              'plant_id': result.plantId,
-              'snapshot': plantJson,
-            },
-            conflictAlgorithm: ConflictAlgorithm.ignore,
-          );
+          await txn.insert('local_inspection_loaded_plants', {
+            'inspection_local_id': draftId,
+            'plant_id': result.plantId,
+            'snapshot': plantJson,
+          }, conflictAlgorithm: ConflictAlgorithm.ignore);
         }
       }
     });

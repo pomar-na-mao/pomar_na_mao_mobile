@@ -5,16 +5,37 @@ class OccurrenceType {
     required this.id,
     required this.name,
     required this.code,
+    this.category = structuralCategory,
   });
+  static const structuralCategory = 'STRUCTURAL';
+  static const environmentalCategory = 'ENVIRONMENTAL';
+  static const pestDiseaseCategory = 'PEST_DISEASE';
+  static const anthropicCategory = 'ANTHROPIC';
+  static const categories = {
+    structuralCategory,
+    environmentalCategory,
+    pestDiseaseCategory,
+    anthropicCategory,
+  };
+
   final String id;
   final String name;
   final String code;
+  final String category;
+  bool get isPestDisease => category == pestDiseaseCategory;
+
   factory OccurrenceType.fromJson(Map<String, dynamic> json) => OccurrenceType(
     id: json['id'] as String,
     name: json['name'] as String,
     code: json['code'] as String,
+    category: json['category'] as String? ?? structuralCategory,
   );
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'code': code};
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'code': code,
+    'category': category,
+  };
 }
 
 class InspectionPlant {
@@ -50,17 +71,16 @@ class InspectionPlant {
     Set<String> types, {
     bool? eligible,
     bool? nonExistent,
-  }) =>
-      InspectionPlant(
-        id: id,
-        latitude: latitude,
-        longitude: longitude,
-        description: description,
-        zoneId: zoneId,
-        openTypeIds: types,
-        eligible: eligible ?? this.eligible,
-        nonExistent: nonExistent ?? this.nonExistent,
-      );
+  }) => InspectionPlant(
+    id: id,
+    latitude: latitude,
+    longitude: longitude,
+    description: description,
+    zoneId: zoneId,
+    openTypeIds: types,
+    eligible: eligible ?? this.eligible,
+    nonExistent: nonExistent ?? this.nonExistent,
+  );
   factory InspectionPlant.fromJson(Map<String, dynamic> json) =>
       InspectionPlant(
         id: json['id'] as String,
@@ -69,7 +89,8 @@ class InspectionPlant {
         description: json['description'] as String?,
         zoneId: json['zone_id'] as String?,
         eligible: json['eligible'] as bool? ?? true,
-        nonExistent: (json['non_existent'] ?? json['nonExistent']) as bool? ?? false,
+        nonExistent:
+            (json['non_existent'] ?? json['nonExistent']) as bool? ?? false,
         openTypeIds: (json['openTypeIds'] as List<dynamic>? ?? [])
             .cast<String>()
             .toSet(),
@@ -311,13 +332,11 @@ class AddedInspectionPlant {
         ),
         zoneId: (json['zoneId'] ?? json['zone_id']) as String?,
         error: json['error'] as String?,
-        remotePlantId: (json['remotePlantId'] ?? json['remote_plant_id'])
-            as String?,
+        remotePlantId:
+            (json['remotePlantId'] ?? json['remote_plant_id']) as String?,
         syncedAt: (json['syncedAt'] ?? json['synced_at']) == null
             ? null
-            : DateTime.parse(
-                (json['syncedAt'] ?? json['synced_at']) as String,
-              ),
+            : DateTime.parse((json['syncedAt'] ?? json['synced_at']) as String),
       );
 }
 

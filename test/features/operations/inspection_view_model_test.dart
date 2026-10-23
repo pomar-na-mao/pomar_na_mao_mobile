@@ -357,6 +357,47 @@ void main() {
     expect(viewModel.loadStatus, InspectionLoadStatus.empty);
   });
 
+  test('inspection filters pest and disease from the shared catalog', () async {
+    repo.currentSnapshot = InspectionSnapshot(
+      plants: [InspectionPlant(id: 'p-1', latitude: -23.1, longitude: -46.1)],
+      types: const [
+        OccurrenceType(
+          id: 'structural',
+          name: 'Galho quebrado',
+          code: 'broken_branch',
+          category: OccurrenceType.structuralCategory,
+        ),
+        OccurrenceType(
+          id: 'pest',
+          name: 'Pulgão',
+          code: 'aphid',
+          category: OccurrenceType.pestDiseaseCategory,
+        ),
+        OccurrenceType(
+          id: 'environmental',
+          name: 'Seca',
+          code: 'drought',
+          category: OccurrenceType.environmentalCategory,
+        ),
+        OccurrenceType(
+          id: 'anthropic',
+          name: 'Dano mecânico',
+          code: 'mechanical_damage',
+          category: OccurrenceType.anthropicCategory,
+        ),
+      ],
+      loadedAt: DateTime.now(),
+    );
+
+    await viewModel.loadPlants();
+
+    expect(viewModel.catalog.map((type) => type.id), [
+      'structural',
+      'environmental',
+      'anthropic',
+    ]);
+  });
+
   test(
     'keeps previous plants visible when an explicit refresh fails',
     () async {

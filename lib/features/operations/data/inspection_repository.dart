@@ -66,14 +66,14 @@ class DefaultInspectionRepository implements InspectionRepository {
         return local;
       }
 
-      final catalog = await shared.getOccurrenceTypes();
-      if (catalog.isEmpty) {
+      await shared.refreshCache();
+      final refreshed = await localStore.readSnapshot();
+      if (refreshed == null) {
         throw StateError(
           'Catálogo indisponível. Verifique o acesso e carregue novamente.',
         );
       }
-      await shared.refreshPlantRows();
-      return await localStore.readSnapshot();
+      return refreshed;
     }
 
     if (!forceRemote && local != null) {
@@ -205,7 +205,8 @@ class DefaultInspectionRepository implements InspectionRepository {
         for (final p in plantsList) {
           final map = Map<String, dynamic>.from(p as Map);
           final plantId = map['plantId'] as String;
-          if (map.containsKey('nonExistent') || map.containsKey('non_existent')) {
+          if (map.containsKey('nonExistent') ||
+              map.containsKey('non_existent')) {
             plantNonExistent[plantId] =
                 (map['nonExistent'] ?? map['non_existent']) as bool? ?? false;
           }
@@ -297,7 +298,9 @@ class DefaultInspectionRepository implements InspectionRepository {
         final controller = loadingController;
         final results = await (controller == null
             ? remoteDataSource.syncAddedPlants(payload)
-            : controller.track(() => remoteDataSource.syncAddedPlants(payload)));
+            : controller.track(
+                () => remoteDataSource.syncAddedPlants(payload),
+              ));
         await localStore.acknowledgeAddedPlants(results);
         completer.complete(true);
         return true;

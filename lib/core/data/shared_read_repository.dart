@@ -158,11 +158,14 @@ class SharedReadRepository {
   }
 
   Future<List<Map<String, dynamic>>> refreshFarmBoundaryRows() {
-    return _singleFlight('farm', () => _trackRemote(() async {
-      final remote = await farmRemoteDataSource.fetchFarmBoundaryRows();
-      await localStore.replaceFarmRows(remote);
-      return (await localStore.readFarmRows())!;
-    }));
+    return _singleFlight(
+      'farm',
+      () => _trackRemote(() async {
+        final remote = await farmRemoteDataSource.fetchFarmBoundaryRows();
+        await localStore.replaceFarmRows(remote);
+        return (await localStore.readFarmRows())!;
+      }),
+    );
   }
 
   Future<List<Map<String, dynamic>>> getZoneRows() async {
@@ -172,11 +175,14 @@ class SharedReadRepository {
   }
 
   Future<List<Map<String, dynamic>>> refreshZoneRows() {
-    return _singleFlight('zones', () => _trackRemote(() async {
-      final remote = await farmRemoteDataSource.fetchZonesRows();
-      await localStore.replaceZoneRows(remote);
-      return (await localStore.readZoneRows())!;
-    }));
+    return _singleFlight(
+      'zones',
+      () => _trackRemote(() async {
+        final remote = await farmRemoteDataSource.fetchZonesRows();
+        await localStore.replaceZoneRows(remote);
+        return (await localStore.readZoneRows())!;
+      }),
+    );
   }
 
   Future<List<Map<String, dynamic>>> getRegionRows(String zoneId) async {
@@ -187,11 +193,14 @@ class SharedReadRepository {
 
   Future<List<Map<String, dynamic>>> refreshRegionRows(String zoneId) {
     final key = 'regions:$zoneId';
-    return _singleFlight(key, () => _trackRemote(() async {
-      final remote = await farmRemoteDataSource.fetchRegionsRows(zoneId);
-      await localStore.replaceRegionRows(zoneId, remote);
-      return (await localStore.readRegionRows(zoneId))!;
-    }));
+    return _singleFlight(
+      key,
+      () => _trackRemote(() async {
+        final remote = await farmRemoteDataSource.fetchRegionsRows(zoneId);
+        await localStore.replaceRegionRows(zoneId, remote);
+        return (await localStore.readRegionRows(zoneId))!;
+      }),
+    );
   }
 
   Future<List<OccurrenceType>> getOccurrenceTypes() async {
@@ -201,28 +210,101 @@ class SharedReadRepository {
   }
 
   Future<List<OccurrenceType>> refreshOccurrenceTypes() {
-    return _singleFlight('occurrence_types', () => _trackRemote(() async {
-      final remote = await inspectionRemoteDataSource.fetchOccurrenceTypes();
-      await localStore.saveCatalog(remote);
-      return (await localStore.readCachedCatalog())!;
-    }));
+    return _singleFlight(
+      'occurrence_types',
+      () => _trackRemote(() async {
+        final remote = await inspectionRemoteDataSource.fetchOccurrenceTypes();
+        await localStore.saveCatalog(remote);
+        return (await localStore.readCachedCatalog())!;
+      }),
+    );
   }
 
   /// Carrega os dados remotamente e atualiza o cache local (banco SQLite).
-  Future<void> refreshCache() async {
+  Future<void> refreshCache() =>
+      _singleFlight('refresh_all', _refreshCacheAtomically);
+
+  Future<void> _refreshCacheAtomically() async {
     if (_disposed) throw StateError('Cache compartilhado encerrado');
-    await refreshFarmBoundaryRows();
-    final zones = await refreshZoneRows();
-    await Future.wait(
-      zones
-          .map((zone) => zone['id'])
+    final controller = loadingController;
+    Future<void> action() async {
+      final loadedAt = _clock().toUtc();
+      final farmFuture = _remoteRead(
+        farmRemoteDataSource.fetchFarmBoundaryRows,
+      );
+      final zonesFuture = _remoteRead(farmRemoteDataSource.fetchZonesRows);
+      final catalogFuture = _remoteRead(
+        inspectionRemoteDataSource.fetchOccurrenceTypes,
+      );
+      final plantsFuture = _fetchAllPlantRows();
+
+      final farmRows = await farmFuture;
+      final zoneRows = await zonesFuture;
+      final occurrenceTypes = await catalogFuture;
+      final plantRows = await plantsFuture;
+      final regionEntries = await Future.wait(
+        zoneRows.map((zone) async {
+          final id = zone['id'];
+          if (id is! String || id.isEmpty) {
+            throw const FormatException('Zona remota sem identificador válido');
+          }
+          final rows = await _remoteRead(
+            () => farmRemoteDataSource.fetchRegionsRows(id),
+          );
+          return MapEntry(id, rows);
+        }),
+      );
+      final eligibleIds = plantRows
+          .where((row) => row['non_existent'] != true)
+          .map((row) => row['id'])
           .whereType<String>()
-          .map((zoneId) => refreshRegionRows(zoneId)),
-    );
-    try {
-      await refreshOccurrenceTypes();
-    } catch (_) {}
-    await refreshPlantRows();
+          .toList(growable: false);
+      final openOccurrences = eligibleIds.isEmpty
+          ? <String, Set<String>>{}
+          : await _remoteRead(
+              () =>
+                  inspectionRemoteDataSource.fetchOpenOccurrences(eligibleIds),
+            );
+
+      await localStore.replaceSharedCache(
+        farmRows: farmRows,
+        zoneRows: zoneRows,
+        regionRowsByZone: Map.fromEntries(regionEntries),
+        plantRows: plantRows,
+        openOccurrences: openOccurrences,
+        occurrenceTypes: occurrenceTypes,
+        loadedAt: loadedAt,
+      );
+    }
+
+    if (controller == null) return action();
+    await controller.track(action);
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchAllPlantRows() async {
+    final rows = <Map<String, dynamic>>[];
+    final seenIds = <Object>{};
+    var from = 0;
+    while (true) {
+      final page = await _remoteRead(
+        () => farmRemoteDataSource.fetchPlantRowsPage(
+          from: from,
+          to: from + plantPageSize - 1,
+        ),
+      );
+      if (page.isEmpty) return rows;
+      for (final row in page) {
+        final id = row['id'];
+        if (id is! String || id.isEmpty) {
+          throw const FormatException('Planta remota sem identificador válido');
+        }
+        if (!seenIds.add(id)) {
+          throw StateError('Página remota repetiu o registro "$id".');
+        }
+      }
+      rows.addAll(page);
+      from += page.length;
+    }
   }
 
   Future<T> _trackRemote<T>(Future<T> Function() action) {
