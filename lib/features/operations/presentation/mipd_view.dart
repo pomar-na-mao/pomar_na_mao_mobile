@@ -106,7 +106,7 @@ class _MipdViewState extends State<MipdView> {
         node: node,
         labelFor: (id) => plantsById[id]!.label,
         onSelect: (id) {
-          Navigator.pop(context);
+          // The cluster sheet closes itself before invoking this callback.
           MipdPlantModal.show(context, plantsById[id]!, vm);
         },
       ),
