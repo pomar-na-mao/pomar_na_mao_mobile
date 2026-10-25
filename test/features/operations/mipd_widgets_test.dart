@@ -141,8 +141,40 @@ void main() {
         MipdPlantPart.fruit,
       });
       expect(repository.saved.single.localPhotoPath, isNull);
+      expect(find.byType(MipdView), findsOneWidget);
+      expect(find.text('Planta'), findsOneWidget);
+      expect(find.byKey(const ValueKey('mipd-load-plants')), findsOneWidget);
+      expect(find.byKey(const ValueKey('mipd-saved-markings')), findsOneWidget);
     },
   );
+
+  testWidgets('closing plant modal keeps MIPD map and actions visible', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MipdView(
+          viewModel: viewModel,
+          mapBuilder: (context, config) => FilledButton(
+            key: const ValueKey('fake-mipd-map'),
+            onPressed: () => config.onSelectPlant(config.plants.single),
+            child: const Text('Planta'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Planta'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('mipd-plant-close')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MipdView), findsOneWidget);
+    expect(find.byKey(const ValueKey('fake-mipd-map')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mipd-load-plants')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mipd-saved-markings')), findsOneWidget);
+  });
 
   testWidgets(
     'saved markings matches inspection modal and keeps sync footer visible',
