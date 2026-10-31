@@ -93,6 +93,7 @@ class _MainShellState extends State<MainShell> {
                             inspectionMapBuilder: widget.inspectionMapBuilder,
                             sprayingViewModel: scopeDeps?.sprayingViewModel,
                             mipdViewModel: scopeDeps?.mipdViewModel,
+                            activityViewModel: scopeDeps?.activityViewModel,
                           ),
                           settings: settings,
                         );
@@ -109,6 +110,7 @@ class _MainShellState extends State<MainShell> {
                 if (index != 2) {
                   effectiveInspectionVm?.pauseLocation();
                   effectiveMipdVm?.pauseLocation();
+                  scopeDeps?.activityViewModel?.pauseLocation();
                 }
                 setState(() {
                   _selectedIndex = index;

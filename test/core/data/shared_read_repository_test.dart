@@ -6,10 +6,12 @@ import 'package:pomar_na_mao_mobile/core/data/shared_read_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/data/datasources/farm_remote_data_source.dart';
 import 'package:pomar_na_mao_mobile/features/inventory/data/supabase_inventory_repository.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/inspection_database.dart';
+import 'package:pomar_na_mao_mobile/features/operations/data/activity_remote_data_source.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/inspection_local_store.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/inspection_remote_data_source.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/inspection_repository.dart';
 import 'package:pomar_na_mao_mobile/features/operations/domain/inspection_models.dart';
+import 'package:pomar_na_mao_mobile/features/operations/domain/activity_models.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class CountingLocalStore extends InspectionLocalStore {
@@ -178,6 +180,75 @@ class CountingInspectionRemoteDataSource implements InspectionRemoteDataSource {
   ) async => const [];
 }
 
+class CountingActivityRemoteDataSource implements ActivityRemoteDataSource {
+  List<Map<String, dynamic>> rows = const [];
+  List<Map<String, dynamic>> mixtureRows = const [];
+  List<Map<String, dynamic>> machineRows = const [];
+  Future<List<Map<String, dynamic>>> Function(int from, int to)? loader;
+  Future<List<Map<String, dynamic>>> Function(int from, int to)? mixtureLoader;
+  int calls = 0;
+  int mixtureCalls = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchInputPage({
+    required int from,
+    required int to,
+  }) async {
+    calls++;
+    final custom = loader;
+    if (custom != null) return custom(from, to);
+    if (from >= rows.length) return const [];
+    return rows.sublist(from, (to + 1).clamp(0, rows.length));
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchMixturePage({
+    required int from,
+    required int to,
+  }) async {
+    mixtureCalls++;
+    final custom = mixtureLoader;
+    if (custom != null) return custom(from, to);
+    if (from >= mixtureRows.length) return const [];
+    return mixtureRows.sublist(from, (to + 1).clamp(0, mixtureRows.length));
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchMachinePage({
+    required int from,
+    required int to,
+  }) async {
+    if (from >= machineRows.length) return const [];
+    return machineRows.sublist(from, (to + 1).clamp(0, machineRows.length));
+  }
+
+  @override
+  Future<List<ActivitySyncResult>> syncEntries(
+    Map<String, dynamic> payload,
+  ) async => const [];
+}
+
+Map<String, dynamic> mixtureRow(String id, String name) => {
+  'id': id,
+  'name': name,
+  'is_active': true,
+  'components': [
+    {
+      'input_id': 'input-$id',
+      'dose': '1',
+      'dose_unit': 'L/ha',
+      'input': {'id': 'input-$id', 'name': 'Produto $id', 'type': 'FUNGICIDE'},
+    },
+  ],
+};
+
+Map<String, dynamic> machineRow(String id, String name) => {
+  'id': id,
+  'name': name,
+  'brand': 'Valtra',
+  'quantity': 1,
+};
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
@@ -187,6 +258,7 @@ void main() {
   late CountingLocalStore localStore;
   late CountingFarmRemoteDataSource farmRemote;
   late CountingInspectionRemoteDataSource inspectionRemote;
+  late CountingActivityRemoteDataSource activityRemote;
   late SharedReadRepository repository;
 
   setUp(() async {
@@ -199,13 +271,109 @@ void main() {
     localStore = CountingLocalStore(database);
     farmRemote = CountingFarmRemoteDataSource();
     inspectionRemote = CountingInspectionRemoteDataSource();
+    activityRemote = CountingActivityRemoteDataSource();
     repository = SharedReadRepository(
       localStore: localStore,
       farmRemoteDataSource: farmRemote,
       inspectionRemoteDataSource: inspectionRemote,
+      activityRemoteDataSource: activityRemote,
+      inputPageSize: 2,
       clock: () => DateTime.utc(2026, 9, 20, 12),
     );
   });
+
+  test(
+    'inputs are paged single-flight and reused from confirmed cache',
+    () async {
+      activityRemote.rows = [
+        for (var index = 0; index < 3; index++)
+          {'id': 'input-$index', 'name': 'Produto $index', 'type': 'FUNGICIDE'},
+      ];
+      final results = await Future.wait([
+        repository.getInputs(),
+        repository.getInputs(),
+      ]);
+      expect(results.first, hasLength(3));
+      expect(results.last, hasLength(3));
+      expect(activityRemote.calls, 3);
+
+      final reopened = SharedReadRepository(
+        localStore: localStore,
+        farmRemoteDataSource: farmRemote,
+        inspectionRemoteDataSource: inspectionRemote,
+        activityRemoteDataSource: activityRemote,
+        inputPageSize: 2,
+      );
+      addTearDown(reopened.dispose);
+      expect(await reopened.getInputs(), hasLength(3));
+      expect(activityRemote.calls, 3);
+    },
+  );
+
+  test(
+    'failed input pagination preserves the last complete revision',
+    () async {
+      await localStore.replaceInputs(const [
+        FieldInputCatalogItem(id: 'old', name: 'Anterior', type: 'FUNGICIDE'),
+      ]);
+      activityRemote.loader = (from, _) async {
+        if (from == 0) {
+          return const [
+            {'id': 'new-1', 'name': 'Novo 1', 'type': 'FUNGICIDE'},
+            {'id': 'new-2', 'name': 'Novo 2', 'type': 'FUNGICIDE'},
+          ];
+        }
+        throw StateError('second page failed');
+      };
+
+      await expectLater(repository.refreshInputs(), throwsStateError);
+      final cached = await localStore.readCachedInputs();
+      expect(cached!.single.id, 'old');
+    },
+  );
+
+  test(
+    'activity refresh publishes plants, mixtures and machines together',
+    () async {
+      await localStore.replaceSharedPlantRows(
+        const [
+          {'id': 'old-plant', 'latitude': -21.0, 'longitude': -47.0},
+        ],
+        const {},
+        loadedAt: DateTime.utc(2026),
+      );
+      await localStore.replaceMixtures([
+        MixtureCatalogItem.fromJson(mixtureRow('old', 'Anterior')),
+      ]);
+      await localStore.replaceMachines([
+        MachineCatalogItem.fromJson(machineRow('old-machine', 'Trator antigo')),
+      ]);
+      farmRemote.plantRows = const [
+        {'id': 'new-plant', 'latitude': -21.1, 'longitude': -47.1},
+      ];
+      activityRemote.mixtureLoader = (_, _) async =>
+          throw StateError('mixtures failed');
+
+      await expectLater(repository.refreshActivityCache(), throwsStateError);
+      expect(
+        (await localStore.readSharedPlantRows())!.single['id'],
+        'old-plant',
+      );
+      expect((await localStore.readCachedMixtures())!.single.id, 'old');
+      expect((await localStore.readCachedMachines())!.single.id, 'old-machine');
+
+      activityRemote.mixtureLoader = null;
+      activityRemote.mixtureRows = [mixtureRow('new', 'Nova')];
+      activityRemote.machineRows = [machineRow('new-machine', 'Trator novo')];
+      await repository.refreshActivityCache();
+      expect(
+        (await localStore.readSharedPlantRows())!.single['id'],
+        'new-plant',
+      );
+      expect((await localStore.readCachedMixtures())!.single.id, 'new');
+      expect((await localStore.readCachedMachines())!.single.id, 'new-machine');
+    },
+  );
 
   tearDown(() async {
     await repository.dispose();

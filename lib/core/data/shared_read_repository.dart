@@ -4,6 +4,8 @@ import 'dart:collection';
 import '../../features/farm/data/datasources/farm_remote_data_source.dart';
 import '../../features/operations/data/inspection_local_store.dart';
 import '../../features/operations/data/inspection_remote_data_source.dart';
+import '../../features/operations/data/activity_remote_data_source.dart';
+import '../../features/operations/domain/activity_models.dart';
 import '../../features/operations/domain/inspection_models.dart';
 import '../ui/app_loading_controller.dart';
 import '../diagnostics/runtime_diagnostics.dart';
@@ -14,9 +16,11 @@ class SharedReadRepository {
     required this.localStore,
     required this.farmRemoteDataSource,
     required this.inspectionRemoteDataSource,
+    this.activityRemoteDataSource,
     this.loadingController,
     this.remoteRequestTimeout = const Duration(seconds: 30),
     this.plantPageSize = 1000,
+    this.inputPageSize = 1000,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now {
     _revisionSubscription = localStore.database.changes.listen((_) {
@@ -28,9 +32,11 @@ class SharedReadRepository {
   final InspectionLocalStore localStore;
   final FarmRemoteDataSource farmRemoteDataSource;
   final InspectionRemoteDataSource inspectionRemoteDataSource;
+  final ActivityRemoteDataSource? activityRemoteDataSource;
   final AppLoadingController? loadingController;
   final Duration remoteRequestTimeout;
   final int plantPageSize;
+  final int inputPageSize;
   final DateTime Function() _clock;
 
   final Map<String, Future<dynamic>> _inFlight = {};
@@ -220,11 +226,65 @@ class SharedReadRepository {
     );
   }
 
+  Future<List<FieldInputCatalogItem>> getInputs() async {
+    final local = await localStore.readCachedInputs();
+    if (local != null) return local;
+    return refreshInputs();
+  }
+
+  Future<List<FieldInputCatalogItem>> refreshInputs() => _singleFlight(
+    'inputs',
+    () => _trackRemote(() async {
+      final remote = await _fetchAllInputs();
+      await localStore.replaceInputs(remote);
+      return (await localStore.readCachedInputs())!;
+    }),
+  );
+
+  Future<List<MixtureCatalogItem>> getMixtures() async {
+    final local = await localStore.readCachedMixtures();
+    if (local != null) return local;
+    return refreshMixtures();
+  }
+
+  Future<List<MixtureCatalogItem>> refreshMixtures() => _singleFlight(
+    'mixtures',
+    () => _trackRemote(() async {
+      final remote = await _fetchAllMixtures();
+      await localStore.replaceMixtures(remote);
+      return (await localStore.readCachedMixtures())!;
+    }),
+  );
+
+  Future<List<MachineCatalogItem>> getMachines() async {
+    final local = await localStore.readCachedMachines();
+    if (local != null) return local;
+    return refreshMachines();
+  }
+
+  Future<List<MachineCatalogItem>> refreshMachines() => _singleFlight(
+    'machines',
+    () => _trackRemote(() async {
+      final remote = await _fetchAllMachines();
+      await localStore.replaceMachines(remote);
+      return (await localStore.readCachedMachines())!;
+    }),
+  );
+
+  Future<void> refreshActivityCache() => _singleFlight(
+    'refresh_activity',
+    () => _refreshCacheAtomically(includeMixtures: true, includeMachines: true),
+  );
+
   /// Carrega os dados remotamente e atualiza o cache local (banco SQLite).
   Future<void> refreshCache() =>
       _singleFlight('refresh_all', _refreshCacheAtomically);
 
-  Future<void> _refreshCacheAtomically() async {
+  Future<void> _refreshCacheAtomically({
+    bool includeInputs = false,
+    bool includeMixtures = false,
+    bool includeMachines = false,
+  }) async {
     if (_disposed) throw StateError('Cache compartilhado encerrado');
     final controller = loadingController;
     Future<void> action() async {
@@ -237,11 +297,34 @@ class SharedReadRepository {
         inspectionRemoteDataSource.fetchOccurrenceTypes,
       );
       final plantsFuture = _fetchAllPlantRows();
+      final inputsFuture = includeInputs ? _fetchAllInputs() : null;
+      final mixturesFuture = includeMixtures ? _fetchAllMixtures() : null;
+      final machinesFuture = includeMachines ? _fetchAllMachines() : null;
 
-      final farmRows = await farmFuture;
-      final zoneRows = await zonesFuture;
-      final occurrenceTypes = await catalogFuture;
-      final plantRows = await plantsFuture;
+      final resolved = await Future.wait<dynamic>([
+        farmFuture,
+        zonesFuture,
+        catalogFuture,
+        plantsFuture,
+        ?inputsFuture,
+        ?mixturesFuture,
+        ?machinesFuture,
+      ]);
+      final farmRows = resolved[0] as List<Map<String, dynamic>>;
+      final zoneRows = resolved[1] as List<Map<String, dynamic>>;
+      final occurrenceTypes = resolved[2] as List<OccurrenceType>;
+      final plantRows = resolved[3] as List<Map<String, dynamic>>;
+      final inputs = includeInputs
+          ? resolved[4] as List<FieldInputCatalogItem>
+          : null;
+      final mixturesIndex = 4 + (includeInputs ? 1 : 0);
+      final mixtures = includeMixtures
+          ? resolved[mixturesIndex] as List<MixtureCatalogItem>
+          : null;
+      final machinesIndex = mixturesIndex + (includeMixtures ? 1 : 0);
+      final machines = includeMachines
+          ? resolved[machinesIndex] as List<MachineCatalogItem>
+          : null;
       final regionEntries = await Future.wait(
         zoneRows.map((zone) async {
           final id = zone['id'];
@@ -273,6 +356,9 @@ class SharedReadRepository {
         plantRows: plantRows,
         openOccurrences: openOccurrences,
         occurrenceTypes: occurrenceTypes,
+        inputs: inputs,
+        mixtures: mixtures,
+        machines: machines,
         loadedAt: loadedAt,
       );
     }
@@ -303,6 +389,78 @@ class SharedReadRepository {
         }
       }
       rows.addAll(page);
+      from += page.length;
+    }
+  }
+
+  Future<List<FieldInputCatalogItem>> _fetchAllInputs() async {
+    final remote = activityRemoteDataSource;
+    if (remote == null) {
+      throw StateError('Origem remota de insumos não configurada');
+    }
+    final items = <FieldInputCatalogItem>[];
+    final seenIds = <String>{};
+    var from = 0;
+    while (true) {
+      final page = await _remoteRead(
+        () => remote.fetchInputPage(from: from, to: from + inputPageSize - 1),
+      );
+      if (page.isEmpty) return items;
+      for (final row in page) {
+        final item = FieldInputCatalogItem.fromJson(row);
+        if (!seenIds.add(item.id)) {
+          throw StateError('Página remota repetiu o insumo "${item.id}".');
+        }
+        items.add(item);
+      }
+      from += page.length;
+    }
+  }
+
+  Future<List<MixtureCatalogItem>> _fetchAllMixtures() async {
+    final remote = activityRemoteDataSource;
+    if (remote == null) {
+      throw StateError('Origem remota de caldas não configurada');
+    }
+    final mixtures = <MixtureCatalogItem>[];
+    final seenIds = <String>{};
+    var from = 0;
+    while (true) {
+      final page = await _remoteRead(
+        () => remote.fetchMixturePage(from: from, to: from + inputPageSize - 1),
+      );
+      if (page.isEmpty) return mixtures;
+      for (final row in page) {
+        final mixture = MixtureCatalogItem.fromJson(row);
+        if (!seenIds.add(mixture.id)) {
+          throw StateError('Página remota repetiu a calda "${mixture.id}".');
+        }
+        mixtures.add(mixture);
+      }
+      from += page.length;
+    }
+  }
+
+  Future<List<MachineCatalogItem>> _fetchAllMachines() async {
+    final remote = activityRemoteDataSource;
+    if (remote == null) {
+      throw StateError('Origem remota de máquinas não configurada');
+    }
+    final machines = <MachineCatalogItem>[];
+    final seenIds = <String>{};
+    var from = 0;
+    while (true) {
+      final page = await _remoteRead(
+        () => remote.fetchMachinePage(from: from, to: from + inputPageSize - 1),
+      );
+      if (page.isEmpty) return machines;
+      for (final row in page) {
+        final machine = MachineCatalogItem.fromJson(row);
+        if (!seenIds.add(machine.id)) {
+          throw StateError('Página remota repetiu a máquina "${machine.id}".');
+        }
+        machines.add(machine);
+      }
       from += page.length;
     }
   }

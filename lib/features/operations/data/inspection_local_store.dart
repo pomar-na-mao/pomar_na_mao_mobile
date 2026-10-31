@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../farm/domain/user_location.dart';
 import '../domain/inspection_models.dart';
+import '../domain/activity_models.dart';
 import 'inspection_database.dart';
 import '../../../core/diagnostics/runtime_diagnostics.dart';
 import '../../../core/data/json_codec_worker.dart';
@@ -24,6 +25,9 @@ class InspectionLocalStore {
   static const farmCacheKey = 'farm';
   static const zonesCacheKey = 'zones';
   static const occurrenceTypesCacheKey = 'occurrence_types';
+  static const inputsCacheKey = 'inputs';
+  static const mixturesCacheKey = 'mixtures';
+  static const machinesCacheKey = 'machines';
 
   Future<CachedPlantTotals?> readSharedPlantTotals() async {
     final db = await database.database;
@@ -318,6 +322,9 @@ class InspectionLocalStore {
     required List<Map<String, dynamic>> plantRows,
     required Map<String, Set<String>> openOccurrences,
     required List<OccurrenceType> occurrenceTypes,
+    List<FieldInputCatalogItem>? inputs,
+    List<MixtureCatalogItem>? mixtures,
+    List<MachineCatalogItem>? machines,
     required DateTime loadedAt,
   }) async {
     final effective = <String, InspectionPlant>{};
@@ -396,6 +403,51 @@ class InspectionLocalStore {
       await catalogBatch.commit(noResult: true);
       await _writeCacheMetadata(txn, occurrenceTypesCacheKey, loadedAt);
 
+      if (inputs != null) {
+        await txn.delete('cached_inputs');
+        final inputsBatch = txn.batch();
+        for (var index = 0; index < inputs.length; index++) {
+          final input = inputs[index];
+          inputsBatch.insert('cached_inputs', {
+            'id': input.id,
+            'sequence': index,
+            'snapshot': jsonEncode(input.toJson()),
+          });
+        }
+        await inputsBatch.commit(noResult: true);
+        await _writeCacheMetadata(txn, inputsCacheKey, loadedAt);
+      }
+
+      if (mixtures != null) {
+        await txn.delete('cached_mixtures');
+        final mixturesBatch = txn.batch();
+        for (var index = 0; index < mixtures.length; index++) {
+          final mixture = mixtures[index];
+          mixturesBatch.insert('cached_mixtures', {
+            'id': mixture.id,
+            'sequence': index,
+            'snapshot': jsonEncode(mixture.toJson()),
+          });
+        }
+        await mixturesBatch.commit(noResult: true);
+        await _writeCacheMetadata(txn, mixturesCacheKey, loadedAt);
+      }
+
+      if (machines != null) {
+        await txn.delete('cached_machines');
+        final machinesBatch = txn.batch();
+        for (var index = 0; index < machines.length; index++) {
+          final machine = machines[index];
+          machinesBatch.insert('cached_machines', {
+            'id': machine.id,
+            'sequence': index,
+            'snapshot': jsonEncode(machine.toJson()),
+          });
+        }
+        await machinesBatch.commit(noResult: true);
+        await _writeCacheMetadata(txn, machinesCacheKey, loadedAt);
+      }
+
       await _replacePlants(txn, effective.values, loadedAt: loadedAt);
     });
     database.publishCommit();
@@ -410,6 +462,129 @@ class InspectionLocalStore {
         table: 'cached_farm',
         rows: rows,
       );
+
+  Future<List<FieldInputCatalogItem>?> readCachedInputs() async {
+    if (!await hasCompleteCache(inputsCacheKey)) return null;
+    final rows = await (await database.database).query(
+      'cached_inputs',
+      orderBy: 'sequence, id',
+    );
+    return rows
+        .map(
+          (row) => FieldInputCatalogItem.fromJson(
+            decodeInspectionJson(row['snapshot']),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> replaceInputs(
+    List<FieldInputCatalogItem> inputs, {
+    DateTime? loadedAt,
+  }) async {
+    final db = await database.database;
+    await db.transaction((txn) async {
+      await txn.delete('cached_inputs');
+      final batch = txn.batch();
+      for (var index = 0; index < inputs.length; index++) {
+        final input = inputs[index];
+        batch.insert('cached_inputs', {
+          'id': input.id,
+          'sequence': index,
+          'snapshot': jsonEncode(input.toJson()),
+        });
+      }
+      await batch.commit(noResult: true);
+      await _writeCacheMetadata(
+        txn,
+        inputsCacheKey,
+        loadedAt ?? clock().toUtc(),
+      );
+    });
+    database.publishCommit();
+  }
+
+  Future<List<MixtureCatalogItem>?> readCachedMixtures() async {
+    if (!await hasCompleteCache(mixturesCacheKey)) return null;
+    final rows = await (await database.database).query(
+      'cached_mixtures',
+      orderBy: 'sequence, id',
+    );
+    return rows
+        .map(
+          (row) => MixtureCatalogItem.fromJson(
+            decodeInspectionJson(row['snapshot']),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> replaceMixtures(
+    List<MixtureCatalogItem> mixtures, {
+    DateTime? loadedAt,
+  }) async {
+    final db = await database.database;
+    await db.transaction((txn) async {
+      await txn.delete('cached_mixtures');
+      final batch = txn.batch();
+      for (var index = 0; index < mixtures.length; index++) {
+        final mixture = mixtures[index];
+        batch.insert('cached_mixtures', {
+          'id': mixture.id,
+          'sequence': index,
+          'snapshot': jsonEncode(mixture.toJson()),
+        });
+      }
+      await batch.commit(noResult: true);
+      await _writeCacheMetadata(
+        txn,
+        mixturesCacheKey,
+        loadedAt ?? clock().toUtc(),
+      );
+    });
+    database.publishCommit();
+  }
+
+  Future<List<MachineCatalogItem>?> readCachedMachines() async {
+    if (!await hasCompleteCache(machinesCacheKey)) return null;
+    final rows = await (await database.database).query(
+      'cached_machines',
+      orderBy: 'sequence, id',
+    );
+    return rows
+        .map(
+          (row) => MachineCatalogItem.fromJson(
+            decodeInspectionJson(row['snapshot']),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> replaceMachines(
+    List<MachineCatalogItem> machines, {
+    DateTime? loadedAt,
+  }) async {
+    final db = await database.database;
+    await db.transaction((txn) async {
+      await txn.delete('cached_machines');
+      final batch = txn.batch();
+      for (var index = 0; index < machines.length; index++) {
+        final machine = machines[index];
+        batch.insert('cached_machines', {
+          'id': machine.id,
+          'sequence': index,
+          'snapshot': jsonEncode(machine.toJson()),
+        });
+      }
+      await batch.commit(noResult: true);
+      await _writeCacheMetadata(
+        txn,
+        machinesCacheKey,
+        loadedAt ?? clock().toUtc(),
+      );
+    });
+    database.publishCommit();
+  }
 
   Future<List<Map<String, dynamic>>?> readZoneRows() =>
       _readReferenceRows(zonesCacheKey, 'cached_zones', orderBy: 'sequence');

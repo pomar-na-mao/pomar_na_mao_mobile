@@ -50,6 +50,9 @@ void main() {
           'cached_farm',
           'cached_zones',
           'cached_regions',
+          'cached_inputs',
+          'cached_mixtures',
+          'cached_machines',
           'cache_generations',
           'staged_plants',
           'local_inspections',
@@ -243,7 +246,7 @@ void main() {
     );
     final raw = await migrated.database;
 
-    expect(await raw.getVersion(), 9);
+    expect(await raw.getVersion(), 10);
     expect(await migrated.deviceId, 'legacy-device');
     expect(await raw.query('local_inspections'), hasLength(1));
     expect(await raw.query('local_inspection_changes'), hasLength(1));
@@ -287,6 +290,9 @@ void main() {
       containsAll(['cache_generations', 'staged_plants']),
     );
     expect(tables.map((row) => row['name']), contains('local_added_plants'));
+    expect(tables.map((row) => row['name']), contains('cached_inputs'));
+    expect(tables.map((row) => row['name']), contains('cached_mixtures'));
+    expect(tables.map((row) => row['name']), contains('cached_machines'));
     final addedPlantColumns = await raw.rawQuery(
       'PRAGMA table_info(local_added_plants)',
     );
@@ -357,7 +363,7 @@ void main() {
           row['local_id'] as String: row,
       };
 
-      expect(await raw.getVersion(), 9);
+      expect(await raw.getVersion(), 10);
       expect(inspections['pending-1']!['sync_status'], 'pending');
       expect(inspections['error-1']!['sync_status'], 'error');
       expect(inspections['syncing-1']!['sync_status'], 'pending');
@@ -374,6 +380,24 @@ void main() {
           "SELECT name FROM sqlite_master WHERE type='table'",
         )).map((row) => row['name']),
         contains('local_added_plants'),
+      );
+      expect(
+        (await raw.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table'",
+        )).map((row) => row['name']),
+        contains('cached_inputs'),
+      );
+      expect(
+        (await raw.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table'",
+        )).map((row) => row['name']),
+        contains('cached_mixtures'),
+      );
+      expect(
+        (await raw.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table'",
+        )).map((row) => row['name']),
+        contains('cached_machines'),
       );
       await migrated.close();
     },

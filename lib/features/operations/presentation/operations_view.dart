@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'inspection_view.dart';
+import 'activity_view.dart';
+import 'activity_view_model.dart';
 import 'inspection_view_model.dart';
 import 'mipd_view.dart';
 import 'mipd_view_model.dart';
@@ -17,6 +19,8 @@ class OperationsView extends StatelessWidget {
     this.sprayingMapBuilder,
     this.mipdViewModel,
     this.mipdMapBuilder,
+    this.activityViewModel,
+    this.activityMapBuilder,
     super.key,
   });
 
@@ -26,6 +30,8 @@ class OperationsView extends StatelessWidget {
   final SprayingMapBuilder? sprayingMapBuilder;
   final MipdViewModel? mipdViewModel;
   final MipdMapBuilder? mipdMapBuilder;
+  final ActivityViewModel? activityViewModel;
+  final ActivityMapBuilder? activityMapBuilder;
 
   static const _backgroundColor = Color(0xFFF2F6EF);
 
@@ -57,6 +63,15 @@ class OperationsView extends StatelessWidget {
               MipdView(viewModel: mipdViewModel!, mapBuilder: mipdMapBuilder),
         ),
       );
+    } else if (operation.id == 'activity' && activityViewModel != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ActivityView(
+            viewModel: activityViewModel!,
+            mapBuilder: activityMapBuilder,
+          ),
+        ),
+      );
     }
   }
 
@@ -79,12 +94,6 @@ class OperationsView extends StatelessWidget {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final horizontalPadding = constraints.maxWidth >= 720 ? 28.0 : 14.0;
-          final contentWidth = constraints.maxWidth - horizontalPadding * 2;
-          final columns = contentWidth >= 900
-              ? 3
-              : contentWidth >= 560
-              ? 2
-              : 1;
 
           return Align(
             alignment: Alignment.topCenter,
@@ -104,41 +113,21 @@ class OperationsView extends StatelessWidget {
                     ),
                   ),
                   Expanded(
-                    child: CustomScrollView(
+                    child: ListView.separated(
                       key: const ValueKey('operations-scroll-view'),
-                      slivers: [
-                        SliverPadding(
-                          padding: EdgeInsets.fromLTRB(
-                            horizontalPadding,
-                            0,
-                            horizontalPadding,
-                            20,
-                          ),
-                          sliver: SliverGrid(
-                            key: const ValueKey('operations-grid'),
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: columns,
-                                  mainAxisExtent: 142,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                ),
-                            delegate: SliverChildBuilderDelegate((
-                              context,
-                              index,
-                            ) {
-                              final operation = operationDefinitions[index];
-                              return OperationCard(
-                                key: ValueKey('operation-card-${operation.id}'),
-                                operation: operation,
-                                onTap: operation.isEnabled
-                                    ? () => _openOperation(context, operation)
-                                    : null,
-                              );
-                            }, childCount: operationDefinitions.length),
-                          ),
-                        ),
-                      ],
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        0,
+                        horizontalPadding,
+                        24,
+                      ),
+                      itemCount: operationModules.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 22),
+                      itemBuilder: (context, index) => _OperationModuleSection(
+                        module: operationModules[index],
+                        onOperationTap: (operation) =>
+                            _openOperation(context, operation),
+                      ),
                     ),
                   ),
                 ],
@@ -146,6 +135,102 @@ class OperationsView extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _OperationModuleSection extends StatelessWidget {
+  const _OperationModuleSection({
+    required this.module,
+    required this.onOperationTap,
+  });
+
+  final OperationModuleDefinition module;
+  final ValueChanged<OperationDefinition> onOperationTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Semantics(
+      container: true,
+      label: module.title,
+      child: Column(
+        key: ValueKey('operations-module-${module.id}'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      module.title,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: colorScheme.onSurface,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      module.subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Icon(
+                Icons.swipe_left_alt_rounded,
+                size: 24,
+                color: colorScheme.primary.withValues(alpha: 0.72),
+                semanticLabel: 'Arraste para navegar',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final cardWidth = switch (constraints.maxWidth) {
+                >= 900 => (constraints.maxWidth - 24) / 3,
+                >= 560 => (constraints.maxWidth - 12) / 2,
+                _ => constraints.maxWidth * 0.88,
+              };
+              return SizedBox(
+                height: 142,
+                child: ListView.separated(
+                  key: ValueKey('operations-module-${module.id}-list'),
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  itemCount: module.operations.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 12),
+                  itemBuilder: (context, index) {
+                    final operation = module.operations[index];
+                    return SizedBox(
+                      width: cardWidth,
+                      child: OperationCard(
+                        key: ValueKey('operation-card-${operation.id}'),
+                        operation: operation,
+                        onTap: operation.isEnabled
+                            ? () => onOperationTap(operation)
+                            : null,
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
