@@ -47,7 +47,7 @@ class InspectionDatabase {
     final db = await resolvedFactory.openDatabase(
       p.join(root, 'inspections_$fileId.db'),
       options: OpenDatabaseOptions(
-        version: 9,
+        version: 12,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) => _migrate(db, 0, version),
         onUpgrade: _migrate,
@@ -147,6 +147,21 @@ class InspectionDatabase {
         await db.execute(sql);
       }
     }
+    if (oldVersion < 10) {
+      for (final sql in _versionTen) {
+        await db.execute(sql);
+      }
+    }
+    if (oldVersion < 11) {
+      for (final sql in _versionEleven) {
+        await db.execute(sql);
+      }
+    }
+    if (oldVersion < 12) {
+      for (final sql in _versionTwelve) {
+        await db.execute(sql);
+      }
+    }
   }
 
   Future<String> get deviceId async =>
@@ -205,6 +220,30 @@ class InspectionDatabase {
       CHECK(category IN ('STRUCTURAL','ENVIRONMENTAL','PEST_DISEASE','ANTHROPIC'))''',
     "DELETE FROM cache_metadata WHERE cache_key = 'occurrence_types'",
     'DELETE FROM occurrence_types',
+  ];
+
+  static const _versionTen = [
+    '''CREATE TABLE cached_inputs (
+      id TEXT PRIMARY KEY,
+      sequence INTEGER NOT NULL,
+      snapshot TEXT NOT NULL)''',
+    'CREATE INDEX cached_inputs_sequence ON cached_inputs(sequence)',
+  ];
+
+  static const _versionEleven = [
+    '''CREATE TABLE cached_mixtures (
+      id TEXT PRIMARY KEY,
+      sequence INTEGER NOT NULL,
+      snapshot TEXT NOT NULL)''',
+    'CREATE INDEX cached_mixtures_sequence ON cached_mixtures(sequence)',
+  ];
+
+  static const _versionTwelve = [
+    '''CREATE TABLE cached_machines (
+      id TEXT PRIMARY KEY,
+      sequence INTEGER NOT NULL,
+      snapshot TEXT NOT NULL)''',
+    'CREATE INDEX cached_machines_sequence ON cached_machines(sequence)',
   ];
 
   static const _versionTwo = [

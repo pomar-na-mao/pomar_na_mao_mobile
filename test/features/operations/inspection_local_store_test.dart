@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/inspection_database.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/inspection_local_store.dart';
+import 'package:pomar_na_mao_mobile/features/operations/domain/activity_models.dart';
 import 'package:pomar_na_mao_mobile/features/operations/domain/inspection_models.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -473,6 +474,37 @@ void main() {
     expect(listed, hasLength(1));
     expect(listed.single.localId, second.localId);
   });
+
+  test(
+    'input catalog persists optional snapshots and confirmed empty cache',
+    () async {
+      const inputs = [
+        FieldInputCatalogItem(
+          id: 'input-1',
+          name: 'Produto',
+          type: 'FUNGICIDE',
+          activeIngredient: 'Ingrediente',
+          labelDose: '50 - 100',
+          doseUnit: 'mL/100L',
+        ),
+      ];
+      await store.replaceInputs(inputs);
+      final cached = await store.readCachedInputs();
+      expect(cached, hasLength(1));
+      expect(cached!.single.toJson(), inputs.single.toJson());
+
+      await store.replaceInputs(const []);
+      expect(await store.readCachedInputs(), isEmpty);
+      await db.close();
+      db = InspectionDatabase(
+        projectUrl: 'https://uxschjkypkkzprbwuhxm.supabase.co',
+        factory: ffiFactory,
+        directory: tempDir.path,
+      );
+      store = InspectionLocalStore(db, clock: () => currentTime);
+      expect(await store.readCachedInputs(), isEmpty);
+    },
+  );
 
   test('acknowledgeAddedPlants populates cached_plants and allows occurrences and finalization', () async {
     await store.replaceSnapshot(
