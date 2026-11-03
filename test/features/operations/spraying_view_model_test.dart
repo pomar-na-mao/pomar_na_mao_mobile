@@ -288,10 +288,11 @@ void main() {
         localId: 'op-local-123',
         startedAt: now,
         finishedAt: now.add(const Duration(minutes: 30)),
-        operatorName: 'Carlos Silva',
-        title: 'Pulverização Talhão 2',
-        machineName: 'Jacto Advance',
-        tractorIdentifier: 'Trator 01',
+        responsible: 'Carlos Silva',
+        machineId: 'm-1',
+        machineNameSnapshot: 'Jacto Advance',
+        mixtureId: 'mix-1',
+        mixtureNameSnapshot: 'Calda Fungicida',
         notes: 'Sem vento',
         route: SprayingRoute(
           localId: 'route-1',
@@ -345,11 +346,11 @@ void main() {
 
       final opMap = payload['operation'] as Map<String, dynamic>;
       expect(opMap['zoneId'], isNull);
-      expect(opMap['operatorName'], equals('Carlos Silva'));
-      expect(opMap['title'], equals('Pulverização Talhão 2'));
+      expect(opMap['responsible'], equals('Carlos Silva'));
+      expect(opMap['machineId'], equals('m-1'));
       expect(opMap['machineName'], equals('Jacto Advance'));
-      expect(opMap['tractorIdentifier'], equals('Trator 01'));
-      expect(opMap['notes'], equals('Sem vento'));
+      expect(opMap['mixtureId'], equals('mix-1'));
+      expect(opMap['mixtureName'], equals('Calda Fungicida'));
 
       final routeMap = payload['route'] as Map<String, dynamic>;
       expect(routeMap['localId'], equals('route-1'));
@@ -1042,9 +1043,9 @@ void main() {
         ),
       );
 
-      expect(find.text('Operador: A definir'), findsOneWidget);
-      expect(find.text('Operador: Maria'), findsOneWidget);
-      expect(find.text('Operador: Operador'), findsNothing);
+      expect(find.text('Responsável: A definir'), findsOneWidget);
+      expect(find.text('Responsável: Maria'), findsOneWidget);
+      expect(find.text('Responsável: Operador'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     });
 

@@ -202,7 +202,7 @@ begin
     v_operation_type_id,
     v_zone_id,
     nullif(v_operation->>'title', ''),
-    'gps_track',
+    'spraying',
     v_started_at,
     v_finished_at,
     v_operation->>'operatorName',

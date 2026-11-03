@@ -263,11 +263,11 @@ class _SprayingOperationCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSyncing = viewModel.isSyncing;
-    final operatorName = operation.operatorName.trim();
-    final displayedOperatorName =
-        operatorName.isEmpty || operatorName == 'Operador'
+    final responsible = operation.responsible.trim();
+    final displayedResponsible =
+        responsible.isEmpty || responsible == 'Operador'
         ? 'A definir'
-        : operatorName;
+        : responsible;
 
     return Material(
       color: colorScheme.surface,
@@ -284,9 +284,7 @@ class _SprayingOperationCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    operation.title?.isNotEmpty == true
-                        ? operation.title!
-                        : 'Pulverização',
+                    'Pulverização',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -298,15 +296,23 @@ class _SprayingOperationCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Operador: $displayedOperatorName',
+              'Responsável: $displayedResponsible',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
-            if (operation.machineName != null &&
-                operation.machineName!.isNotEmpty)
+            if (operation.machineNameSnapshot != null ||
+                operation.machineName != null)
               Text(
-                'Equipamento: ${operation.machineName}',
+                'Máquina: ${operation.machineNameSnapshot ?? operation.machineName}'
+                '${operation.machineBrandSnapshot != null ? ' (${operation.machineBrandSnapshot})' : ''}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            if (operation.mixtureNameSnapshot != null)
+              Text(
+                'Calda: ${operation.mixtureNameSnapshot}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -342,10 +348,13 @@ class _SprayingOperationCard extends StatelessWidget {
                   color: colorScheme.outline,
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  '${operation.inputs.length} insumos',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.outline,
+                Flexible(
+                  child: Text(
+                    operation.mixtureNameSnapshot ?? 'Sem calda',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.outline,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],

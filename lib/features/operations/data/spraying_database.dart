@@ -46,7 +46,7 @@ class SprayingDatabase {
     final db = await resolvedFactory.openDatabase(
       p.join(root, 'spraying_$fileId.db'),
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) => _migrate(db, 0, version),
         onUpgrade: _migrate,
@@ -86,6 +86,32 @@ class SprayingDatabase {
     if (oldVersion < 1) {
       for (final sql in _versionOne) {
         await db.execute(sql);
+      }
+    }
+    if (oldVersion < 2) {
+      await _applyVersionTwo(db);
+    }
+  }
+
+  static Future<void> _applyVersionTwo(Database db) async {
+    const columns = {
+      'responsible': 'TEXT',
+      'performed_at': 'TEXT',
+      'machine_id': 'TEXT',
+      'machine_name_snapshot': 'TEXT',
+      'machine_brand_snapshot': 'TEXT',
+      'mixture_id': 'TEXT',
+      'mixture_name_snapshot': 'TEXT',
+    };
+    final info = await db.rawQuery('PRAGMA table_info(local_spraying_operations)');
+    final existingColumns = info
+        .map((r) => r['name'] as String)
+        .toSet();
+    for (final entry in columns.entries) {
+      if (!existingColumns.contains(entry.key)) {
+        await db.execute(
+          'ALTER TABLE local_spraying_operations ADD COLUMN ${entry.key} ${entry.value}',
+        );
       }
     }
   }

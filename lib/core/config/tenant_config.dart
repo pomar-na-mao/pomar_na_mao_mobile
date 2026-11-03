@@ -61,10 +61,30 @@ class TenantConfig {
     fruitAssetPath: 'assets/images/avocado.png',
   );
 
+  static const ricardoAbacate = TenantConfig(
+    id: 'ricardoAbacate',
+    name: 'Ricardo Abacate',
+    supabaseUrl: String.fromEnvironment('SUPABASE_URL_RICARDO_ABACATE'),
+    supabasePublishableKey: String.fromEnvironment(
+      'SUPABASE_PUBLISHABLE_KEY_RICARDO_ABACATE',
+    ),
+    propertyProfile: InventoryPropertyProfile(
+      farmName: 'Fazenda Ricardo',
+      totalArea: '9 ha',
+      crop: 'Abacate',
+      spacing: '6 × 4 m',
+      classification: 'Pouco Adensado',
+      density: '130 plantas/ha',
+      variety: 'Breda | Hass | Margarida',
+    ),
+    fruitAssetPath: 'assets/images/avocado.png',
+  );
+
   /// Os dois únicos tenants/clientes suportados no sistema.
   static const Map<String, TenantConfig> registeredTenants = {
     'ricardoLichia': ricardoLichia,
     'hassAvocado': hassAvocado,
+    'ricardoAbacate': ricardoAbacate,
   };
 
   /// Retorna o [TenantConfig] correspondente aos tenants suportados ('hassAvocado' ou 'ricardoLichia').
@@ -74,6 +94,13 @@ class TenantConfig {
         id?.toLowerCase() == 'hassavocado') {
       return hassAvocado;
     }
+
+    if (id == 'ricardoAbacate' ||
+        id?.toLowerCase() == 'ricardo_abacate' ||
+        id?.toLowerCase() == 'ricardoabacate') {
+      return ricardoAbacate;
+    }
+
     return ricardoLichia;
   }
 }

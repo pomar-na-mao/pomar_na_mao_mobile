@@ -13,6 +13,7 @@ Os dois tenants cadastrados no sistema são:
 Para executar a aplicação em desenvolvimento/debug conectando ao Supabase do cliente desejado:
 
 ### 🥑 Cliente Ricardo Lichia
+
 ```bash
 flutter run --debug \
   --dart-define=TENANT=ricardoLichia \
@@ -21,11 +22,21 @@ flutter run --debug \
 ```
 
 ### 🥑 Cliente Hass Avocado
+
 ```bash
 flutter run --debug \
   --dart-define=TENANT=hassAvocado \
   --dart-define=SUPABASE_URL=https://uxschjkypkkzprbwuhxm.supabase.co \
   --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_idzivuZYu4ScWTOb14EtQA_VToCjySh
+```
+
+### 🥑 Cliente Ricardo Abacate
+
+```bash
+flutter run --debug \
+  --dart-define=TENANT=ricardoAbacate \
+  --dart-define=SUPABASE_URL=https://hopjwluxjyhfovwylmok.supabase.co \
+  --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_pM5zJfWa1h7p-uirrnh3rQ_dsNqJ6W3
 ```
 
 ---
@@ -35,6 +46,7 @@ flutter run --debug \
 ### 📦 APK Release
 
 #### Ricardo Lichia
+
 ```bash
 flutter build apk --release \
   --dart-define=TENANT=ricardoLichia \
@@ -43,11 +55,21 @@ flutter build apk --release \
 ```
 
 #### Hass Avocado
+
 ```bash
 flutter build apk --release \
   --dart-define=TENANT=hassAvocado \
   --dart-define=SUPABASE_URL=https://uxschjkypkkzprbwuhxm.supabase.co \
   --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_idzivuZYu4ScWTOb14EtQA_VToCjySh
+```
+
+#### Ricardo Abacate
+
+```bash
+flutter build apk --release \
+  --dart-define=TENANT=ricardoAbacate \
+   --dart-define=SUPABASE_URL=https://hopjwluxjyhfovwylmok.supabase.co \
+  --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_pM5zJfWa1h7p-uirrnh3rQ_dsNqJ6W3
 ```
 
 > O arquivo gerado estará em:  
@@ -58,6 +80,7 @@ flutter build apk --release \
 ### 📦 APK Debug
 
 #### Ricardo Lichia
+
 ```bash
 flutter build apk --debug \
   --dart-define=TENANT=ricardoLichia \
@@ -66,6 +89,7 @@ flutter build apk --debug \
 ```
 
 #### Hass Avocado
+
 ```bash
 flutter build apk --debug \
   --dart-define=TENANT=hassAvocado \

@@ -33,6 +33,7 @@ class MipdViewModel extends ChangeNotifier {
   LocationResult? _locationResult;
   bool _isLocationActive = false;
   bool _isWaitingForStableLocation = false;
+  bool _initialLocationStabilizationStarted = false;
   bool _disposed = false;
 
   UserLocation? get userLocation => _locationResult?.location;
@@ -55,8 +56,9 @@ class MipdViewModel extends ChangeNotifier {
     if (_disposed || _isLocationActive) return;
     _isLocationActive = true;
     _locationSubscription?.cancel();
-    _positionTracker.reset();
-    if (_locationResult == null) {
+    if (!_initialLocationStabilizationStarted) {
+      _initialLocationStabilizationStarted = true;
+      _positionTracker.reset();
       _isWaitingForStableLocation = true;
       _stableLocationTimeout?.cancel();
       _stableLocationTimeout = Timer(const Duration(seconds: 30), () {
@@ -181,7 +183,6 @@ class MipdViewModel extends ChangeNotifier {
     _isLocationActive = false;
     unawaited(_locationSubscription?.cancel());
     _locationSubscription = null;
-    _positionTracker.reset();
     final wasWaiting = _isWaitingForStableLocation;
     _finishWaitingForStableLocation();
     if (wasWaiting) scheduleMicrotask(notifyListeners);

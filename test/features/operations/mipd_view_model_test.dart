@@ -46,6 +46,28 @@ void main() {
     expect(viewModel.userLocation, isNotNull);
     expect(viewModel.isWaitingForStableLocation, isFalse);
   });
+
+  test('estabiliza a posição somente na primeira ativação', () async {
+    final locationService = _LocationService();
+    final viewModel = MipdViewModel(
+      repository: _Repository(),
+      locationService: locationService,
+      photoService: MipdPhotoService(picker: _PhotoPicker()),
+    );
+    addTearDown(() {
+      viewModel.dispose();
+      locationService.dispose();
+    });
+
+    viewModel.resumeLocation();
+    expect(viewModel.isWaitingForStableLocation, isTrue);
+
+    viewModel.cancelStableLocationWait();
+    viewModel.pauseLocation();
+    viewModel.resumeLocation();
+
+    expect(viewModel.isWaitingForStableLocation, isFalse);
+  });
 }
 
 class _LocationService implements LocationService {

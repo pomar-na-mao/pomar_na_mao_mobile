@@ -62,7 +62,7 @@ class SprayingView extends StatefulWidget {
 
 class _SprayingViewState extends State<SprayingView> {
   static const _fallbackPosition = defaultFarmMapPosition;
-  static const _recordingStartZoom = userFollowZoom;
+  static const _recordingStartZoom = 18.5;
 
   GoogleMapController? _mapController;
   CameraPosition? _savedCamera;
@@ -80,6 +80,7 @@ class _SprayingViewState extends State<SprayingView> {
   bool _checkingVisibleRegion = false;
   UserLocation? _lastCheckedLocation;
   UserLocation? _queuedLocation;
+  DateTime? _lastCameraAnimation;
 
   void _markersChanged() {
     if (mounted) setState(() => _markers = _plantLayer.markers);
@@ -207,7 +208,7 @@ class _SprayingViewState extends State<SprayingView> {
     _plantLayer.update(
       revision: (
         vm.displayedPlants,
-        vm.reviewedPlantIds,
+        vm.reviewedPlantsRevision,
         _plantMarkerIcon,
         _pulverizedPlantMarkerIcon,
       ),
@@ -271,6 +272,7 @@ class _SprayingViewState extends State<SprayingView> {
     if (!mounted ||
         vm.sessionState != SprayingSessionState.recording ||
         _needsInitialFocus ||
+        _userHasInteractedWithMap ||
         identical(_lastCheckedLocation, location)) {
       return;
     }
@@ -278,6 +280,15 @@ class _SprayingViewState extends State<SprayingView> {
       _queuedLocation = location;
       return;
     }
+
+    final now = DateTime.now();
+    if (_lastCameraAnimation != null &&
+        now.difference(_lastCameraAnimation!) <
+            const Duration(milliseconds: 650)) {
+      _queuedLocation = location;
+      return;
+    }
+
     final controller = _mapController;
     if (controller == null) return;
 
@@ -286,7 +297,8 @@ class _SprayingViewState extends State<SprayingView> {
       final bounds = await controller.getVisibleRegion();
       if (!mounted ||
           _mapController != controller ||
-          vm.sessionState != SprayingSessionState.recording) {
+          vm.sessionState != SprayingSessionState.recording ||
+          _userHasInteractedWithMap) {
         return;
       }
       _lastCheckedLocation = location;
@@ -311,6 +323,7 @@ class _SprayingViewState extends State<SprayingView> {
         bearing: bearing,
       );
       if (position != null) {
+        _lastCameraAnimation = DateTime.now();
         await controller.animateCamera(
           CameraUpdate.newCameraPosition(position),
         );
@@ -321,7 +334,7 @@ class _SprayingViewState extends State<SprayingView> {
       _checkingVisibleRegion = false;
       final queued = _queuedLocation;
       _queuedLocation = null;
-      if (queued != null) {
+      if (queued != null && !_userHasInteractedWithMap) {
         _lastCheckedLocation = null;
         unawaited(_keepUserVisible(queued, vm));
       }
@@ -485,7 +498,10 @@ class _SprayingViewState extends State<SprayingView> {
                 IconButton(
                   icon: const Icon(Icons.my_location),
                   tooltip: 'Minha localização',
-                  onPressed: () => _recenterOnUser(vm),
+                  onPressed: () {
+                    _userHasInteractedWithMap = false;
+                    _recenterOnUser(vm);
+                  },
                 ),
             ],
           ),

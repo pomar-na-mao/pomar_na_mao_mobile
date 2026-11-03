@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/spraying_models.dart';
 import '../spraying_view_model.dart';
-import 'spraying_inputs_modal.dart';
+import 'spraying_registration_modal.dart';
 
 class SprayingReviewModal extends StatefulWidget {
   const SprayingReviewModal({required this.viewModel, super.key});
@@ -349,12 +349,12 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                             ),
                             icon: const Icon(Icons.arrow_forward_rounded, size: 18),
                             label: Text(
-                              'Preencher Insumos (${vm.reviewedPlants.length})',
+                              'Registrar operação (${vm.reviewedPlants.length})',
                               style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             onPressed: () {
                               Navigator.of(context).pop();
-                              SprayingInputsModal.show(context, vm);
+                              SprayingRegistrationModal.show(context, vm);
                             },
                           ),
                         ),
