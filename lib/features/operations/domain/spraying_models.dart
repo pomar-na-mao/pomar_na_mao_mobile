@@ -250,7 +250,14 @@ class SprayingOperation {
     required this.localId,
     required this.startedAt,
     required this.finishedAt,
-    required this.operatorName,
+    String? responsible,
+    String? operatorName,
+    DateTime? performedAt,
+    this.machineId,
+    this.machineNameSnapshot,
+    this.machineBrandSnapshot,
+    this.mixtureId,
+    this.mixtureNameSnapshot,
     this.title,
     this.machineName,
     this.tractorIdentifier,
@@ -262,12 +269,19 @@ class SprayingOperation {
     this.trackPoints = const [],
     this.inputs = const [],
     this.confirmedPlants = const [],
-  });
+  })  : responsible = responsible ?? operatorName ?? 'Operador',
+        performedAt = performedAt ?? finishedAt;
 
   final String localId;
   final DateTime startedAt;
   final DateTime finishedAt;
-  final String operatorName;
+  final DateTime performedAt;
+  final String responsible;
+  final String? machineId;
+  final String? machineNameSnapshot;
+  final String? machineBrandSnapshot;
+  final String? mixtureId;
+  final String? mixtureNameSnapshot;
   final String? title;
   final String? machineName;
   final String? tractorIdentifier;
@@ -275,6 +289,8 @@ class SprayingOperation {
   final SprayingSyncStatus syncStatus;
   final String? remoteFieldOperationId;
   final DateTime? syncedAt;
+
+  String get operatorName => responsible;
 
   final SprayingRoute? route;
   final List<SprayingTrackPoint> trackPoints;
@@ -285,7 +301,14 @@ class SprayingOperation {
     String? localId,
     DateTime? startedAt,
     DateTime? finishedAt,
+    DateTime? performedAt,
+    String? responsible,
     String? operatorName,
+    String? machineId,
+    String? machineNameSnapshot,
+    String? machineBrandSnapshot,
+    String? mixtureId,
+    String? mixtureNameSnapshot,
     String? title,
     String? machineName,
     String? tractorIdentifier,
@@ -301,9 +324,15 @@ class SprayingOperation {
     localId: localId ?? this.localId,
     startedAt: startedAt ?? this.startedAt,
     finishedAt: finishedAt ?? this.finishedAt,
-    operatorName: operatorName ?? this.operatorName,
+    performedAt: performedAt ?? this.performedAt,
+    responsible: responsible ?? operatorName ?? this.responsible,
+    machineId: machineId ?? this.machineId,
+    machineNameSnapshot: machineNameSnapshot ?? this.machineNameSnapshot,
+    machineBrandSnapshot: machineBrandSnapshot ?? this.machineBrandSnapshot,
+    mixtureId: mixtureId ?? this.mixtureId,
+    mixtureNameSnapshot: mixtureNameSnapshot ?? this.mixtureNameSnapshot,
     title: title ?? this.title,
-    machineName: machineName ?? this.machineName,
+    machineName: machineName ?? this.machineName ?? machineNameSnapshot ?? this.machineNameSnapshot,
     tractorIdentifier: tractorIdentifier ?? this.tractorIdentifier,
     notes: notes ?? this.notes,
     syncStatus: syncStatus ?? this.syncStatus,
@@ -328,13 +357,15 @@ class SprayingOperation {
         'zoneId': null,
         'startedAt': startedAt.toUtc().toIso8601String(),
         'finishedAt': finishedAt.toUtc().toIso8601String(),
-        'operatorName': operatorName,
-        if (title != null && title!.isNotEmpty) 'title': title,
-        if (machineName != null && machineName!.isNotEmpty)
-          'machineName': machineName,
-        if (tractorIdentifier != null && tractorIdentifier!.isNotEmpty)
-          'tractorIdentifier': tractorIdentifier,
-        if (notes != null && notes!.isNotEmpty) 'notes': notes,
+        'performedAt': performedAt.toUtc().toIso8601String(),
+        'responsible': responsible,
+        'operatorName': responsible,
+        'activity': 'Pulverização',
+        if (machineId != null) 'machineId': machineId,
+        if (machineNameSnapshot != null || machineName != null)
+          'machineName': machineNameSnapshot ?? machineName,
+        if (mixtureId != null) 'mixtureId': mixtureId,
+        if (mixtureNameSnapshot != null) 'mixtureName': mixtureNameSnapshot,
       },
       'route': route!.toJson(),
       'trackPoints': trackPoints.map((tp) => tp.toJson()).toList(),
@@ -372,31 +403,29 @@ class SprayingSyncResult {
       throw FormatException('Formato de resposta RPC inválido: $response');
     }
 
-    int count(String snakeCase, String camelCase) {
-      final value = map[snakeCase] ?? map[camelCase];
-      if (value is! num ||
-          !value.isFinite ||
-          value < 0 ||
-          value != value.round()) {
-        throw FormatException('Contagem $snakeCase inválida na resposta RPC');
+    int count(List<String> keys) {
+      for (final key in keys) {
+        final val = map[key];
+        if (val is num && val.isFinite && val >= 0) return val.toInt();
       }
-      return value.toInt();
+      throw FormatException('Contagem ${keys.first} inválida na resposta RPC: $map');
     }
 
     return SprayingSyncResult(
       fieldOperationId:
-          map['field_operation_id'] as String? ??
-          map['fieldOperationId'] as String,
-      routeId: map['route_id'] as String? ?? map['routeId'] as String,
-      trackPointsCount: count('track_points_count', 'trackPointsCount'),
-      inputsCount: count('inputs_count', 'inputsCount'),
+          (map['field_operation_id'] ?? map['fieldOperationId'])?.toString() ??
+          '',
+      routeId:
+          (map['route_id'] ?? map['routeId'])?.toString() ?? '',
+      trackPointsCount: count(['track_points_count', 'trackPointsCount', 'points_count', 'pointsCount']),
+      inputsCount: count(['inputs_count', 'inputsCount']),
       confirmedPlantsCount: count(
-        'confirmed_plants_count',
-        'confirmedPlantsCount',
+        ['confirmed_plants_count', 'confirmedPlantsCount', 'affected_plants_count', 'affectedPlantsCount'],
       ),
-      syncedAt: DateTime.parse(
-        map['synced_at'] as String? ?? map['syncedAt'] as String,
-      ),
+      syncedAt: DateTime.tryParse(
+            (map['synced_at'] ?? map['syncedAt'])?.toString() ?? '',
+          ) ??
+          DateTime.now(),
     );
   }
 }

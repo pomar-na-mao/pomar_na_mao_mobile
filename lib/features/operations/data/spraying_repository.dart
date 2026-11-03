@@ -139,10 +139,6 @@ class DefaultSprayingRepository implements SprayingRepository {
       throw StateError('A rota precisa de pelo menos 2 pontos GPS');
     }
 
-    if (effectiveOp.inputs.isEmpty) {
-      throw StateError('Ao menos um insumo é obrigatório para sincronizar');
-    }
-
     await localStore.updateSyncStatus(
       operationLocalId,
       SprayingSyncStatus.syncing,
@@ -153,12 +149,11 @@ class DefaultSprayingRepository implements SprayingRepository {
       final payload = effectiveOp.toRpcPayload(deviceId: deviceId);
       final result = await remoteDataSource.syncSprayingOperation(payload);
 
-      if (result.inputsCount != effectiveOp.inputs.length ||
+      if (effectiveOp.confirmedPlants.isNotEmpty &&
           result.confirmedPlantsCount != effectiveOp.confirmedPlants.length) {
         throw StateError(
           'O servidor confirmou ${result.confirmedPlantsCount} de '
-          '${effectiveOp.confirmedPlants.length} plantas e '
-          '${result.inputsCount} de ${effectiveOp.inputs.length} insumos. '
+          '${effectiveOp.confirmedPlants.length} plantas. '
           'Confira o talhão e as plantas antes de sincronizar novamente.',
         );
       }

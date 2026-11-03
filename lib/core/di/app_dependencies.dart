@@ -257,6 +257,7 @@ class AppDependencies {
         inspectionRepository: inspectionRepository,
         locationService: locationService,
         zonesRepository: zonesRepository,
+        sharedReadRepository: sharedReadRepository,
       );
 
   MipdViewModel? _createdMipdViewModel;

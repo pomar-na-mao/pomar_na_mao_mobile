@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../spraying_view_model.dart';
-import 'spraying_inputs_modal.dart';
+import 'spraying_registration_modal.dart';
 import 'spraying_review_modal.dart';
 
 class SprayingReviewActionBar extends StatelessWidget {
@@ -150,13 +150,13 @@ class SprayingReviewActionBar extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            icon: const Icon(Icons.science_outlined, size: 16),
+                            icon: const Icon(Icons.edit_note_rounded, size: 16),
                             label: const Text(
-                              'Insumos',
+                              'Registrar',
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                             onPressed: () =>
-                                SprayingInputsModal.show(context, vm),
+                                SprayingRegistrationModal.show(context, vm),
                           ),
                         ),
                       ],

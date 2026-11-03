@@ -11,6 +11,8 @@ import '../../farm/domain/user_location.dart';
 import '../../farm/domain/zone.dart';
 import '../../farm/domain/zones_repository.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
+import '../../../core/data/shared_read_repository.dart';
+import '../domain/activity_models.dart';
 import '../data/inspection_repository.dart';
 import '../data/spraying_repository.dart';
 import '../domain/inspection_models.dart';
@@ -26,17 +28,37 @@ class SprayingViewModel extends ChangeNotifier {
     required this.locationService,
     required this.inspectionRepository,
     this.zonesRepository,
+    this.sharedReadRepository,
     this.geometryService = const SprayingGeometryService(),
   }) {
     unawaited(loadZones());
     unawaited(loadLocalOperations());
+    unawaited(loadMixturesAndMachines());
   }
 
   final SprayingRepository sprayingRepository;
   final InspectionRepository inspectionRepository;
   final LocationService locationService;
   final SprayingGeometryService geometryService;
+  final SharedReadRepository? sharedReadRepository;
   ZonesRepository? zonesRepository;
+
+  List<MixtureCatalogItem> mixtures = const [];
+  List<MachineCatalogItem> machines = const [];
+  bool _saving = false;
+  bool get saving => _saving;
+
+  Future<void> loadMixturesAndMachines() async {
+    final shared = sharedReadRepository;
+    if (shared == null) return;
+    try {
+      mixtures = await shared.getMixtures();
+      machines = await shared.getMachines();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Erro ao carregar caldas e máquinas: $e');
+    }
+  }
 
   // --- Zonas ---
   List<Zone> _zones = const [];
@@ -121,6 +143,9 @@ class SprayingViewModel extends ChangeNotifier {
   List<SprayingConfirmedPlant> _reviewedPlants = [];
   List<SprayingConfirmedPlant> get reviewedPlants =>
       List.unmodifiable(_reviewedPlants);
+
+  int _reviewedPlantsRevision = 0;
+  int get reviewedPlantsRevision => _reviewedPlantsRevision;
 
   Set<String> get reviewedPlantIds =>
       _reviewedPlants.map((p) => p.plantId).toSet();
@@ -392,7 +417,7 @@ class SprayingViewModel extends ChangeNotifier {
   }
 
   void _recordTrackPoint(UserLocation loc) {
-    if (loc.accuracy == null || loc.accuracy! > 12) return;
+    if (loc.accuracy == null || loc.accuracy! > 25.0) return;
 
     if (_activeTrackPoints.isNotEmpty) {
       final last = _activeTrackPoints.last;
@@ -458,6 +483,7 @@ class SprayingViewModel extends ChangeNotifier {
     _activeTrackPoints = [];
     _totalDistanceMeters = 0.0;
     _reviewedPlants = [];
+    _reviewedPlantsRevision++;
     _sessionState = SprayingSessionState.recording;
 
     await sprayingRepository.saveOperation(_currentOperation!);
@@ -559,6 +585,7 @@ class SprayingViewModel extends ChangeNotifier {
       _currentOperation = null;
       _activeTrackPoints = [];
       _reviewedPlants = [];
+      _reviewedPlantsRevision++;
 
       await loadLocalOperations();
     }
@@ -572,12 +599,15 @@ class SprayingViewModel extends ChangeNotifier {
     _reviewingOperation = op;
     _errorMessage = null;
 
+    await loadMixturesAndMachines();
+
     if (_allPlants.isEmpty) {
       await loadPlants();
     }
 
     if (op.confirmedPlants.isNotEmpty) {
       _reviewedPlants = List.from(op.confirmedPlants);
+      _reviewedPlantsRevision++;
     } else {
       try {
         final calculated = await sprayingRepository.calculateAffectedPlants(
@@ -586,6 +616,7 @@ class SprayingViewModel extends ChangeNotifier {
           maxDistanceMeters: 9.0,
         );
         _reviewedPlants = List.from(calculated);
+        _reviewedPlantsRevision++;
         await sprayingRepository.saveConfirmedPlants(
           op.localId,
           _reviewedPlants,
@@ -616,6 +647,7 @@ class SprayingViewModel extends ChangeNotifier {
   void cancelReviewing() {
     _reviewingOperation = null;
     _reviewedPlants = [];
+    _reviewedPlantsRevision++;
     resetInputsDraft();
     notifyListeners();
   }
@@ -642,6 +674,8 @@ class SprayingViewModel extends ChangeNotifier {
       );
     }
 
+    _reviewedPlantsRevision++;
+
     if (_reviewingOperation != null) {
       unawaited(
         sprayingRepository.saveConfirmedPlants(
@@ -652,6 +686,68 @@ class SprayingViewModel extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  /// Salva a revisão da operação com responsável, data/hora, máquina e calda selecionada.
+  Future<bool> saveReview({
+    required String responsible,
+    required DateTime performedAt,
+    MachineCatalogItem? machine,
+    MixtureCatalogItem? mixture,
+  }) async {
+    final targetOp = _reviewingOperation ?? _currentOperation;
+    if (targetOp == null) return false;
+
+    final trimmedResponsible = responsible.trim();
+    if (trimmedResponsible.isEmpty) {
+      _errorMessage = 'Responsável obrigatório';
+      notifyListeners();
+      return false;
+    }
+
+    _saving = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final opId = targetOp.localId;
+      await sprayingRepository.saveConfirmedPlants(opId, _reviewedPlants);
+
+      final updatedOp = targetOp.copyWith(
+        responsible: trimmedResponsible,
+        performedAt: performedAt,
+        machineId: machine?.id,
+        machineNameSnapshot: machine?.name,
+        machineBrandSnapshot: machine?.brand,
+        mixtureId: mixture?.id,
+        mixtureNameSnapshot: mixture?.name,
+        syncStatus: SprayingSyncStatus.reviewed,
+        confirmedPlants: _reviewedPlants,
+      );
+
+      await sprayingRepository.saveOperation(updatedOp);
+
+      resetInputsDraft();
+
+      _feedbackMessage =
+          'Pulverização revisada com sucesso e pronta para sincronizar!';
+      _sessionState = SprayingSessionState.idle;
+      _currentOperation = null;
+      _reviewingOperation = null;
+      _activeTrackPoints = [];
+      _reviewedPlants = [];
+      _reviewedPlantsRevision++;
+
+      await loadLocalOperations();
+      _saving = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _saving = false;
+      _errorMessage = 'Erro ao salvar revisão: $e';
+      notifyListeners();
+      return false;
+    }
   }
 
   /// Salva os insumos e finaliza a revisão, deixando a operação pronta para sincronização.
@@ -698,6 +794,7 @@ class SprayingViewModel extends ChangeNotifier {
     _reviewingOperation = null;
     _activeTrackPoints = [];
     _reviewedPlants = [];
+    _reviewedPlantsRevision++;
 
     await loadLocalOperations();
     notifyListeners();
@@ -714,6 +811,7 @@ class SprayingViewModel extends ChangeNotifier {
     _currentOperation = null;
     _activeTrackPoints = [];
     _reviewedPlants = [];
+    _reviewedPlantsRevision++;
     notifyListeners();
   }
 

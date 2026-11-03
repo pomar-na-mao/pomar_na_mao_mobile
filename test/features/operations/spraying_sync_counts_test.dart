@@ -124,12 +124,12 @@ void main() {
         syncedAt: now,
       );
 
-  for (final counts in [(0, 2), (16, 0)]) {
+  for (final plantCount in [0, 10]) {
     test(
-      'partial RPC count ${counts.$1}/${counts.$2} stays retryable',
+      'partial RPC count $plantCount/16 stays retryable',
       () async {
         final store = _Store(operation());
-        final remote = _Remote(result(plants: counts.$1, inputs: counts.$2));
+        final remote = _Remote(result(plants: plantCount, inputs: 2));
         final repository = DefaultSprayingRepository(
           localStore: store,
           remoteDataSource: remote,
