@@ -66,7 +66,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('shows signal stabilization overlay before GPS is ready', (
+  testWidgets('does not block the map while waiting for GPS samples', (
     tester,
   ) async {
     final locationService = _ControlledLocationService();
@@ -90,8 +90,8 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Aguardando sinal estabilizar'), findsOneWidget);
-    expect(find.text('Cancelar'), findsOneWidget);
+    expect(find.text('Aguardando sinal estabilizar'), findsNothing);
+    expect(find.text('Cancelar'), findsNothing);
   });
 
   testWidgets(

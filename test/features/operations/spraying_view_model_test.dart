@@ -245,7 +245,7 @@ class FakeZonesRepository implements ZonesRepository {
 }
 
 void main() {
-  testWidgets('start button shows translucent signal wait and can cancel', (
+  testWidgets('start button begins spraying without a signal wait overlay', (
     tester,
   ) async {
     final phone = FakeLocationService();
@@ -267,14 +267,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('action-spraying-session')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('btn-start-spraying')));
-    await tester.pump();
-    expect(find.text('Aguardando sinal estabilizar'), findsOneWidget);
-    expect(vm.sessionState, SprayingSessionState.idle);
-
-    await tester.tap(find.text('Cancelar'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Aguardando sinal estabilizar'), findsNothing);
     expect(vm.isPreparingSession, isFalse);
-    expect(vm.currentOperation, isNull);
+    expect(vm.sessionState, SprayingSessionState.recording);
+    expect(vm.currentOperation, isNotNull);
 
     await tester.pumpWidget(const SizedBox());
     vm.dispose();
@@ -466,53 +463,28 @@ void main() {
       expect(viewModel.currentOperation!.title, equals('Aplicação 1'));
     });
 
-    test('prepares session until fresh GPS samples stabilize', () async {
-      final now = DateTime.now().toUtc();
-      viewModel.prepareSessionStart();
-      expect(viewModel.isPreparingSession, isTrue);
-      expect(viewModel.sessionState, SprayingSessionState.idle);
+    test(
+      'starts session immediately without waiting for GPS stabilization',
+      () async {
+        viewModel.prepareSessionStart();
+        await pumpEventQueue();
 
-      for (var seconds = -2; seconds <= 0; seconds++) {
-        locationService.emit(
-          LocationResult.available(
-            UserLocation(
-              latitude: -21.177,
-              longitude: -47.81,
-              accuracy: 5,
-              timestamp: now.add(Duration(seconds: seconds)),
-            ),
-          ),
-        );
-      }
-      await pumpEventQueue();
+        expect(viewModel.isPreparingSession, isFalse);
+        expect(viewModel.sessionState, SprayingSessionState.recording);
+        expect(viewModel.activeTrackPoints, isEmpty);
+      },
+    );
 
-      expect(viewModel.isPreparingSession, isFalse);
-      expect(viewModel.sessionState, SprayingSessionState.recording);
-      expect(viewModel.activeTrackPoints, hasLength(1));
-    });
-
-    test('cancelled preparation never creates a spraying session', () async {
-      viewModel.prepareSessionStart();
-      viewModel.cancelSessionPreparation();
-      expect(viewModel.isPreparingSession, isFalse);
-
-      final now = DateTime.now().toUtc();
-      for (var seconds = -2; seconds <= 0; seconds++) {
-        locationService.emit(
-          LocationResult.available(
-            UserLocation(
-              latitude: -21.177,
-              longitude: -47.81,
-              accuracy: 5,
-              timestamp: now.add(Duration(seconds: seconds)),
-            ),
-          ),
-        );
-      }
-      await pumpEventQueue();
-      expect(viewModel.sessionState, SprayingSessionState.idle);
-      expect(viewModel.currentOperation, isNull);
-    });
+    test(
+      'ignores repeated start requests while creating the session',
+      () async {
+        viewModel.prepareSessionStart();
+        viewModel.prepareSessionStart();
+        await pumpEventQueue();
+        expect(viewModel.sessionState, SprayingSessionState.recording);
+        expect(viewModel.currentOperation, isNotNull);
+      },
+    );
 
     test('GPS tracking records track points when recording', () async {
       viewModel.startLocationTracking();
@@ -868,46 +840,43 @@ void main() {
       },
     );
 
-    test(
-      'completes an operation with plants from one zone',
-      () async {
-        final now = DateTime.now().toUtc();
-        inspectionRepo.snapshot = InspectionSnapshot(
-          plants: [InspectionPlant(id: 'plant-b', zoneId: 'zone-b')],
-          types: const [],
-          loadedAt: now,
-        );
-        final operation = SprayingOperation(
-          localId: 'op-zone',
-          startedAt: now,
-          finishedAt: now,
-          operatorName: 'Operador',
-          confirmedPlants: const [
-            SprayingConfirmedPlant(
-              localId: 'match-b',
-              plantId: 'plant-b',
-              matchSource: SprayingMatchSource.autoMatched,
-            ),
-          ],
-        );
-        await sprayingRepo.saveOperation(operation);
-        await viewModel.startReviewingOperation(operation);
+    test('completes an operation with plants from one zone', () async {
+      final now = DateTime.now().toUtc();
+      inspectionRepo.snapshot = InspectionSnapshot(
+        plants: [InspectionPlant(id: 'plant-b', zoneId: 'zone-b')],
+        types: const [],
+        loadedAt: now,
+      );
+      final operation = SprayingOperation(
+        localId: 'op-zone',
+        startedAt: now,
+        finishedAt: now,
+        operatorName: 'Operador',
+        confirmedPlants: const [
+          SprayingConfirmedPlant(
+            localId: 'match-b',
+            plantId: 'plant-b',
+            matchSource: SprayingMatchSource.autoMatched,
+          ),
+        ],
+      );
+      await sprayingRepo.saveOperation(operation);
+      await viewModel.startReviewingOperation(operation);
 
-        final saved = await viewModel.saveInputsAndComplete(
-          inputs: const [
-            SprayingInput(
-              localId: 'input-1',
-              inputType: 'fungicide',
-              productName: 'Produto',
-            ),
-          ],
-        );
+      final saved = await viewModel.saveInputsAndComplete(
+        inputs: const [
+          SprayingInput(
+            localId: 'input-1',
+            inputType: 'fungicide',
+            productName: 'Produto',
+          ),
+        ],
+      );
 
-        expect(saved, isTrue);
-        expect(sprayingRepo.operations['op-zone']?.confirmedPlants.length, 1);
-        expect(sprayingRepo.operations['op-zone']?.inputs.length, 1);
-      },
-    );
+      expect(saved, isTrue);
+      expect(sprayingRepo.operations['op-zone']?.confirmedPlants.length, 1);
+      expect(sprayingRepo.operations['op-zone']?.inputs.length, 1);
+    });
 
     test('saves reviewed plants that span multiple zones', () async {
       final now = DateTime.now().toUtc();

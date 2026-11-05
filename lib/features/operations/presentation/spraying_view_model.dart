@@ -18,7 +18,6 @@ import '../data/spraying_repository.dart';
 import '../domain/inspection_models.dart';
 import '../domain/spraying_geometry_service.dart';
 import '../domain/spraying_location_filter.dart';
-import '../domain/spraying_signal_stabilizer.dart';
 import '../domain/spraying_models.dart';
 import 'inspection_view_model.dart';
 
@@ -89,13 +88,9 @@ class SprayingViewModel extends ChangeNotifier {
   // --- Localização ---
   UserLocation? _userLocation;
   UserLocation? get userLocation => _userLocation;
-  SprayingLocationFilter _locationFilter = SprayingLocationFilter();
-  final SprayingSignalStabilizer _signalStabilizer = SprayingSignalStabilizer();
-  bool _awaitingStableSignal = false;
+  final SprayingLocationFilter _locationFilter = SprayingLocationFilter();
   bool _startingPreparedSession = false;
-  bool get isPreparingSession =>
-      _awaitingStableSignal || _startingPreparedSession;
-  Timer? _signalWaitTimeout;
+  bool get isPreparingSession => _startingPreparedSession;
 
   StreamSubscription<LocationResult>? _locationSubscription;
   bool _isLocationActive = false;
@@ -323,35 +318,15 @@ class SprayingViewModel extends ChangeNotifier {
     if (_sessionState != SprayingSessionState.idle || isPreparingSession) {
       return;
     }
-    _signalStabilizer.reset();
-    _awaitingStableSignal = true;
-    _signalWaitTimeout?.cancel();
-    _signalWaitTimeout = Timer(const Duration(seconds: 30), () {
-      _stopWaitingForSignal(
-        'Não foi possível estabilizar o sinal GPS. Tente novamente em um local aberto.',
-      );
-    });
     startLocationTracking();
-    notifyListeners();
+    unawaited(_startPreparedSession());
   }
 
-  void cancelSessionPreparation() => _stopWaitingForSignal(null);
-
-  void _stopWaitingForSignal(String? message) {
-    if (!_awaitingStableSignal) return;
-    _awaitingStableSignal = false;
-    _signalWaitTimeout?.cancel();
-    _signalStabilizer.reset();
-    _errorMessage = message;
-    notifyListeners();
-  }
-
-  Future<void> _startPreparedSession(UserLocation location) async {
-    _awaitingStableSignal = false;
-    _signalWaitTimeout?.cancel();
-    _signalStabilizer.reset();
-    _userLocation = location;
-    _locationFilter = SprayingLocationFilter()..add(location);
+  Future<void> _startPreparedSession() async {
+    if (_startingPreparedSession ||
+        _sessionState != SprayingSessionState.idle) {
+      return;
+    }
     _startingPreparedSession = true;
     notifyListeners();
     try {
@@ -384,28 +359,14 @@ class SprayingViewModel extends ChangeNotifier {
             }
             notifyListeners();
           }
-          if (_awaitingStableSignal) {
-            final stable = _signalStabilizer.add(location);
-            if (stable != null) unawaited(_startPreparedSession(stable));
-          }
-        } else if (_awaitingStableSignal) {
-          _stopWaitingForSignal(
-            'Localização indisponível. Verifique o GPS e a permissão do app.',
-          );
         }
       },
       onError: (Object _) {
         stopLocationTracking();
-        if (_awaitingStableSignal) {
-          _stopWaitingForSignal('Não foi possível acessar o sinal GPS.');
-        }
       },
       onDone: () {
         _isLocationActive = false;
         _locationSubscription = null;
-        if (_awaitingStableSignal) {
-          _stopWaitingForSignal('Sinal GPS indisponível. Tente novamente.');
-        }
       },
     );
   }
@@ -881,7 +842,6 @@ class SprayingViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    _signalWaitTimeout?.cancel();
     stopLocationTracking();
     super.dispose();
   }

@@ -9,7 +9,7 @@ import 'package:pomar_na_mao_mobile/features/operations/domain/mipd_models.dart'
 import 'package:pomar_na_mao_mobile/features/operations/presentation/mipd_view_model.dart';
 
 void main() {
-  test('aguarda três amostras GPS antes de publicar a posição', () async {
+  test('filtra amostras GPS sem expor estado de espera na interface', () async {
     final locationService = _LocationService();
     final viewModel = MipdViewModel(
       repository: _Repository(),
@@ -22,7 +22,6 @@ void main() {
     });
 
     viewModel.resumeLocation();
-    expect(viewModel.isWaitingForStableLocation, isTrue);
 
     final now = DateTime.now().toUtc();
     for (var secondsAgo = 2; secondsAgo >= 0; secondsAgo--) {
@@ -39,15 +38,13 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       if (secondsAgo > 0) {
         expect(viewModel.userLocation, isNull);
-        expect(viewModel.isWaitingForStableLocation, isTrue);
       }
     }
 
     expect(viewModel.userLocation, isNotNull);
-    expect(viewModel.isWaitingForStableLocation, isFalse);
   });
 
-  test('estabiliza a posição somente na primeira ativação', () async {
+  test('retoma o monitoramento de localização sem espera bloqueante', () async {
     final locationService = _LocationService();
     final viewModel = MipdViewModel(
       repository: _Repository(),
@@ -60,13 +57,12 @@ void main() {
     });
 
     viewModel.resumeLocation();
-    expect(viewModel.isWaitingForStableLocation, isTrue);
-
-    viewModel.cancelStableLocationWait();
     viewModel.pauseLocation();
     viewModel.resumeLocation();
 
-    expect(viewModel.isWaitingForStableLocation, isFalse);
+    locationService.emit(const LocationResult.permissionDenied());
+    await Future<void>.delayed(Duration.zero);
+    expect(viewModel.locationMessage, contains('Permita o acesso'));
   });
 }
 
