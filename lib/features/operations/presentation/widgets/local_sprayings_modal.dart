@@ -27,11 +27,7 @@ class LocalSprayingsModal extends StatelessWidget {
         final theme = Theme.of(context);
         final colorScheme = theme.colorScheme;
         final operations = viewModel.localOperations;
-        final canSyncAny = operations.any(
-          (op) =>
-              op.syncStatus == SprayingSyncStatus.reviewed ||
-              op.syncStatus == SprayingSyncStatus.error,
-        );
+        final canSyncAny = operations.any((op) => op.isEligibleForSync);
 
         return Material(
           color: colorScheme.surface,
@@ -213,6 +209,9 @@ class LocalSprayingsModal extends StatelessWidget {
                             itemBuilder: (ctx, idx) {
                               final op = operations[idx];
                               return _SprayingOperationCard(
+                                key: ValueKey(
+                                  'local-spraying-card-${op.localId}',
+                                ),
                                 operation: op,
                                 viewModel: viewModel,
                               );
@@ -253,6 +252,7 @@ class _SprayingOperationCard extends StatelessWidget {
   const _SprayingOperationCard({
     required this.operation,
     required this.viewModel,
+    super.key,
   });
 
   final SprayingOperation operation;
@@ -263,263 +263,561 @@ class _SprayingOperationCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSyncing = viewModel.isSyncing;
+    final hasReviewedPlants = operation.hasReviewedPlants;
     final responsible = operation.responsible.trim();
     final displayedResponsible =
         responsible.isEmpty || responsible == 'Operador'
         ? 'A definir'
         : responsible;
+    final status = _statusVisual(operation.syncStatus);
+    final performedAt = operation.performedAt.toLocal();
+    final date =
+        '${performedAt.day.toString().padLeft(2, '0')}/'
+        '${performedAt.month.toString().padLeft(2, '0')}/'
+        '${performedAt.year} às '
+        '${performedAt.hour.toString().padLeft(2, '0')}:'
+        '${performedAt.minute.toString().padLeft(2, '0')}';
+    final title = operation.title?.trim();
+    final machine = operation.machineNameSnapshot ?? operation.machineName;
+    final machineDescription = machine == null
+        ? 'Não informada'
+        : '$machine'
+              '${operation.machineBrandSnapshot == null ? '' : ' • ${operation.machineBrandSnapshot}'}';
 
-    return Material(
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Pulverização',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-                _buildStatusBadge(context, operation.syncStatus),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Responsável: $displayedResponsible',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (operation.machineNameSnapshot != null ||
-                operation.machineName != null)
-              Text(
-                'Máquina: ${operation.machineNameSnapshot ?? operation.machineName}'
-                '${operation.machineBrandSnapshot != null ? ' (${operation.machineBrandSnapshot})' : ''}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            if (operation.mixtureNameSnapshot != null)
-              Text(
-                'Calda: ${operation.mixtureNameSnapshot}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(
-                  Icons.route_outlined,
-                  size: 14,
-                  color: colorScheme.outline,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '${operation.route?.distanceMeters.toStringAsFixed(0) ?? 0}m',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.outline,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Icon(Icons.eco_outlined, size: 14, color: colorScheme.outline),
-                const SizedBox(width: 4),
-                Text(
-                  '${operation.confirmedPlants.length} plantas',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.outline,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Icon(
-                  Icons.science_outlined,
-                  size: 14,
-                  color: colorScheme.outline,
-                ),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    operation.mixtureNameSnapshot ?? 'Sem calda',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.outline,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                IconButton(
-                  icon: Icon(
-                    Icons.delete_outline,
-                    color: colorScheme.error,
-                    size: 20,
-                  ),
-                  tooltip: 'Excluir registro',
-                  onPressed: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Excluir pulverização?'),
-                        content: const Text(
-                          'Esta ação removerá a pulverização gravada no dispositivo.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('Cancelar'),
-                          ),
-                          FilledButton(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: colorScheme.error,
-                            ),
-                            onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('Excluir'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirm == true) {
-                      await viewModel.sprayingRepository.deleteOperation(
-                        operation.localId,
-                      );
-                      await viewModel.loadLocalOperations();
-                    }
-                  },
-                ),
-                if (operation.syncStatus == SprayingSyncStatus.draft) ...[
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF0284C7),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    icon: const Icon(Icons.checklist_rounded, size: 16),
-                    label: const Text('Revisar e Determinar Plantas'),
-                    onPressed: () async {
-                      Navigator.of(context).pop();
-                      await viewModel.startReviewingOperation(operation);
-                    },
-                  ),
-                ] else if (operation.syncStatus ==
-                        SprayingSyncStatus.reviewed ||
-                    operation.syncStatus == SprayingSyncStatus.error) ...[
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    icon: const Icon(Icons.edit_note_rounded, size: 16),
-                    label: const Text('Revisar'),
-                    onPressed: () async {
-                      Navigator.of(context).pop();
-                      await viewModel.startReviewingOperation(operation);
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    icon: isSyncing
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.sync_rounded, size: 16),
-                    label: const Text('Sincronizar'),
-                    onPressed: isSyncing
-                        ? null
-                        : () => viewModel.syncOperation(operation.localId),
-                  ),
-                ],
-              ],
-            ),
-          ],
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          status.color.withValues(alpha: 0.055),
+          colorScheme.surface,
         ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: status.color.withValues(alpha: 0.28)),
+        boxShadow: [
+          BoxShadow(
+            color: status.color.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: ColoredBox(
+              color: status.color,
+              child: const SizedBox(width: 5),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _OperationIdentity(
+                  key: ValueKey('spraying-identity-${operation.localId}'),
+                  title: title?.isNotEmpty == true ? title! : 'Pulverização',
+                  date: date,
+                  color: status.color,
+                ),
+                if (operation.syncStatus != SprayingSyncStatus.synced) ...[
+                  const SizedBox(height: 10),
+                  _StatusBadge(
+                    key: ValueKey('spraying-status-${operation.localId}'),
+                    status: status,
+                  ),
+                  const SizedBox(height: 14),
+                ] else
+                  const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface.withValues(alpha: 0.82),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      _OperationDetail(
+                        icon: Icons.person_outline_rounded,
+                        label: 'Responsável',
+                        value: displayedResponsible,
+                        color: const Color(0xFF2563EB),
+                      ),
+                      const SizedBox(height: 9),
+                      _OperationDetail(
+                        icon: Icons.agriculture_outlined,
+                        label: 'Máquina',
+                        value: machineDescription,
+                        color: const Color(0xFFEA580C),
+                      ),
+                      const SizedBox(height: 9),
+                      _OperationDetail(
+                        icon: Icons.science_outlined,
+                        label: 'Calda',
+                        value: operation.mixtureNameSnapshot ?? 'Não informada',
+                        color: const Color(0xFF7C3AED),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _MetricTile(
+                        key: const ValueKey('spraying-distance-metric'),
+                        icon: Icons.route_rounded,
+                        label: 'Percurso',
+                        value:
+                            '${operation.route?.distanceMeters.toStringAsFixed(0) ?? 0} m',
+                        color: const Color(0xFF0284C7),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _MetricTile(
+                        key: const ValueKey('spraying-plants-metric'),
+                        icon: Icons.eco_outlined,
+                        label: 'Plantas',
+                        value: '${operation.confirmedPlants.length}',
+                        color: const Color(0xFF15803D),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Divider(
+                  height: 1,
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.65),
+                ),
+                const SizedBox(height: 10),
+                if (operation.syncStatus == SprayingSyncStatus.draft)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _DeleteOperationButton(
+                        key: ValueKey('delete-spraying-${operation.localId}'),
+                        onPressed: () => _deleteOperation(context),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton.icon(
+                          key: ValueKey('review-spraying-${operation.localId}'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF0369A1),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: const Icon(Icons.checklist_rounded, size: 18),
+                          label: const Text(
+                            'Revisar',
+                            maxLines: 2,
+                            textAlign: TextAlign.center,
+                          ),
+                          onPressed: () async {
+                            Navigator.of(context).pop();
+                            await viewModel.startReviewingOperation(operation);
+                          },
+                        ),
+                      ),
+                    ],
+                  )
+                else if (operation.syncStatus == SprayingSyncStatus.synced)
+                  Row(
+                    children: [
+                      _DeleteOperationButton(
+                        key: ValueKey('delete-spraying-${operation.localId}'),
+                        onPressed: () => _deleteOperation(context),
+                      ),
+                      const Spacer(),
+                      _StatusBadge(
+                        key: ValueKey('spraying-status-${operation.localId}'),
+                        status: status,
+                      ),
+                    ],
+                  )
+                else
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    runAlignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _DeleteOperationButton(
+                        key: ValueKey('delete-spraying-${operation.localId}'),
+                        onPressed: () => _deleteOperation(context),
+                      ),
+                      if (operation.syncStatus == SprayingSyncStatus.reviewed ||
+                          operation.syncStatus == SprayingSyncStatus.error) ...[
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF2563EB),
+                            side: const BorderSide(color: Color(0xFF93C5FD)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: const Icon(Icons.edit_note_rounded, size: 18),
+                          label: const Text('Revisar'),
+                          onPressed: () async {
+                            Navigator.of(context).pop();
+                            await viewModel.startReviewingOperation(operation);
+                          },
+                        ),
+                        Tooltip(
+                          message: hasReviewedPlants
+                              ? 'Sincronizar pulverização'
+                              : 'Revise e associe ao menos uma planta para sincronizar',
+                          child: FilledButton.icon(
+                            key: ValueKey('sync-spraying-${operation.localId}'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF15803D),
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor:
+                                  colorScheme.surfaceContainerHighest,
+                              disabledForegroundColor: colorScheme.outline,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: isSyncing
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.cloud_upload_outlined,
+                                    size: 18,
+                                  ),
+                            label: const Text('Sincronizar'),
+                            onPressed: isSyncing || !hasReviewedPlants
+                                ? null
+                                : () => viewModel.syncOperation(
+                                    operation.localId,
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildStatusBadge(BuildContext context, SprayingSyncStatus status) {
+  Future<void> _deleteOperation(BuildContext context) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir pulverização?'),
+        content: const Text(
+          'Esta ação removerá a pulverização gravada no dispositivo.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await viewModel.sprayingRepository.deleteOperation(operation.localId);
+      await viewModel.loadLocalOperations();
+    }
+  }
+
+  _SprayingStatusVisual _statusVisual(SprayingSyncStatus status) =>
+      switch (status) {
+        SprayingSyncStatus.synced => const _SprayingStatusVisual(
+          color: Color(0xFF15803D),
+          icon: Icons.cloud_done_outlined,
+          label: 'Sincronizada',
+        ),
+        SprayingSyncStatus.syncing => const _SprayingStatusVisual(
+          color: Color(0xFF0284C7),
+          icon: Icons.cloud_sync_outlined,
+          label: 'Sincronizando',
+        ),
+        SprayingSyncStatus.reviewed => const _SprayingStatusVisual(
+          color: Color(0xFF2563EB),
+          icon: Icons.cloud_upload_outlined,
+          label: 'Pronta para envio',
+        ),
+        SprayingSyncStatus.error => const _SprayingStatusVisual(
+          color: Color(0xFFC62828),
+          icon: Icons.error_outline_rounded,
+          label: 'Erro no envio',
+        ),
+        SprayingSyncStatus.draft => const _SprayingStatusVisual(
+          color: Color(0xFFD97706),
+          icon: Icons.edit_note_rounded,
+          label: 'Aguardando revisão',
+        ),
+      };
+}
+
+class _SprayingStatusVisual {
+  const _SprayingStatusVisual({
+    required this.color,
+    required this.icon,
+    required this.label,
+  });
+
+  final Color color;
+  final IconData icon;
+  final String label;
+}
+
+class _OperationIdentity extends StatelessWidget {
+  const _OperationIdentity({
+    required this.title,
+    required this.date,
+    required this.color,
+    super.key,
+  });
+
+  final String title;
+  final String date;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final Color bg;
-    final Color fg;
-    final String label;
-
-    switch (status) {
-      case SprayingSyncStatus.synced:
-        bg = colorScheme.primaryContainer.withValues(alpha: 0.5);
-        fg = colorScheme.primary;
-        label = 'Sincronizado';
-      case SprayingSyncStatus.syncing:
-        bg = colorScheme.surfaceContainerHighest;
-        fg = colorScheme.outline;
-        label = 'Sincronizando...';
-      case SprayingSyncStatus.reviewed:
-        bg = colorScheme.secondaryContainer.withValues(alpha: 0.6);
-        fg = colorScheme.secondary;
-        label = 'Pendente de envio';
-      case SprayingSyncStatus.error:
-        bg = colorScheme.errorContainer.withValues(alpha: 0.6);
-        fg = colorScheme.error;
-        label = 'Erro no envio';
-      case SprayingSyncStatus.draft:
-        bg = const Color(0xFFFEF3C7);
-        fg = const Color(0xFFB45309);
-        label = 'Aguardando Revisão';
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: fg,
-          fontWeight: FontWeight.bold,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(Icons.water_drop_outlined, color: color, size: 24),
         ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: colorScheme.onSurface,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  Icon(
+                    Icons.calendar_today_outlined,
+                    size: 13,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      date,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.status, super.key});
+
+  final _SprayingStatusVisual status;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+    decoration: BoxDecoration(
+      color: status.color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: status.color.withValues(alpha: 0.28)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(status.icon, size: 14, color: status.color),
+        const SizedBox(width: 5),
+        Text(
+          status.label,
+          style: Theme.of(context).textTheme.labelSmall
+              ?.copyWith(color: status.color, fontWeight: FontWeight.w800),
+        ),
+      ],
+    ),
+  );
+}
+
+class _DeleteOperationButton extends StatelessWidget {
+  const _DeleteOperationButton({required this.onPressed, super.key});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return IconButton.filledTonal(
+      style: IconButton.styleFrom(
+        backgroundColor: colorScheme.errorContainer.withValues(alpha: 0.7),
+        foregroundColor: colorScheme.error,
+      ),
+      icon: const Icon(Icons.delete_outline, size: 20),
+      tooltip: 'Excluir registro',
+      onPressed: onPressed,
+    );
+  }
+}
+
+class _OperationDetail extends StatelessWidget {
+  const _OperationDetail({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.11),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, size: 17, color: color),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            '$label: $value',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+    super.key,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

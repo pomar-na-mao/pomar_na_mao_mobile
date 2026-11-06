@@ -97,6 +97,12 @@ class DefaultSprayingRepository implements SprayingRepository {
       throw StateError('A operação não possui rota gravada');
     }
 
+    if (!op.hasReviewedPlants) {
+      throw StateError(
+        'A pulverização precisa ter ao menos uma planta revisada para sincronizar',
+      );
+    }
+
     var effectiveOp = op;
 
     // Se houver menos de 2 trackPoints mas a rota tiver coordenadas no GeoJSON,
@@ -178,11 +184,7 @@ class DefaultSprayingRepository implements SprayingRepository {
   @override
   Future<int> syncAllReviewed() async {
     final operations = await localStore.listOperations();
-    final reviewed = operations.where(
-      (op) =>
-          op.syncStatus == SprayingSyncStatus.reviewed ||
-          op.syncStatus == SprayingSyncStatus.error,
-    );
+    final reviewed = operations.where((op) => op.isEligibleForSync);
 
     var syncedCount = 0;
     for (final op in reviewed) {

@@ -147,7 +147,7 @@ class FakeSprayingRepository implements SprayingRepository {
   Future<int> syncAllReviewed() async {
     int count = 0;
     for (final op in operations.values) {
-      if (op.syncStatus == SprayingSyncStatus.reviewed) {
+      if (op.isEligibleForSync) {
         await syncOperation(op.localId);
         count++;
       }
@@ -823,6 +823,13 @@ void main() {
             startedAt: DateTime.now().toUtc(),
             finishedAt: DateTime.now().toUtc(),
           ),
+          confirmedPlants: const [
+            SprayingConfirmedPlant(
+              localId: 'match-ready-1',
+              plantId: 'plant-ready-1',
+              matchSource: SprayingMatchSource.manualAdded,
+            ),
+          ],
         );
         await sprayingRepo.saveOperation(op);
         await viewModel.loadLocalOperations();
@@ -837,6 +844,29 @@ void main() {
           sprayingRepo.operations['op-ready-1']!.syncStatus,
           equals(SprayingSyncStatus.synced),
         );
+      },
+    );
+
+    test(
+      'syncOperation refuses an operation without reviewed plants',
+      () async {
+        final now = DateTime.now().toUtc();
+        await sprayingRepo.saveOperation(
+          SprayingOperation(
+            localId: 'op-without-plants',
+            startedAt: now,
+            finishedAt: now,
+            syncStatus: SprayingSyncStatus.reviewed,
+          ),
+        );
+        await viewModel.loadLocalOperations();
+
+        final synced = await viewModel.syncOperation('op-without-plants');
+
+        expect(synced, isFalse);
+        expect(sprayingRepo.syncCallCount, 0);
+        expect(viewModel.isSyncing, isFalse);
+        expect(viewModel.errorMessage, contains('ao menos uma planta'));
       },
     );
 
@@ -1013,8 +1043,161 @@ void main() {
       );
 
       expect(find.text('Responsável: A definir'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Responsável: Maria'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('Responsável: Maria'), findsOneWidget);
       expect(find.text('Responsável: Operador'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('saved spraying card uses colorful hierarchy at 320 px', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(320, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final now = DateTime.now().toUtc();
+      await sprayingRepo.saveOperation(
+        SprayingOperation(
+          localId: 'op-colorful-card',
+          startedAt: now,
+          finishedAt: now,
+          performedAt: now,
+          responsible: 'Maria',
+          title: 'Talhão Norte',
+          machineNameSnapshot: 'Trator Valtra',
+          machineBrandSnapshot: 'Valtra',
+          mixtureNameSnapshot: 'Calda cítrica',
+          syncStatus: SprayingSyncStatus.draft,
+        ),
+      );
+      await viewModel.loadLocalOperations();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: LocalSprayingsModal(viewModel: viewModel)),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey('local-spraying-card-op-colorful-card')),
+        findsOneWidget,
+      );
+      expect(find.text('Talhão Norte'), findsOneWidget);
+      expect(find.text('Aguardando revisão'), findsOneWidget);
+      expect(find.text('Responsável: Maria'), findsOneWidget);
+      expect(find.text('Máquina: Trator Valtra • Valtra'), findsOneWidget);
+      expect(find.text('Calda: Calda cítrica'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('spraying-distance-metric')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('spraying-plants-metric')),
+        findsOneWidget,
+      );
+      final identity = tester.getRect(
+        find.byKey(const ValueKey('spraying-identity-op-colorful-card')),
+      );
+      final status = tester.getRect(
+        find.byKey(const ValueKey('spraying-status-op-colorful-card')),
+      );
+      expect(status.top, greaterThanOrEqualTo(identity.bottom + 8));
+
+      final deleteButton = tester.getRect(
+        find.byKey(const ValueKey('delete-spraying-op-colorful-card')),
+      );
+      final reviewButton = tester.getRect(
+        find.byKey(const ValueKey('review-spraying-op-colorful-card')),
+      );
+      expect(deleteButton.left, lessThan(reviewButton.left));
+      expect(
+        (deleteButton.center.dy - reviewButton.center.dy).abs(),
+        lessThanOrEqualTo(1),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('synced status stays beside delete at the card footer', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(320, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final now = DateTime.now().toUtc();
+      await sprayingRepo.saveOperation(
+        SprayingOperation(
+          localId: 'op-synced-card',
+          startedAt: now,
+          finishedAt: now,
+          performedAt: now,
+          responsible: 'Maria',
+          title: 'Talhão Sul',
+          syncStatus: SprayingSyncStatus.synced,
+        ),
+      );
+      await viewModel.loadLocalOperations();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: LocalSprayingsModal(viewModel: viewModel)),
+        ),
+      );
+
+      final identity = tester.getRect(
+        find.byKey(const ValueKey('spraying-identity-op-synced-card')),
+      );
+      final deleteButton = tester.getRect(
+        find.byKey(const ValueKey('delete-spraying-op-synced-card')),
+      );
+      final status = tester.getRect(
+        find.byKey(const ValueKey('spraying-status-op-synced-card')),
+      );
+      expect(status.top, greaterThan(identity.bottom));
+      expect(deleteButton.left, lessThan(status.left));
+      expect(
+        (deleteButton.center.dy - status.center.dy).abs(),
+        lessThanOrEqualTo(1),
+      );
+      expect(find.text('Sincronizada'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('sync button is disabled when no plants were reviewed', (
+      tester,
+    ) async {
+      final now = DateTime.now().toUtc();
+      await sprayingRepo.saveOperation(
+        SprayingOperation(
+          localId: 'op-reviewed-without-plants',
+          startedAt: now,
+          finishedAt: now,
+          performedAt: now,
+          responsible: 'Maria',
+          syncStatus: SprayingSyncStatus.reviewed,
+        ),
+      );
+      await viewModel.loadLocalOperations();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: LocalSprayingsModal(viewModel: viewModel)),
+        ),
+      );
+
+      final syncButton = find.byKey(
+        const ValueKey('sync-spraying-op-reviewed-without-plants'),
+      );
+      expect(syncButton, findsOneWidget);
+      expect(tester.widget<FilledButton>(syncButton).onPressed, isNull);
+      expect(
+        find.byKey(const ValueKey('sync-all-sprayings-button')),
+        findsNothing,
+      );
+      expect(find.text('0'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
@@ -1029,6 +1212,13 @@ void main() {
           finishedAt: now,
           operatorName: 'Operador',
           syncStatus: SprayingSyncStatus.reviewed,
+          confirmedPlants: const [
+            SprayingConfirmedPlant(
+              localId: 'match-sync-error',
+              plantId: 'plant-sync-error',
+              matchSource: SprayingMatchSource.manualAdded,
+            ),
+          ],
         ),
       );
       await viewModel.loadLocalOperations();

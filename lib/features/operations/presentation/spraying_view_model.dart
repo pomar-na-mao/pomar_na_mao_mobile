@@ -787,6 +787,19 @@ class SprayingViewModel extends ChangeNotifier {
   }
 
   Future<bool> syncOperation(String operationLocalId) async {
+    final operation = await sprayingRepository.getOperation(operationLocalId);
+    if (operation == null) {
+      _errorMessage = 'Pulverização não encontrada no dispositivo.';
+      notifyListeners();
+      return false;
+    }
+    if (!operation.hasReviewedPlants) {
+      _errorMessage =
+          'Revise e associe ao menos uma planta antes de sincronizar.';
+      notifyListeners();
+      return false;
+    }
+
     _isSyncing = true;
     _errorMessage = null;
     notifyListeners();

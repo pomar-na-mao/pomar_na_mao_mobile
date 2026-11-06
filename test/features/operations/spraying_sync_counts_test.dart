@@ -125,27 +125,24 @@ void main() {
       );
 
   for (final plantCount in [0, 10]) {
-    test(
-      'partial RPC count $plantCount/16 stays retryable',
-      () async {
-        final store = _Store(operation());
-        final remote = _Remote(result(plants: plantCount, inputs: 2));
-        final repository = DefaultSprayingRepository(
-          localStore: store,
-          remoteDataSource: remote,
-        );
+    test('partial RPC count $plantCount/16 stays retryable', () async {
+      final store = _Store(operation());
+      final remote = _Remote(result(plants: plantCount, inputs: 2));
+      final repository = DefaultSprayingRepository(
+        localStore: store,
+        remoteDataSource: remote,
+      );
 
-        await expectLater(
-          repository.syncOperation('op-1'),
-          throwsA(isA<StateError>()),
-        );
+      await expectLater(
+        repository.syncOperation('op-1'),
+        throwsA(isA<StateError>()),
+      );
 
-        expect(store.operation.syncStatus, SprayingSyncStatus.error);
-        expect((remote.payload!['confirmedPlants'] as List).length, 16);
-        expect((remote.payload!['inputs'] as List).length, 2);
-        expect((remote.payload!['operation'] as Map)['zoneId'], isNull);
-      },
-    );
+      expect(store.operation.syncStatus, SprayingSyncStatus.error);
+      expect((remote.payload!['confirmedPlants'] as List).length, 16);
+      expect((remote.payload!['inputs'] as List).length, 2);
+      expect((remote.payload!['operation'] as Map)['zoneId'], isNull);
+    });
   }
 
   test('matching RPC counts mark the operation synced', () async {
@@ -160,6 +157,29 @@ void main() {
     expect(synced.confirmedPlantsCount, 16);
     expect(synced.inputsCount, 2);
     expect(store.operation.syncStatus, SprayingSyncStatus.synced);
+  });
+
+  test('operation without reviewed plants is rejected before RPC', () async {
+    final store = _Store(operation().copyWith(confirmedPlants: const []));
+    final remote = _Remote(result(plants: 0, inputs: 2));
+    final repository = DefaultSprayingRepository(
+      localStore: store,
+      remoteDataSource: remote,
+    );
+
+    await expectLater(
+      repository.syncOperation('op-1'),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('ao menos uma planta'),
+        ),
+      ),
+    );
+
+    expect(remote.payload, isNull);
+    expect(store.operation.syncStatus, SprayingSyncStatus.reviewed);
   });
 
   test('affected-plants RPC receives a null zoneId', () async {
