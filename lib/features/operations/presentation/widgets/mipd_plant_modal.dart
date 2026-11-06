@@ -161,7 +161,7 @@ class _MipdPlantModalState extends State<MipdPlantModal> {
                         initialValue: _type,
                         isExpanded: true,
                         hint: const Text(
-                          'Selecione uma praga ou doença',
+                          'Praga ou Doença',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -211,7 +211,7 @@ class _MipdPlantModalState extends State<MipdPlantModal> {
                         ),
                       const SizedBox(height: 20),
                       Text(
-                        'Parte da planta',
+                        'Região afetada',
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),

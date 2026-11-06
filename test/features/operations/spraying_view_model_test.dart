@@ -147,7 +147,7 @@ class FakeSprayingRepository implements SprayingRepository {
   Future<int> syncAllReviewed() async {
     int count = 0;
     for (final op in operations.values) {
-      if (op.syncStatus == SprayingSyncStatus.reviewed) {
+      if (op.isEligibleForSync) {
         await syncOperation(op.localId);
         count++;
       }
@@ -245,7 +245,7 @@ class FakeZonesRepository implements ZonesRepository {
 }
 
 void main() {
-  testWidgets('start button shows translucent signal wait and can cancel', (
+  testWidgets('start button begins spraying without a signal wait overlay', (
     tester,
   ) async {
     final phone = FakeLocationService();
@@ -267,14 +267,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('action-spraying-session')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('btn-start-spraying')));
-    await tester.pump();
-    expect(find.text('Aguardando sinal estabilizar'), findsOneWidget);
-    expect(vm.sessionState, SprayingSessionState.idle);
-
-    await tester.tap(find.text('Cancelar'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Aguardando sinal estabilizar'), findsNothing);
     expect(vm.isPreparingSession, isFalse);
-    expect(vm.currentOperation, isNull);
+    expect(vm.sessionState, SprayingSessionState.recording);
+    expect(vm.currentOperation, isNotNull);
 
     await tester.pumpWidget(const SizedBox());
     vm.dispose();
@@ -466,53 +463,28 @@ void main() {
       expect(viewModel.currentOperation!.title, equals('Aplicação 1'));
     });
 
-    test('prepares session until fresh GPS samples stabilize', () async {
-      final now = DateTime.now().toUtc();
-      viewModel.prepareSessionStart();
-      expect(viewModel.isPreparingSession, isTrue);
-      expect(viewModel.sessionState, SprayingSessionState.idle);
+    test(
+      'starts session immediately without waiting for GPS stabilization',
+      () async {
+        viewModel.prepareSessionStart();
+        await pumpEventQueue();
 
-      for (var seconds = -2; seconds <= 0; seconds++) {
-        locationService.emit(
-          LocationResult.available(
-            UserLocation(
-              latitude: -21.177,
-              longitude: -47.81,
-              accuracy: 5,
-              timestamp: now.add(Duration(seconds: seconds)),
-            ),
-          ),
-        );
-      }
-      await pumpEventQueue();
+        expect(viewModel.isPreparingSession, isFalse);
+        expect(viewModel.sessionState, SprayingSessionState.recording);
+        expect(viewModel.activeTrackPoints, isEmpty);
+      },
+    );
 
-      expect(viewModel.isPreparingSession, isFalse);
-      expect(viewModel.sessionState, SprayingSessionState.recording);
-      expect(viewModel.activeTrackPoints, hasLength(1));
-    });
-
-    test('cancelled preparation never creates a spraying session', () async {
-      viewModel.prepareSessionStart();
-      viewModel.cancelSessionPreparation();
-      expect(viewModel.isPreparingSession, isFalse);
-
-      final now = DateTime.now().toUtc();
-      for (var seconds = -2; seconds <= 0; seconds++) {
-        locationService.emit(
-          LocationResult.available(
-            UserLocation(
-              latitude: -21.177,
-              longitude: -47.81,
-              accuracy: 5,
-              timestamp: now.add(Duration(seconds: seconds)),
-            ),
-          ),
-        );
-      }
-      await pumpEventQueue();
-      expect(viewModel.sessionState, SprayingSessionState.idle);
-      expect(viewModel.currentOperation, isNull);
-    });
+    test(
+      'ignores repeated start requests while creating the session',
+      () async {
+        viewModel.prepareSessionStart();
+        viewModel.prepareSessionStart();
+        await pumpEventQueue();
+        expect(viewModel.sessionState, SprayingSessionState.recording);
+        expect(viewModel.currentOperation, isNotNull);
+      },
+    );
 
     test('GPS tracking records track points when recording', () async {
       viewModel.startLocationTracking();
@@ -851,6 +823,13 @@ void main() {
             startedAt: DateTime.now().toUtc(),
             finishedAt: DateTime.now().toUtc(),
           ),
+          confirmedPlants: const [
+            SprayingConfirmedPlant(
+              localId: 'match-ready-1',
+              plantId: 'plant-ready-1',
+              matchSource: SprayingMatchSource.manualAdded,
+            ),
+          ],
         );
         await sprayingRepo.saveOperation(op);
         await viewModel.loadLocalOperations();
@@ -869,45 +848,65 @@ void main() {
     );
 
     test(
-      'completes an operation with plants from one zone',
+      'syncOperation refuses an operation without reviewed plants',
       () async {
         final now = DateTime.now().toUtc();
-        inspectionRepo.snapshot = InspectionSnapshot(
-          plants: [InspectionPlant(id: 'plant-b', zoneId: 'zone-b')],
-          types: const [],
-          loadedAt: now,
+        await sprayingRepo.saveOperation(
+          SprayingOperation(
+            localId: 'op-without-plants',
+            startedAt: now,
+            finishedAt: now,
+            syncStatus: SprayingSyncStatus.reviewed,
+          ),
         );
-        final operation = SprayingOperation(
-          localId: 'op-zone',
-          startedAt: now,
-          finishedAt: now,
-          operatorName: 'Operador',
-          confirmedPlants: const [
-            SprayingConfirmedPlant(
-              localId: 'match-b',
-              plantId: 'plant-b',
-              matchSource: SprayingMatchSource.autoMatched,
-            ),
-          ],
-        );
-        await sprayingRepo.saveOperation(operation);
-        await viewModel.startReviewingOperation(operation);
+        await viewModel.loadLocalOperations();
 
-        final saved = await viewModel.saveInputsAndComplete(
-          inputs: const [
-            SprayingInput(
-              localId: 'input-1',
-              inputType: 'fungicide',
-              productName: 'Produto',
-            ),
-          ],
-        );
+        final synced = await viewModel.syncOperation('op-without-plants');
 
-        expect(saved, isTrue);
-        expect(sprayingRepo.operations['op-zone']?.confirmedPlants.length, 1);
-        expect(sprayingRepo.operations['op-zone']?.inputs.length, 1);
+        expect(synced, isFalse);
+        expect(sprayingRepo.syncCallCount, 0);
+        expect(viewModel.isSyncing, isFalse);
+        expect(viewModel.errorMessage, contains('ao menos uma planta'));
       },
     );
+
+    test('completes an operation with plants from one zone', () async {
+      final now = DateTime.now().toUtc();
+      inspectionRepo.snapshot = InspectionSnapshot(
+        plants: [InspectionPlant(id: 'plant-b', zoneId: 'zone-b')],
+        types: const [],
+        loadedAt: now,
+      );
+      final operation = SprayingOperation(
+        localId: 'op-zone',
+        startedAt: now,
+        finishedAt: now,
+        operatorName: 'Operador',
+        confirmedPlants: const [
+          SprayingConfirmedPlant(
+            localId: 'match-b',
+            plantId: 'plant-b',
+            matchSource: SprayingMatchSource.autoMatched,
+          ),
+        ],
+      );
+      await sprayingRepo.saveOperation(operation);
+      await viewModel.startReviewingOperation(operation);
+
+      final saved = await viewModel.saveInputsAndComplete(
+        inputs: const [
+          SprayingInput(
+            localId: 'input-1',
+            inputType: 'fungicide',
+            productName: 'Produto',
+          ),
+        ],
+      );
+
+      expect(saved, isTrue);
+      expect(sprayingRepo.operations['op-zone']?.confirmedPlants.length, 1);
+      expect(sprayingRepo.operations['op-zone']?.inputs.length, 1);
+    });
 
     test('saves reviewed plants that span multiple zones', () async {
       final now = DateTime.now().toUtc();
@@ -1044,8 +1043,161 @@ void main() {
       );
 
       expect(find.text('Responsável: A definir'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Responsável: Maria'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('Responsável: Maria'), findsOneWidget);
       expect(find.text('Responsável: Operador'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('saved spraying card uses colorful hierarchy at 320 px', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(320, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final now = DateTime.now().toUtc();
+      await sprayingRepo.saveOperation(
+        SprayingOperation(
+          localId: 'op-colorful-card',
+          startedAt: now,
+          finishedAt: now,
+          performedAt: now,
+          responsible: 'Maria',
+          title: 'Talhão Norte',
+          machineNameSnapshot: 'Trator Valtra',
+          machineBrandSnapshot: 'Valtra',
+          mixtureNameSnapshot: 'Calda cítrica',
+          syncStatus: SprayingSyncStatus.draft,
+        ),
+      );
+      await viewModel.loadLocalOperations();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: LocalSprayingsModal(viewModel: viewModel)),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey('local-spraying-card-op-colorful-card')),
+        findsOneWidget,
+      );
+      expect(find.text('Talhão Norte'), findsOneWidget);
+      expect(find.text('Aguardando revisão'), findsOneWidget);
+      expect(find.text('Responsável: Maria'), findsOneWidget);
+      expect(find.text('Máquina: Trator Valtra • Valtra'), findsOneWidget);
+      expect(find.text('Calda: Calda cítrica'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('spraying-distance-metric')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('spraying-plants-metric')),
+        findsOneWidget,
+      );
+      final identity = tester.getRect(
+        find.byKey(const ValueKey('spraying-identity-op-colorful-card')),
+      );
+      final status = tester.getRect(
+        find.byKey(const ValueKey('spraying-status-op-colorful-card')),
+      );
+      expect(status.top, greaterThanOrEqualTo(identity.bottom + 8));
+
+      final deleteButton = tester.getRect(
+        find.byKey(const ValueKey('delete-spraying-op-colorful-card')),
+      );
+      final reviewButton = tester.getRect(
+        find.byKey(const ValueKey('review-spraying-op-colorful-card')),
+      );
+      expect(deleteButton.left, lessThan(reviewButton.left));
+      expect(
+        (deleteButton.center.dy - reviewButton.center.dy).abs(),
+        lessThanOrEqualTo(1),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('synced status stays beside delete at the card footer', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(320, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final now = DateTime.now().toUtc();
+      await sprayingRepo.saveOperation(
+        SprayingOperation(
+          localId: 'op-synced-card',
+          startedAt: now,
+          finishedAt: now,
+          performedAt: now,
+          responsible: 'Maria',
+          title: 'Talhão Sul',
+          syncStatus: SprayingSyncStatus.synced,
+        ),
+      );
+      await viewModel.loadLocalOperations();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: LocalSprayingsModal(viewModel: viewModel)),
+        ),
+      );
+
+      final identity = tester.getRect(
+        find.byKey(const ValueKey('spraying-identity-op-synced-card')),
+      );
+      final deleteButton = tester.getRect(
+        find.byKey(const ValueKey('delete-spraying-op-synced-card')),
+      );
+      final status = tester.getRect(
+        find.byKey(const ValueKey('spraying-status-op-synced-card')),
+      );
+      expect(status.top, greaterThan(identity.bottom));
+      expect(deleteButton.left, lessThan(status.left));
+      expect(
+        (deleteButton.center.dy - status.center.dy).abs(),
+        lessThanOrEqualTo(1),
+      );
+      expect(find.text('Sincronizada'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('sync button is disabled when no plants were reviewed', (
+      tester,
+    ) async {
+      final now = DateTime.now().toUtc();
+      await sprayingRepo.saveOperation(
+        SprayingOperation(
+          localId: 'op-reviewed-without-plants',
+          startedAt: now,
+          finishedAt: now,
+          performedAt: now,
+          responsible: 'Maria',
+          syncStatus: SprayingSyncStatus.reviewed,
+        ),
+      );
+      await viewModel.loadLocalOperations();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: LocalSprayingsModal(viewModel: viewModel)),
+        ),
+      );
+
+      final syncButton = find.byKey(
+        const ValueKey('sync-spraying-op-reviewed-without-plants'),
+      );
+      expect(syncButton, findsOneWidget);
+      expect(tester.widget<FilledButton>(syncButton).onPressed, isNull);
+      expect(
+        find.byKey(const ValueKey('sync-all-sprayings-button')),
+        findsNothing,
+      );
+      expect(find.text('0'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
@@ -1060,6 +1212,13 @@ void main() {
           finishedAt: now,
           operatorName: 'Operador',
           syncStatus: SprayingSyncStatus.reviewed,
+          confirmedPlants: const [
+            SprayingConfirmedPlant(
+              localId: 'match-sync-error',
+              plantId: 'plant-sync-error',
+              matchSource: SprayingMatchSource.manualAdded,
+            ),
+          ],
         ),
       );
       await viewModel.loadLocalOperations();

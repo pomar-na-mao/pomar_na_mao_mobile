@@ -12,6 +12,7 @@ import 'package:pomar_na_mao_mobile/features/operations/domain/activity_models.d
 import 'package:pomar_na_mao_mobile/features/operations/domain/inspection_models.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/activity_view.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/activity_view_model.dart';
+import 'package:pomar_na_mao_mobile/features/operations/presentation/widgets/activity_catalog_components.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/widgets/activity_entry_modal.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/widgets/activity_saved_entries.dart';
 
@@ -200,13 +201,13 @@ void main() {
     await tester.tap(find.text('Zona A').last);
     await tester.pumpAndSettle();
 
-    expect(config!.plants.single.id, 'plant-a');
-    expect(config!.selectedZoneId, 'zone-a');
-    expect(config!.selectedZonePoints, hasLength(4));
     await tester.tap(
       find.byKey(const ValueKey('activity-apply-zone-filter-button')),
     );
     await tester.pumpAndSettle();
+    expect(config!.plants.single.id, 'plant-a');
+    expect(config!.selectedZoneId, 'zone-a');
+    expect(config!.selectedZonePoints, hasLength(4));
     expect(
       find.byKey(const ValueKey('activity-zone-filter-badge')),
       findsOneWidget,
@@ -307,10 +308,13 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('activity-select-mixture')));
     await tester.pumpAndSettle();
-    expect(find.text('Selecionar calda'), findsOneWidget);
-    expect(find.text('Escolha uma receita cadastrada'), findsOneWidget);
+    expect(find.text('Selecionar Calda'), findsOneWidget);
+    expect(
+      find.text('Escolha uma calda cadastrada no catálogo'),
+      findsOneWidget,
+    );
     expect(find.text('Calda cítrica'), findsOneWidget);
-    expect(find.text('1 insumo'), findsOneWidget);
+    expect(find.textContaining('1 insumo'), findsOneWidget);
     await tester.tap(find.text('Calda cítrica'));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView), const Offset(0, -450));
@@ -321,6 +325,7 @@ void main() {
       find.text(
         'Somente leitura. Nome, observações, insumos, doses e unidades da '
         'calda não podem ser alterados.',
+        skipOffstage: false,
       ),
       findsOneWidget,
     );
@@ -545,6 +550,32 @@ void main() {
 
     expect(config!.userLocation!.timestamp, isNot(previousLocationTimestamp));
     expect(config!.initialCameraPosition, userCamera);
+  });
+
+  testWidgets('catalog searches do not request focus when opened', (
+    tester,
+  ) async {
+    final mixture = MixtureCatalogItem(
+      id: 'mix-1',
+      name: 'Calda teste',
+      isActive: true,
+      inputs: const [
+        MixtureInputCatalogItem(inputId: 'input-1', name: 'Insumo', dose: '1'),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: MixtureCatalogPicker(catalog: [mixture])),
+    );
+    expect(tester.widget<TextField>(find.byType(TextField)).autofocus, isFalse);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MachineCatalogPicker(
+          catalog: [MachineCatalogItem(id: 'machine-1', name: 'Trator')],
+        ),
+      ),
+    );
+    expect(tester.widget<TextField>(find.byType(TextField)).autofocus, isFalse);
   });
 }
 

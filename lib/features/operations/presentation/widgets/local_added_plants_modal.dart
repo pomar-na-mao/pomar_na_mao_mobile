@@ -4,14 +4,14 @@ import '../../domain/inspection_models.dart';
 import '../inspection_view_model.dart';
 
 class LocalAddedPlantsModal extends StatelessWidget {
-  const LocalAddedPlantsModal({
-    required this.viewModel,
-    super.key,
-  });
+  const LocalAddedPlantsModal({required this.viewModel, super.key});
 
   final InspectionViewModel viewModel;
 
-  static Future<void> show(BuildContext context, InspectionViewModel viewModel) {
+  static Future<void> show(
+    BuildContext context,
+    InspectionViewModel viewModel,
+  ) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -54,7 +54,9 @@ class LocalAddedPlantsModal extends StatelessWidget {
                       width: 36,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                        color: colorScheme.outlineVariant.withValues(
+                          alpha: 0.6,
+                        ),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -66,7 +68,9 @@ class LocalAddedPlantsModal extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: colorScheme.secondaryContainer.withValues(alpha: 0.55),
+                            color: colorScheme.secondaryContainer.withValues(
+                              alpha: 0.55,
+                            ),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
@@ -108,8 +112,13 @@ class LocalAddedPlantsModal extends StatelessWidget {
                   const Divider(height: 1),
                   if (viewModel.feedbackMessage case final message?)
                     Container(
-                      color: colorScheme.primaryContainer.withValues(alpha: 0.3),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      color: colorScheme.primaryContainer.withValues(
+                        alpha: 0.3,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
                       child: Row(
                         children: [
                           Icon(
@@ -133,7 +142,10 @@ class LocalAddedPlantsModal extends StatelessWidget {
                   Flexible(
                     child: plants.isEmpty
                         ? Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 48,
+                            ),
                             child: Center(
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -141,7 +153,8 @@ class LocalAddedPlantsModal extends StatelessWidget {
                                   Container(
                                     padding: const EdgeInsets.all(16),
                                     decoration: BoxDecoration(
-                                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                                      color: colorScheme.surfaceContainerHighest
+                                          .withValues(alpha: 0.4),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Icon(
@@ -167,22 +180,24 @@ class LocalAddedPlantsModal extends StatelessWidget {
                             key: const ValueKey('local-added-plants-list'),
                             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                             itemCount: plants.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 10),
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 10),
                             itemBuilder: (context, index) {
                               final plant = plants[index];
                               final zoneName = plant.zoneId != null
                                   ? viewModel.zones
-                                      .where((z) => z.id == plant.zoneId)
-                                      .firstOrNull
-                                      ?.name
+                                        .where((z) => z.id == plant.zoneId)
+                                        .firstOrNull
+                                        ?.name
                                   : null;
                               return _AddedPlantCard(
-                                key: ValueKey('local-added-plant-${plant.localId}'),
+                                key: ValueKey(
+                                  'local-added-plant-${plant.localId}',
+                                ),
                                 plant: plant,
                                 zoneName: zoneName,
-                                onDoubleTap: () => viewModel.removeAddedPlant(
-                                  plant.localId,
-                                ),
+                                onDoubleTap: () =>
+                                    viewModel.removeAddedPlant(plant.localId),
                               );
                             },
                           ),
@@ -258,70 +273,176 @@ class _AddedPlantCard extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: colorScheme.outlineVariant),
-        ),
-        child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.place_outlined, color: colorScheme.secondary, size: 22),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '${plant.latitude.toStringAsFixed(6)}, ${plant.longitude.toStringAsFixed(6)}',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: statusColor.withValues(alpha: 0.22)),
+          boxShadow: [
+            BoxShadow(
+              color: colorScheme.shadow.withValues(alpha: 0.06),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
             ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _StatusChip(
-                  icon: Icons.sync_rounded,
-                  label: plant.statusLabel,
-                  color: statusColor,
-                ),
-                _StatusChip(
-                  icon: plant.nonExistent
-                      ? Icons.hide_source_outlined
-                      : Icons.spa_outlined,
-                  label: plant.nonExistent ? 'Inexistente' : 'Existente',
-                  color: plant.nonExistent
-                      ? const Color(0xFFF9A825)
-                      : const Color(0xFF2E7D32),
-                ),
-                if (zoneName != null || plant.zoneId != null)
-                  _StatusChip(
-                    icon: Icons.grid_view_rounded,
-                    label: zoneName ?? 'Zona: ${plant.zoneId}',
-                    color: colorScheme.secondary,
-                  ),
-              ],
-            ),
-            if (plant.error case final error?) ...[
-              const SizedBox(height: 10),
-              Text(
-                error,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
           ],
         ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: colorScheme.secondaryContainer,
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Icon(
+                      plant.nonExistent
+                          ? Icons.hide_source_outlined
+                          : Icons.spa_outlined,
+                      color: colorScheme.onSecondaryContainer,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          plant.nonExistent
+                              ? 'Planta marcada como inexistente'
+                              : 'Planta adicionada',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          zoneName ??
+                              (plant.zoneId == null
+                                  ? 'Sem zona informada'
+                                  : 'Zona ${plant.zoneId}'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _StatusChip(
+                    icon: plant.status == InspectionSyncStatus.synced
+                        ? Icons.cloud_done_outlined
+                        : Icons.cloud_upload_outlined,
+                    label: plant.statusLabel,
+                    color: statusColor,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.45,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _CoordinateValue(
+                        label: 'LATITUDE',
+                        value: plant.latitude.toStringAsFixed(6),
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 32,
+                      color: colorScheme.outlineVariant,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _CoordinateValue(
+                        label: 'LONGITUDE',
+                        value: plant.longitude.toStringAsFixed(6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (plant.error case final error?) ...[
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 18,
+                      color: colorScheme.error,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        error,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+class _CoordinateValue extends StatelessWidget {
+  const _CoordinateValue({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -353,10 +474,8 @@ class _StatusChip extends StatelessWidget {
             const SizedBox(width: 5),
             Text(
               label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(context).textTheme.labelSmall
+                  ?.copyWith(color: color, fontWeight: FontWeight.w700),
             ),
           ],
         ),

@@ -86,10 +86,6 @@ class InspectionViewModel extends ChangeNotifier {
   StreamSubscription<void>? _plantChangesSubscription;
   bool _isLocationActive = false;
   final UserPositionTracker _positionTracker = UserPositionTracker();
-  Timer? _stableLocationTimeout;
-  bool _isWaitingForStableLocation = false;
-
-  bool get isWaitingForStableLocation => _isWaitingForStableLocation;
 
   InspectionLoadStatus _loadStatus = InspectionLoadStatus.initial;
   InspectionLoadStatus get loadStatus => _loadStatus;
@@ -861,28 +857,15 @@ class InspectionViewModel extends ChangeNotifier {
     _isLocationActive = true;
     _locationSubscription?.cancel();
     _positionTracker.reset();
-    if (_locationResult == null) {
-      _isWaitingForStableLocation = true;
-      _stableLocationTimeout?.cancel();
-      _stableLocationTimeout = Timer(const Duration(seconds: 30), () {
-        if (_disposed || !_isWaitingForStableLocation) return;
-        _isWaitingForStableLocation = false;
-        _locationResult = const LocationResult.error();
-        notifyListeners();
-      });
-      scheduleMicrotask(notifyListeners);
-    }
     _locationSubscription = locationService.watchLocation().listen(
       (result) {
         if (_disposed || !_isLocationActive) return;
         if (result.location case final location?) {
           final accepted = _positionTracker.add(location);
           if (accepted == null) return;
-          _finishWaitingForStableLocation();
           _locationResult = LocationResult.available(accepted);
         } else {
           _positionTracker.reset();
-          _finishWaitingForStableLocation();
           _locationResult = result;
         }
         notifyListeners();
@@ -890,7 +873,6 @@ class InspectionViewModel extends ChangeNotifier {
       onError: (Object _) {
         if (_disposed || !_isLocationActive) return;
         _positionTracker.reset();
-        _finishWaitingForStableLocation();
         _locationResult = const LocationResult.error();
         notifyListeners();
       },
@@ -899,23 +881,10 @@ class InspectionViewModel extends ChangeNotifier {
         _isLocationActive = false;
         _locationSubscription = null;
         _positionTracker.reset();
-        _finishWaitingForStableLocation();
         _locationResult = const LocationResult.error();
         notifyListeners();
       },
     );
-  }
-
-  void cancelStableLocationWait() {
-    if (!_isWaitingForStableLocation) return;
-    _finishWaitingForStableLocation();
-    notifyListeners();
-  }
-
-  void _finishWaitingForStableLocation() {
-    _isWaitingForStableLocation = false;
-    _stableLocationTimeout?.cancel();
-    _stableLocationTimeout = null;
   }
 
   void pauseLocation() {
@@ -923,9 +892,6 @@ class InspectionViewModel extends ChangeNotifier {
     _locationSubscription?.cancel();
     _locationSubscription = null;
     _positionTracker.reset();
-    final wasWaiting = _isWaitingForStableLocation;
-    _finishWaitingForStableLocation();
-    if (wasWaiting) scheduleMicrotask(notifyListeners);
   }
 
   @override
