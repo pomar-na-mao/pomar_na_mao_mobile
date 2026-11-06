@@ -27,7 +27,6 @@ import 'spraying_map_camera.dart';
 import 'spraying_view_model.dart';
 import 'widgets/spraying_action_card.dart';
 import 'widgets/spraying_review_action_bar.dart';
-import 'widgets/spraying_signal_overlay.dart';
 
 class SprayingMapConfig {
   const SprayingMapConfig({
@@ -272,7 +271,6 @@ class _SprayingViewState extends State<SprayingView> {
     if (!mounted ||
         vm.sessionState != SprayingSessionState.recording ||
         _needsInitialFocus ||
-        _userHasInteractedWithMap ||
         identical(_lastCheckedLocation, location)) {
       return;
     }
@@ -297,8 +295,7 @@ class _SprayingViewState extends State<SprayingView> {
       final bounds = await controller.getVisibleRegion();
       if (!mounted ||
           _mapController != controller ||
-          vm.sessionState != SprayingSessionState.recording ||
-          _userHasInteractedWithMap) {
+          vm.sessionState != SprayingSessionState.recording) {
         return;
       }
       _lastCheckedLocation = location;
@@ -334,7 +331,7 @@ class _SprayingViewState extends State<SprayingView> {
       _checkingVisibleRegion = false;
       final queued = _queuedLocation;
       _queuedLocation = null;
-      if (queued != null && !_userHasInteractedWithMap) {
+      if (queued != null) {
         _lastCheckedLocation = null;
         unawaited(_keepUserVisible(queued, vm));
       }
@@ -697,14 +694,6 @@ class _SprayingViewState extends State<SprayingView> {
                     SprayingActionCard(viewModel: vm),
                 ],
               ),
-              if (vm.isPreparingSession)
-                Positioned.fill(
-                  child: SprayingSignalOverlay(
-                    onCancel: vm.sessionState == SprayingSessionState.idle
-                        ? vm.cancelSessionPreparation
-                        : null,
-                  ),
-                ),
             ],
           ),
         );

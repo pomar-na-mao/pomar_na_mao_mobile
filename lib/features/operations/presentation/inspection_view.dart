@@ -20,7 +20,6 @@ import 'inspection_view_model.dart';
 import 'operation_map_style.dart';
 import 'widgets/inspection_action_card.dart';
 import 'widgets/plant_editor_modal.dart';
-import 'widgets/spraying_signal_overlay.dart';
 
 class InspectionMapConfig {
   const InspectionMapConfig({
@@ -894,12 +893,6 @@ class _InspectionViewState extends State<InspectionView> {
                   InspectionActionCard(viewModel: vm),
                 ],
               ),
-              if (vm.isWaitingForStableLocation)
-                Positioned.fill(
-                  child: SprayingSignalOverlay(
-                    onCancel: vm.cancelStableLocationWait,
-                  ),
-                ),
             ],
           ),
         );

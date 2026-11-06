@@ -16,7 +16,7 @@ enum MipdPlantPart {
 
   static MipdPlantPart parse(String value) => values.firstWhere(
     (part) => part.value == value,
-    orElse: () => throw FormatException('Parte da planta inválida: $value'),
+    orElse: () => throw FormatException('Região afetada inválida: $value'),
   );
 }
 

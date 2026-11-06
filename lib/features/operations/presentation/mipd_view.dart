@@ -15,7 +15,6 @@ import 'operation_map_style.dart';
 import 'widgets/mipd_plant_modal.dart';
 import 'widgets/mipd_saved_markings.dart';
 import 'widgets/operation_action_button.dart';
-import 'widgets/spraying_signal_overlay.dart';
 
 class MipdMapConfig {
   const MipdMapConfig({
@@ -306,12 +305,6 @@ class _MipdViewState extends State<MipdView> {
                 ),
               ],
             ),
-            if (vm.isWaitingForStableLocation)
-              Positioned.fill(
-                child: SprayingSignalOverlay(
-                  onCancel: vm.cancelStableLocationWait,
-                ),
-              ),
           ],
         ),
       );

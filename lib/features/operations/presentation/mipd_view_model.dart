@@ -29,15 +29,11 @@ class MipdViewModel extends ChangeNotifier {
   bool syncing = false;
   StreamSubscription<LocationResult>? _locationSubscription;
   final UserPositionTracker _positionTracker = UserPositionTracker();
-  Timer? _stableLocationTimeout;
   LocationResult? _locationResult;
   bool _isLocationActive = false;
-  bool _isWaitingForStableLocation = false;
-  bool _initialLocationStabilizationStarted = false;
   bool _disposed = false;
 
   UserLocation? get userLocation => _locationResult?.location;
-  bool get isWaitingForStableLocation => _isWaitingForStableLocation;
 
   String? get locationMessage => switch (_locationResult?.availability) {
     LocationAvailability.permissionDenied =>
@@ -56,30 +52,16 @@ class MipdViewModel extends ChangeNotifier {
     if (_disposed || _isLocationActive) return;
     _isLocationActive = true;
     _locationSubscription?.cancel();
-    if (!_initialLocationStabilizationStarted) {
-      _initialLocationStabilizationStarted = true;
-      _positionTracker.reset();
-      _isWaitingForStableLocation = true;
-      _stableLocationTimeout?.cancel();
-      _stableLocationTimeout = Timer(const Duration(seconds: 30), () {
-        if (_disposed || !_isWaitingForStableLocation) return;
-        _isWaitingForStableLocation = false;
-        _locationResult = const LocationResult.error();
-        notifyListeners();
-      });
-      scheduleMicrotask(notifyListeners);
-    }
+    _positionTracker.reset();
     _locationSubscription = locationService.watchLocation().listen(
       (result) {
         if (_disposed || !_isLocationActive) return;
         if (result.location case final location?) {
           final accepted = _positionTracker.add(location);
           if (accepted == null) return;
-          _finishWaitingForStableLocation();
           _locationResult = LocationResult.available(accepted);
         } else {
           _positionTracker.reset();
-          _finishWaitingForStableLocation();
           _locationResult = result;
         }
         notifyListeners();
@@ -87,7 +69,6 @@ class MipdViewModel extends ChangeNotifier {
       onError: (Object _) {
         if (_disposed || !_isLocationActive) return;
         _positionTracker.reset();
-        _finishWaitingForStableLocation();
         _locationResult = const LocationResult.error();
         notifyListeners();
       },
@@ -96,23 +77,10 @@ class MipdViewModel extends ChangeNotifier {
         _isLocationActive = false;
         _locationSubscription = null;
         _positionTracker.reset();
-        _finishWaitingForStableLocation();
         _locationResult = const LocationResult.error();
         notifyListeners();
       },
     );
-  }
-
-  void cancelStableLocationWait() {
-    if (!_isWaitingForStableLocation) return;
-    _finishWaitingForStableLocation();
-    notifyListeners();
-  }
-
-  void _finishWaitingForStableLocation() {
-    _isWaitingForStableLocation = false;
-    _stableLocationTimeout?.cancel();
-    _stableLocationTimeout = null;
   }
 
   Future<void> loadPlants({bool forceRemote = true}) async {
@@ -183,9 +151,6 @@ class MipdViewModel extends ChangeNotifier {
     _isLocationActive = false;
     unawaited(_locationSubscription?.cancel());
     _locationSubscription = null;
-    final wasWaiting = _isWaitingForStableLocation;
-    _finishWaitingForStableLocation();
-    if (wasWaiting) scheduleMicrotask(notifyListeners);
   }
 
   @override

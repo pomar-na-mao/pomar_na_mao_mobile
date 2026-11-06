@@ -68,6 +68,12 @@ class _ActivityViewState extends State<ActivityView> {
   BitmapDescriptor? _userIcon;
   GoogleMapController? _controller;
   GoogleMapController? _drawingController;
+  final _mainMapNavigator = UserMapNavigator();
+  final _drawingMapNavigator = UserMapNavigator();
+  CameraPosition _mainCameraPosition = const CameraPosition(
+    target: defaultFarmMapPosition,
+    zoom: OperationMapStyle.initialZoom,
+  );
   Future<void> _drawingQueue = Future.value();
   final Set<String> _activeMapSurfaces = {};
   Timer? _pauseLocationTimer;
@@ -134,7 +140,7 @@ class _ActivityViewState extends State<ActivityView> {
   }
 
   void _queueScreenPoint(Offset localPosition) {
-    final controller = _controller;
+    final controller = _drawingController ?? _controller;
     if (!_drawingEnabled || controller == null) return;
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     final coordinate = ScreenCoordinate(
@@ -147,6 +153,34 @@ class _ActivityViewState extends State<ActivityView> {
       widget.viewModel.addPoint(
         ActivityPoint(position.latitude, position.longitude),
       );
+    });
+  }
+
+  void _followUserLocation(UserLocation location) {
+    if (widget.mapBuilder != null) return;
+    _mainMapNavigator.observe(location);
+    _drawingMapNavigator.observe(location);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_activeMapSurfaces.contains('drawing')) {
+        unawaited(
+          _drawingMapNavigator.follow(
+            location: location,
+            controller: _drawingController,
+            camera: () => _drawingCameraPosition,
+            isActive: () => mounted && _activeMapSurfaces.contains('drawing'),
+          ),
+        );
+      } else if (_activeMapSurfaces.contains('main')) {
+        unawaited(
+          _mainMapNavigator.follow(
+            location: location,
+            controller: _controller,
+            camera: () => _mainCameraPosition,
+            isActive: () => mounted && _activeMapSurfaces.contains('main'),
+          ),
+        );
+      }
     });
   }
 
@@ -316,6 +350,9 @@ class _ActivityViewState extends State<ActivityView> {
       if (widget.mapBuilder == null) {
         _updateMarkers();
         _fitSelectedZone(vm);
+        if (vm.userLocation case final location?) {
+          _followUserLocation(location);
+        }
       }
       final config = ActivityMapConfig(
         plants: vm.plants,
@@ -460,15 +497,14 @@ class _ActivityViewState extends State<ActivityView> {
               mapType: OperationMapStyle.mapType,
               initialCameraPosition: drawingSurface
                   ? _drawingCameraPosition
-                  : const CameraPosition(
-                      target: defaultFarmMapPosition,
-                      zoom: OperationMapStyle.initialZoom,
-                    ),
-              onCameraMove: drawingSurface
-                  ? (position) {
-                      _drawingCameraPosition = position;
-                    }
-                  : null,
+                  : _mainCameraPosition,
+              onCameraMove: (position) {
+                if (drawingSurface) {
+                  _drawingCameraPosition = position;
+                } else {
+                  _mainCameraPosition = position;
+                }
+              },
               markers: {
                 ..._markers,
                 if (vm.userLocation case final location?)
@@ -496,16 +532,21 @@ class _ActivityViewState extends State<ActivityView> {
                     }
                   : const {},
               polygons: polygons,
-              onCameraIdle: _plantLayer.cameraIdle,
+              onCameraIdle: drawingSurface ? null : _plantLayer.cameraIdle,
               onMapCreated: (controller) {
-                _controller = controller;
-                _plantLayer.controller = controller;
-                _plantLayer.cameraIdle();
                 if (drawingSurface) {
                   _drawingController = controller;
+                  _drawingMapNavigator.invalidate();
                   _fitDrawingMapToSelectedZone(vm, controller);
                 } else {
+                  _controller = controller;
+                  _plantLayer.controller = controller;
+                  _plantLayer.cameraIdle();
+                  _mainMapNavigator.invalidate();
                   _fitSelectedZone(vm);
+                }
+                if (vm.userLocation case final location?) {
+                  _followUserLocation(location);
                 }
               },
               myLocationEnabled: false,

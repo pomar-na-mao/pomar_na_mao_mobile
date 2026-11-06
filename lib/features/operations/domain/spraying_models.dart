@@ -269,8 +269,8 @@ class SprayingOperation {
     this.trackPoints = const [],
     this.inputs = const [],
     this.confirmedPlants = const [],
-  })  : responsible = responsible ?? operatorName ?? 'Operador',
-        performedAt = performedAt ?? finishedAt;
+  }) : responsible = responsible ?? operatorName ?? 'Operador',
+       performedAt = performedAt ?? finishedAt;
 
   final String localId;
   final DateTime startedAt;
@@ -296,6 +296,13 @@ class SprayingOperation {
   final List<SprayingTrackPoint> trackPoints;
   final List<SprayingInput> inputs;
   final List<SprayingConfirmedPlant> confirmedPlants;
+
+  bool get hasReviewedPlants => confirmedPlants.isNotEmpty;
+
+  bool get isEligibleForSync =>
+      hasReviewedPlants &&
+      (syncStatus == SprayingSyncStatus.reviewed ||
+          syncStatus == SprayingSyncStatus.error);
 
   SprayingOperation copyWith({
     String? localId,
@@ -332,7 +339,11 @@ class SprayingOperation {
     mixtureId: mixtureId ?? this.mixtureId,
     mixtureNameSnapshot: mixtureNameSnapshot ?? this.mixtureNameSnapshot,
     title: title ?? this.title,
-    machineName: machineName ?? this.machineName ?? machineNameSnapshot ?? this.machineNameSnapshot,
+    machineName:
+        machineName ??
+        this.machineName ??
+        machineNameSnapshot ??
+        this.machineNameSnapshot,
     tractorIdentifier: tractorIdentifier ?? this.tractorIdentifier,
     notes: notes ?? this.notes,
     syncStatus: syncStatus ?? this.syncStatus,
@@ -408,21 +419,31 @@ class SprayingSyncResult {
         final val = map[key];
         if (val is num && val.isFinite && val >= 0) return val.toInt();
       }
-      throw FormatException('Contagem ${keys.first} inválida na resposta RPC: $map');
+      throw FormatException(
+        'Contagem ${keys.first} inválida na resposta RPC: $map',
+      );
     }
 
     return SprayingSyncResult(
       fieldOperationId:
           (map['field_operation_id'] ?? map['fieldOperationId'])?.toString() ??
           '',
-      routeId:
-          (map['route_id'] ?? map['routeId'])?.toString() ?? '',
-      trackPointsCount: count(['track_points_count', 'trackPointsCount', 'points_count', 'pointsCount']),
+      routeId: (map['route_id'] ?? map['routeId'])?.toString() ?? '',
+      trackPointsCount: count([
+        'track_points_count',
+        'trackPointsCount',
+        'points_count',
+        'pointsCount',
+      ]),
       inputsCount: count(['inputs_count', 'inputsCount']),
-      confirmedPlantsCount: count(
-        ['confirmed_plants_count', 'confirmedPlantsCount', 'affected_plants_count', 'affectedPlantsCount'],
-      ),
-      syncedAt: DateTime.tryParse(
+      confirmedPlantsCount: count([
+        'confirmed_plants_count',
+        'confirmedPlantsCount',
+        'affected_plants_count',
+        'affectedPlantsCount',
+      ]),
+      syncedAt:
+          DateTime.tryParse(
             (map['synced_at'] ?? map['syncedAt'])?.toString() ?? '',
           ) ??
           DateTime.now(),

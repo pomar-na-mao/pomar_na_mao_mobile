@@ -373,7 +373,7 @@ class _MixtureCatalogPickerState extends State<MixtureCatalogPicker> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                 child: TextField(
-                  autofocus: true,
+                  autofocus: false,
                   onChanged: (value) => setState(() => _query = value),
                   decoration: InputDecoration(
                     hintText: 'Buscar por nome, insumo ou princípio ativo',
@@ -530,7 +530,7 @@ class _MachineCatalogPickerState extends State<MachineCatalogPicker> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                 child: TextField(
-                  autofocus: true,
+                  autofocus: false,
                   onChanged: (value) => setState(() => _query = value),
                   decoration: InputDecoration(
                     hintText: 'Buscar por nome ou marca',
