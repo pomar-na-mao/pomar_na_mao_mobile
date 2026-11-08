@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../auth/presentation/authentication_view_model.dart';
+import '../../auth/presentation/widgets/authentication_dialog.dart';
 import 'inspection_view.dart';
 import 'activity_view.dart';
 import 'activity_view_model.dart';
@@ -9,6 +11,8 @@ import 'mipd_view_model.dart';
 import 'operation_definition.dart';
 import 'spraying_view.dart';
 import 'spraying_view_model.dart';
+import 'stock_view.dart';
+import 'stock_view_model.dart';
 import 'widgets/operation_card.dart';
 
 class OperationsView extends StatelessWidget {
@@ -21,6 +25,8 @@ class OperationsView extends StatelessWidget {
     this.mipdMapBuilder,
     this.activityViewModel,
     this.activityMapBuilder,
+    this.stockViewModel,
+    this.authenticationViewModel,
     super.key,
   });
 
@@ -32,10 +38,15 @@ class OperationsView extends StatelessWidget {
   final MipdMapBuilder? mipdMapBuilder;
   final ActivityViewModel? activityViewModel;
   final ActivityMapBuilder? activityMapBuilder;
+  final StockViewModel? stockViewModel;
+  final AuthenticationViewModel? authenticationViewModel;
 
   static const _backgroundColor = Color(0xFFF2F6EF);
 
-  void _openOperation(BuildContext context, OperationDefinition operation) {
+  Future<void> _openOperation(
+    BuildContext context,
+    OperationDefinition operation,
+  ) async {
     if (!operation.isEnabled) return;
 
     if (operation.id == 'inspection') {
@@ -70,6 +81,21 @@ class OperationsView extends StatelessWidget {
             viewModel: activityViewModel!,
             mapBuilder: activityMapBuilder,
           ),
+        ),
+      );
+    } else if (operation.id == 'stock' &&
+        stockViewModel != null &&
+        authenticationViewModel != null) {
+      final authenticated = await showAuthenticationDialog(
+        context: context,
+        viewModel: authenticationViewModel!,
+        title: 'Acessar estoque',
+        description: 'Entre com seu e-mail e senha para acessar os itens e as fotos privadas do estoque.',
+      );
+      if (!context.mounted || !authenticated) return;
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => StockView(viewModel: stockViewModel!),
         ),
       );
     }
