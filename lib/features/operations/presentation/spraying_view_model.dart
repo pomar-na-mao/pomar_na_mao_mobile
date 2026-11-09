@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../farm/data/supabase_zones_repository.dart';
 import '../../farm/domain/region_point.dart';
+import '../../farm/domain/map_initial_position.dart';
 import '../../farm/domain/user_location.dart';
 import '../../farm/domain/zone.dart';
 import '../../farm/domain/zones_repository.dart';
@@ -28,6 +29,7 @@ class SprayingViewModel extends ChangeNotifier {
     required this.inspectionRepository,
     this.zonesRepository,
     this.sharedReadRepository,
+    this.mapInitialPositionResolver,
     this.geometryService = const SprayingGeometryService(),
   }) {
     unawaited(loadZones());
@@ -40,6 +42,10 @@ class SprayingViewModel extends ChangeNotifier {
   final LocationService locationService;
   final SprayingGeometryService geometryService;
   final SharedReadRepository? sharedReadRepository;
+  final MapInitialPositionResolver? mapInitialPositionResolver;
+  bool _disposed = false;
+  MapInitialPosition? initialMapPosition;
+  bool initialMapPositionResolved = false;
   ZonesRepository? zonesRepository;
 
   List<MixtureCatalogItem> mixtures = const [];
@@ -91,6 +97,13 @@ class SprayingViewModel extends ChangeNotifier {
   final SprayingLocationFilter _locationFilter = SprayingLocationFilter();
   bool _startingPreparedSession = false;
   bool get isPreparingSession => _startingPreparedSession;
+
+  Future<void> loadInitialMapPosition() async {
+    if (initialMapPositionResolved) return;
+    initialMapPosition = await mapInitialPositionResolver?.resolve();
+    initialMapPositionResolved = true;
+    if (!_disposed) notifyListeners();
+  }
 
   StreamSubscription<LocationResult>? _locationSubscription;
   bool _isLocationActive = false;
@@ -855,6 +868,7 @@ class SprayingViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     stopLocationTracking();
     super.dispose();
   }

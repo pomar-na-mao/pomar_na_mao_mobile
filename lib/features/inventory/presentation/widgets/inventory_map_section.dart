@@ -97,6 +97,8 @@ class InventoryMapSection extends StatelessWidget {
     return InventoryMap(
       farmPoints: viewModel.farmBoundaryPoints,
       zonePointsById: viewModel.zonePointsById,
+      initialMapPosition: viewModel.initialMapPosition,
+      initialMapPositionResolved: viewModel.initialMapPositionResolved,
     );
   }
 }

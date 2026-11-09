@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../farm/domain/farm_point.dart';
+import '../../farm/domain/map_initial_position.dart';
 import '../../farm/domain/region_point.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
+import '../../farm/presentation/map_initial_camera.dart';
+import '../../farm/presentation/map_initial_placeholder.dart';
 import '../../../core/ui/map_activity.dart';
 import '../../../core/ui/map_camera.dart';
 
@@ -14,11 +17,15 @@ class InventoryMap extends StatefulWidget {
   const InventoryMap({
     required this.farmPoints,
     required this.zonePointsById,
+    this.initialMapPosition,
+    this.initialMapPositionResolved = true,
     super.key,
   });
 
   final List<FarmPoint> farmPoints;
   final Map<String, List<RegionPoint>> zonePointsById;
+  final MapInitialPosition? initialMapPosition;
+  final bool initialMapPositionResolved;
 
   @override
   State<InventoryMap> createState() => _InventoryMapState();
@@ -72,7 +79,11 @@ class _InventoryMapState extends State<InventoryMap> {
 
   Future<void> _fitCamera() async {
     final controller = _controller;
-    if (controller == null) return;
+    if (controller == null || _coordinates.isEmpty) return;
+    if (widget.initialMapPosition?.source == MapInitialPositionSource.user &&
+        _savedCamera == null) {
+      return;
+    }
     final viewport = calculateMapCameraViewport(_coordinates);
     final bounds = viewport.bounds;
     await animateMapCamera(
@@ -91,7 +102,18 @@ class _InventoryMapState extends State<InventoryMap> {
 
   @override
   Widget build(BuildContext context) {
-    final viewport = calculateMapCameraViewport(_coordinates);
+    final initialCamera =
+        _savedCamera ??
+        (widget.initialMapPosition == null
+            ? null
+            : mapInitialCamera(widget.initialMapPosition!));
+    if (initialCamera == null) {
+      return MapInitialPlaceholder(resolved: widget.initialMapPositionResolved);
+    }
+    final viewport = calculateMapCameraViewport(
+      _coordinates,
+      fallback: initialCamera.target,
+    );
 
     return ActiveMapSurface(
       onActivityChanged: (active) {
@@ -102,7 +124,7 @@ class _InventoryMapState extends State<InventoryMap> {
         zonePointsById: widget.zonePointsById,
         zoneLabelIcons: _zoneLabelIcons,
         viewport: viewport,
-        initialCamera: _savedCamera,
+        initialCamera: initialCamera,
         onCameraMove: (position) => _savedCamera = position,
         onMapCreated: (controller) {
           _controller = controller;

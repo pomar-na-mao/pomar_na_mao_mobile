@@ -12,6 +12,7 @@ import '../../features/farm/data/supabase_farm_repository.dart';
 import '../../features/farm/data/supabase_plants_repository.dart';
 import '../../features/farm/data/supabase_zones_repository.dart';
 import '../../features/farm/domain/farm_repository.dart';
+import '../../features/farm/domain/map_initial_position.dart';
 import '../../features/farm/domain/plants_repository.dart';
 import '../../features/farm/domain/user_location.dart';
 import '../../features/farm/domain/zones_repository.dart';
@@ -121,6 +122,10 @@ class AppDependencies {
       loadingController: loadingController,
     );
     final farmRepo = SupabaseFarmRepository.fromShared(sharedReadRepo);
+    final mapInitialPositionResolver = MapInitialPositionResolver(
+      locationService: locService,
+      farmRepository: farmRepo,
+    );
     final plantsRepo = SupabasePlantsRepository.fromShared(sharedReadRepo);
     final zonesRepo = SupabaseZonesRepository.fromShared(sharedReadRepo);
     final inventoryRepo = SupabaseInventoryRepository.fromShared(
@@ -188,6 +193,7 @@ class AppDependencies {
         zonesRepo,
         profile: AppConfig.activeTenant.propertyProfile,
         plantChanges: sharedReadRepo.plantChanges,
+        mapInitialPositionResolver: mapInitialPositionResolver,
       ),
     );
   }
@@ -258,6 +264,10 @@ class AppDependencies {
         zonesRepository,
         profile: AppConfig.activeTenant.propertyProfile,
         plantChanges: sharedReadRepository?.plantChanges,
+        mapInitialPositionResolver: MapInitialPositionResolver(
+          locationService: locationService,
+          farmRepository: farmRepository,
+        ),
       );
 
   late final FarmMapViewModel farmMapViewModel =
@@ -267,6 +277,10 @@ class AppDependencies {
         zonesRepository,
         farmRepository,
         plantChanges: sharedReadRepository?.plantChanges,
+        mapInitialPositionResolver: MapInitialPositionResolver(
+          locationService: locationService,
+          farmRepository: farmRepository,
+        ),
       );
 
   late final InspectionViewModel inspectionViewModel =
@@ -276,6 +290,10 @@ class AppDependencies {
         zonesRepository: zonesRepository,
         locationService: locationService,
         plantChanges: sharedReadRepository?.plantChanges,
+        mapInitialPositionResolver: MapInitialPositionResolver(
+          locationService: locationService,
+          farmRepository: farmRepository,
+        ),
       );
 
   late final SprayingViewModel sprayingViewModel =
@@ -286,6 +304,10 @@ class AppDependencies {
         locationService: locationService,
         zonesRepository: zonesRepository,
         sharedReadRepository: sharedReadRepository,
+        mapInitialPositionResolver: MapInitialPositionResolver(
+          locationService: locationService,
+          farmRepository: farmRepository,
+        ),
       );
 
   MipdViewModel? _createdMipdViewModel;
@@ -295,6 +317,10 @@ class AppDependencies {
         repository: mipdRepository,
         locationService: locationService,
         photoService: MipdPhotoService(picker: ImagePickerMipdPhotoPicker()),
+        mapInitialPositionResolver: MapInitialPositionResolver(
+          locationService: locationService,
+          farmRepository: farmRepository,
+        ),
       ));
 
   ActivityViewModel? _createdActivityViewModel;
@@ -306,6 +332,10 @@ class AppDependencies {
       repository: repository,
       locationService: locationService,
       zonesRepository: zonesRepository,
+      mapInitialPositionResolver: MapInitialPositionResolver(
+        locationService: locationService,
+        farmRepository: farmRepository,
+      ),
     );
   }
 
