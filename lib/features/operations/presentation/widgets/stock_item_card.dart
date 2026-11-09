@@ -41,67 +41,45 @@ class StockItemCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      item.photoObjectPath == null
-                          ? Icons.inventory_2_outlined
-                          : Icons.image_outlined,
-                      color: accent,
+                  Text(
+                    item.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            _Badge(
-                              icon: Icons.category_outlined,
-                              label: stockTypeLabel(item.type),
-                              color: accent,
-                            ),
-                            _Badge(
-                              icon: Icons.scale_outlined,
-                              label: quantity,
-                              color: const Color(0xFF15803D),
-                            ),
-                          ],
-                        ),
-                        if (item.activeIngredient case final ingredient?) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Ingrediente ativo: $ingredient',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+                  const SizedBox(height: 5),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _Badge(
+                        icon: Icons.category_outlined,
+                        label: stockTypeLabel(item.type),
+                        color: accent,
+                      ),
+                      _Badge(
+                        icon: Icons.scale_outlined,
+                        label: quantity,
+                        color: const Color(0xFF15803D),
+                      ),
+                    ],
                   ),
+                  if (item.activeIngredient case final ingredient?) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Ingrediente ativo: $ingredient',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 12),

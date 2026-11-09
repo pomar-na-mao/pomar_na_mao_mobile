@@ -28,6 +28,7 @@ class _StockFormSheetState extends State<StockFormSheet> {
   late String? _type;
   late String? _unit;
   late bool _registeredForCrop;
+  late DateTime? _expirationDate;
   StockPhoto? _photo;
   Future<String?>? _existingPhotoUrl;
 
@@ -40,6 +41,7 @@ class _StockFormSheetState extends State<StockFormSheet> {
     _type = item?.type;
     _unit = item?.unit;
     _registeredForCrop = item?.registeredForCrop ?? true;
+    _expirationDate = item?.expirationDate;
     if (item?.photoObjectPath != null) {
       _existingPhotoUrl = widget.viewModel.photoUrl(item!);
     }
@@ -52,7 +54,7 @@ class _StockFormSheetState extends State<StockFormSheet> {
       'manufacturer': TextEditingController(text: item?.manufacturer),
       'mapaRegistration': TextEditingController(text: item?.mapaRegistration),
       'expirationDate': TextEditingController(
-        text: item?.expirationDate?.toIso8601String().split('T').first,
+        text: _formatDateLabel(_expirationDate),
       ),
       'target1': TextEditingController(text: item?.target1),
       'target2': TextEditingController(text: item?.target2),
@@ -238,19 +240,7 @@ class _StockFormSheetState extends State<StockFormSheet> {
                             Icons.badge_outlined,
                           ),
                           const SizedBox(height: _fieldSpacing),
-                          _field(
-                            'expirationDate',
-                            'Validade (AAAA-MM-DD)',
-                            Icons.event_outlined,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return null;
-                              }
-                              return DateTime.tryParse(value.trim()) == null
-                                  ? 'Informe uma data válida.'
-                                  : null;
-                            },
-                          ),
+                          _expirationDateField(),
                           const SizedBox(height: _fieldSpacing),
                           _field('target1', 'Alvo 1', Icons.gps_fixed),
                           const SizedBox(height: _fieldSpacing),
@@ -391,9 +381,34 @@ class _StockFormSheetState extends State<StockFormSheet> {
     onChanged: (value) => setState(() => _unit = value),
   );
 
-  InputDecoration _decoration(String label, IconData icon) => InputDecoration(
+  Widget _expirationDateField() => TextFormField(
+    key: const ValueKey('stock-expirationDate-field'),
+    controller: _controllers['expirationDate'],
+    readOnly: true,
+    showCursor: false,
+    onTap: _selectExpirationDate,
+    decoration: _decoration(
+      'Validade',
+      Icons.calendar_today_outlined,
+      suffixIcon: _expirationDate == null
+          ? null
+          : IconButton(
+              key: const ValueKey('clear-stock-expiration-date'),
+              tooltip: 'Limpar validade',
+              onPressed: _clearExpirationDate,
+              icon: const Icon(Icons.close),
+            ),
+    ),
+  );
+
+  InputDecoration _decoration(
+    String label,
+    IconData icon, {
+    Widget? suffixIcon,
+  }) => InputDecoration(
     labelText: label,
     prefixIcon: Icon(icon),
+    suffixIcon: suffixIcon,
     filled: true,
     fillColor: Theme.of(context).colorScheme.surfaceContainerHighest
         .withValues(alpha: 0.35),
@@ -420,6 +435,28 @@ class _StockFormSheetState extends State<StockFormSheet> {
     return null;
   }
 
+  Future<void> _selectExpirationDate() async {
+    final now = DateTime.now();
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _expirationDate ?? DateTime(now.year, now.month, now.day),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2200, 12, 31),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _expirationDate = DateTime(selected.year, selected.month, selected.day);
+      _controllers['expirationDate']!.text = _formatDateLabel(_expirationDate);
+    });
+  }
+
+  void _clearExpirationDate() {
+    setState(() {
+      _expirationDate = null;
+      _controllers['expirationDate']!.clear();
+    });
+  }
+
   Future<void> _pickPhoto(StockPhotoSource source) async {
     final photo = await widget.viewModel.pickPhoto(source);
     if (!mounted || photo == null) return;
@@ -437,7 +474,6 @@ class _StockFormSheetState extends State<StockFormSheet> {
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final quantityText = _controllers['quantity']!.text.trim();
-    final expirationText = _controllers['expirationDate']!.text.trim();
     final safetyText = _controllers['safetyInterval']!.text.trim();
     final draft = StockDraft(
       name: _controllers['name']!.text,
@@ -449,9 +485,7 @@ class _StockFormSheetState extends State<StockFormSheet> {
       chemicalGroup: _controllers['chemicalGroup']!.text,
       manufacturer: _controllers['manufacturer']!.text,
       mapaRegistration: _controllers['mapaRegistration']!.text,
-      expirationDate: expirationText.isEmpty
-          ? null
-          : DateTime.parse(expirationText),
+      expirationDate: _expirationDate,
       target1: _controllers['target1']!.text,
       target2: _controllers['target2']!.text,
       safetyIntervalDays: safetyText.isEmpty ? null : int.parse(safetyText),
@@ -478,6 +512,13 @@ class _StockFormSheetState extends State<StockFormSheet> {
       );
     }
   }
+}
+
+String _formatDateLabel(DateTime? date) {
+  if (date == null) return '';
+  final day = date.day.toString().padLeft(2, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  return '$day/$month/${date.year}';
 }
 
 class _PhotoSelector extends StatelessWidget {

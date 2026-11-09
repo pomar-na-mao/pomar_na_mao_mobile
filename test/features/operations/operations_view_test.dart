@@ -492,16 +492,45 @@ void main() {
     final dialogRect = tester.getRect(
       find.byKey(const ValueKey('authentication-dialog')),
     );
-    expect(dialogRect.width, greaterThanOrEqualTo(380));
-    expect(dialogRect.height, greaterThanOrEqualTo(600));
-    final dialog = tester.widget<Dialog>(
+    expect(dialogRect, const Rect.fromLTWH(0, 0, 420, 900));
+    final dialog = tester.widget<Material>(
       find.byKey(const ValueKey('authentication-dialog')),
     );
-    expect(dialog.insetAnimationDuration, const Duration(milliseconds: 220));
+    expect(
+      dialog.borderRadius,
+      const BorderRadius.vertical(top: Radius.circular(24)),
+    );
     expect(
       find.byKey(const ValueKey('authentication-dialog-scroll')),
       findsOneWidget,
     );
+    expect(find.text('E-mail'), findsOneWidget);
+    expect(find.text('Senha'), findsOneWidget);
+    for (final key in const [
+      ValueKey('authentication-email'),
+      ValueKey('authentication-password'),
+    ]) {
+      final fieldFinder = find.byKey(key);
+      final decoration = tester.widget<TextField>(fieldFinder).decoration!;
+      final colorScheme = Theme.of(tester.element(fieldFinder)).colorScheme;
+      expect(decoration.filled, isTrue);
+      expect(
+        decoration.fillColor,
+        colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+      );
+      expect(
+        decoration.contentPadding,
+        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      );
+      expect(
+        (decoration.border! as OutlineInputBorder).borderRadius,
+        BorderRadius.circular(14),
+      );
+      expect(
+        (decoration.focusedBorder! as OutlineInputBorder).borderSide,
+        BorderSide(color: colorScheme.primary, width: 2),
+      );
+    }
     await tester.enterText(
       find.byKey(const ValueKey('authentication-email')),
       'operador@pomar.com',

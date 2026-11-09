@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/ui/full_height_form_modal.dart';
 import '../domain/stock_models.dart';
 import 'stock_type_presentation.dart';
 import 'stock_view_model.dart';
@@ -134,14 +135,9 @@ class _StockViewState extends State<StockView> {
   }
 
   Future<void> _openForm([StockItem? item]) async {
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showFullHeightFormModal<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => SizedBox.expand(
-        child: StockFormSheet(viewModel: widget.viewModel, item: item),
-      ),
+      builder: (_) => StockFormSheet(viewModel: widget.viewModel, item: item),
     );
     if (!mounted || saved != true) return;
     ScaffoldMessenger.of(context).showSnackBar(

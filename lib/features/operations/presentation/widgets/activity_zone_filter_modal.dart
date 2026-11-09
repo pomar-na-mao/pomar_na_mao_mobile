@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/ui/full_height_form_modal.dart';
 import '../../../farm/domain/zone.dart';
 import '../activity_view_model.dart';
 
@@ -11,10 +12,8 @@ class ActivityZoneFilterModal extends StatefulWidget {
   final ActivityViewModel viewModel;
 
   static Future<void> show(BuildContext context, ActivityViewModel viewModel) =>
-      showModalBottomSheet<void>(
+      showFullHeightFormModal<void>(
         context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
         builder: (_) => ActivityZoneFilterModal(viewModel: viewModel),
       );
 
@@ -38,9 +37,6 @@ class _ActivityZoneFilterModalState extends State<ActivityZoneFilterModal> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final screenHeight = MediaQuery.sizeOf(context).height;
-    final sheetHeight = (screenHeight * 0.78).clamp(520.0, 780.0);
-
     return ListenableBuilder(
       listenable: widget.viewModel,
       builder: (context, _) {
@@ -55,7 +51,7 @@ class _ActivityZoneFilterModalState extends State<ActivityZoneFilterModal> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           clipBehavior: Clip.antiAlias,
           child: SizedBox(
-            height: sheetHeight,
+            height: double.infinity,
             child: SafeArea(
               top: false,
               child: Column(

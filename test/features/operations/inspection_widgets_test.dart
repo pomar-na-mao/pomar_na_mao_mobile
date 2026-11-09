@@ -1020,6 +1020,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(PlantEditorModal), findsOneWidget);
+      expect(
+        tester.getRect(find.byType(PlantEditorModal)),
+        const Rect.fromLTWH(0, 0, 800, 1000),
+      );
 
       final toggleFinder = find.byKey(
         const ValueKey('plant-non-existent-toggle'),

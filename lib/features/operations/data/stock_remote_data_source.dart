@@ -129,7 +129,7 @@ class SupabaseStockRemoteDataSource implements StockRemoteDataSource {
     'chemical_group': _emptyToNull(draft.chemicalGroup),
     'manufacturer': _emptyToNull(draft.manufacturer),
     'mapa_registration': _emptyToNull(draft.mapaRegistration),
-    'expiration_date': draft.expirationDate?.toIso8601String().split('T').first,
+    'expiration_date': formatStockDateForDatabase(draft.expirationDate),
     'registered_for_crop': draft.registeredForCrop,
     'target_1': _emptyToNull(draft.target1),
     'target_2': _emptyToNull(draft.target2),
@@ -166,6 +166,14 @@ class SupabaseStockRemoteDataSource implements StockRemoteDataSource {
     createdAt: DateTime.parse(json['created_at'] as String),
     updatedAt: DateTime.parse(json['updated_at'] as String),
   );
+}
+
+String? formatStockDateForDatabase(DateTime? date) {
+  if (date == null) return null;
+  final year = date.year.toString().padLeft(4, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '$year-$month-$day';
 }
 
 String? _emptyToNull(String? value) {

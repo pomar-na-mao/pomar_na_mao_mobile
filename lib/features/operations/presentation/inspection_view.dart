@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../core/di/app_scope.dart';
+import '../../../core/ui/full_height_form_modal.dart';
 import '../../farm/domain/user_location.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
 import '../../farm/presentation/bounded_plant_markers.dart';
@@ -432,10 +433,8 @@ class _InspectionViewState extends State<InspectionView> {
         vm.zones.any((z) => z.id == vm.selectedZoneFilterId)
         ? vm.selectedZoneFilterId
         : null;
-    final shouldSave = await showModalBottomSheet<bool>(
+    final shouldSave = await showFullHeightFormModal<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (context) {
         final theme = Theme.of(context);
         final colorScheme = theme.colorScheme;

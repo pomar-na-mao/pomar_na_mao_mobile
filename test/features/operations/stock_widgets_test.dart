@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/stock_photo_picker.dart';
+import 'package:pomar_na_mao_mobile/features/operations/data/stock_remote_data_source.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/stock_repository.dart';
 import 'package:pomar_na_mao_mobile/features/operations/domain/stock_models.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/stock_type_presentation.dart';
@@ -24,6 +25,7 @@ class _MemoryStockRepository implements StockRepository {
       registeredForCrop: true,
       quantity: 12.5,
       unit: 'Kg',
+      expirationDate: DateTime(2027, 5, 30),
       photoObjectPath: 'stock-1/current.jpg',
       createdAt: DateTime.utc(2026),
       updatedAt: DateTime.utc(2026),
@@ -64,6 +66,14 @@ class _MemoryStockRepository implements StockRepository {
 }
 
 void main() {
+  test('formats stock expiration date for the database without a time', () {
+    expect(
+      formatStockDateForDatabase(DateTime(2028, 2, 29, 23, 59)),
+      '2028-02-29',
+    );
+    expect(formatStockDateForDatabase(null), isNull);
+  });
+
   test('groups stock items by type and assigns a unique enum color', () {
     final repository = _MemoryStockRepository();
     final groups = groupStockItemsByType(repository.items);
@@ -91,6 +101,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Calda bordalesa'), findsOneWidget);
+    expect(find.byIcon(Icons.image_outlined), findsNothing);
+    expect(find.byIcon(Icons.inventory_2_outlined), findsNothing);
+    expect(repository.signedUrlRequests, 0);
     expect(find.text('12.50 Kg'), findsNothing);
     expect(
       find.byKey(const ValueKey('stock-type-group-BIOLOGICAL')),
@@ -118,6 +131,7 @@ void main() {
 
     await tester.enterText(find.byKey(const ValueKey('stock-search')), 'cobre');
     await tester.pump();
+    expect(repository.signedUrlRequests, 0);
     await tester.tap(find.byKey(const ValueKey('edit-stock-stock-1')));
     await tester.pumpAndSettle();
 
@@ -164,8 +178,35 @@ void main() {
     );
     await tester.tap(technicalDetails);
     await tester.pumpAndSettle();
+    final expirationField = find.byKey(
+      const ValueKey('stock-expirationDate-field'),
+    );
+    await tester.scrollUntilVisible(
+      expirationField,
+      300,
+      scrollable: formScrollable,
+    );
+    final expirationDecorator = tester.widget<InputDecorator>(
+      find.descendant(
+        of: expirationField,
+        matching: find.byType(InputDecorator),
+      ),
+    );
+    expect(expirationDecorator.decoration.labelText, 'Validade');
+    expect(find.text('30/05/2027'), findsOneWidget);
+    await tester.tap(expirationField);
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    await tester.tap(find.text('15'));
+    await tester.tap(find.widgetWithText(TextButton, 'OK'));
+    await tester.pumpAndSettle();
+    expect(find.text('15/05/2027'), findsOneWidget);
     final formulationField = find.byKey(
       const ValueKey('stock-formulation-field'),
+    );
+    expect(
+      tester.getSize(expirationField).height,
+      tester.getSize(formulationField).height,
     );
     final technicalTopSpacing = find.byKey(
       const ValueKey('stock-technical-details-top-spacing'),

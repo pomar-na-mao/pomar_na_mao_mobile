@@ -9,6 +9,7 @@ import 'package:pomar_na_mao_mobile/features/operations/domain/inspection_models
 import 'package:pomar_na_mao_mobile/features/operations/domain/mipd_models.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/mipd_view.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/mipd_view_model.dart';
+import 'package:pomar_na_mao_mobile/features/operations/presentation/widgets/mipd_plant_modal.dart';
 
 void main() {
   const pest = OccurrenceType(
@@ -113,6 +114,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Planta'));
       await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byType(MipdPlantModal)),
+        const Rect.fromLTWH(0, 0, 320, 700),
+      );
       expect(find.byTooltip('Fechar'), findsOneWidget);
       expect(find.byKey(const ValueKey('mipd-plant-form')), findsOneWidget);
       expect(

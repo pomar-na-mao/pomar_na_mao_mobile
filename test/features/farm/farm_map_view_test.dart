@@ -10,6 +10,7 @@ import 'package:pomar_na_mao_mobile/features/farm/domain/zones_repository.dart';
 import 'package:pomar_na_mao_mobile/features/farm/presentation/farm_map_view.dart';
 import 'package:pomar_na_mao_mobile/features/farm/presentation/farm_map_view_model.dart';
 import 'package:pomar_na_mao_mobile/features/farm/presentation/widgets/farm_action_card.dart';
+import 'package:pomar_na_mao_mobile/features/farm/presentation/widgets/farm_zone_filter_modal.dart';
 
 Plant _createPlant({
   required String id,
@@ -126,6 +127,10 @@ void main() {
 
       // Verify modal is open
       expect(find.text('Filtros de Plantas'), findsOneWidget);
+      expect(
+        tester.getRect(find.byType(FarmZoneFilterModal)),
+        const Rect.fromLTWH(0, 0, 420, 900),
+      );
       expect(find.text('2 de 2 plantas visíveis'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('farm-filter-zone-dropdown')),

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/ui/full_height_form_modal.dart';
 import '../../domain/zone.dart';
 import '../farm_map_view.dart';
 import '../farm_map_view_model.dart';
@@ -11,14 +12,9 @@ class FarmZoneFilterModal extends StatelessWidget {
 
   final FarmMapViewModel viewModel;
 
-  static Future<void> show(
-    BuildContext context,
-    FarmMapViewModel viewModel,
-  ) {
-    return showModalBottomSheet<void>(
+  static Future<void> show(BuildContext context, FarmMapViewModel viewModel) {
+    return showFullHeightFormModal<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => FarmZoneFilterModal(viewModel: viewModel),
     );
   }
@@ -28,9 +24,6 @@ class FarmZoneFilterModal extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final vm = viewModel;
-    final screenHeight = MediaQuery.sizeOf(context).height;
-    final sheetHeight = (screenHeight * 0.78).clamp(520.0, 780.0);
-
     return ListenableBuilder(
       listenable: vm,
       builder: (context, _) {
@@ -47,7 +40,7 @@ class FarmZoneFilterModal extends StatelessWidget {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           clipBehavior: Clip.antiAlias,
           child: SizedBox(
-            height: sheetHeight,
+            height: double.infinity,
             child: SafeArea(
               top: false,
               child: Column(
@@ -85,7 +78,9 @@ class FarmZoneFilterModal extends StatelessWidget {
                         ),
                         if (isFiltered)
                           TextButton(
-                            key: const ValueKey('clear-farm-zone-filter-button'),
+                            key: const ValueKey(
+                              'clear-farm-zone-filter-button',
+                            ),
                             onPressed: () => vm.selectZone(null),
                             child: const Text('Limpar'),
                           ),
@@ -186,9 +181,7 @@ class FarmZoneFilterModal extends StatelessWidget {
                     child: FilledButton.icon(
                       key: const ValueKey('apply-farm-zone-filter-button'),
                       icon: const Icon(Icons.map_outlined),
-                      label: Text(
-                        'Ver no mapa (${vm.plants.length} plantas)',
-                      ),
+                      label: Text('Ver no mapa (${vm.plants.length} plantas)'),
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
