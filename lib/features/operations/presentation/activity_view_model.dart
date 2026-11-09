@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../farm/domain/region_point.dart';
+import '../../farm/domain/map_initial_position.dart';
 import '../../farm/domain/user_location.dart';
 import '../../farm/domain/user_position_tracker.dart';
 import '../../farm/domain/zone.dart';
@@ -18,11 +19,15 @@ class ActivityViewModel extends ChangeNotifier {
     required this.repository,
     required this.locationService,
     this.zonesRepository,
+    this.mapInitialPositionResolver,
   });
 
   final ActivityRepository repository;
   final LocationService locationService;
   final ZonesRepository? zonesRepository;
+  final MapInitialPositionResolver? mapInitialPositionResolver;
+  MapInitialPosition? initialMapPosition;
+  bool initialMapPositionResolved = false;
   final ActivityGeometryBuilder drawing = ActivityGeometryBuilder();
   final UserPositionTracker _positionTracker = UserPositionTracker();
 
@@ -77,10 +82,18 @@ class ActivityViewModel extends ChangeNotifier {
 
   Future<void> initialize() async {
     await Future.wait([
+      loadInitialMapPosition(),
       loadSnapshot(forceRemote: false),
       loadEntries(),
       loadZones(),
     ]);
+  }
+
+  Future<void> loadInitialMapPosition() async {
+    if (initialMapPositionResolved) return;
+    initialMapPosition = await mapInitialPositionResolver?.resolve();
+    initialMapPositionResolved = true;
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> loadZones() async {

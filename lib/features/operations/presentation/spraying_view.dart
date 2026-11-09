@@ -8,7 +8,8 @@ import '../../../core/di/app_scope.dart';
 import '../../../core/ui/map_activity.dart';
 import '../../farm/domain/user_location.dart';
 import '../../farm/presentation/bounded_plant_markers.dart';
-import '../../farm/presentation/farm_map_geometry.dart';
+import '../../farm/presentation/map_initial_camera.dart';
+import '../../farm/presentation/map_initial_placeholder.dart';
 import '../../farm/presentation/plant_spatial_index.dart';
 import '../../farm/presentation/user_map_navigation.dart';
 import '../data/inspection_database.dart';
@@ -60,7 +61,6 @@ class SprayingView extends StatefulWidget {
 }
 
 class _SprayingViewState extends State<SprayingView> {
-  static const _fallbackPosition = defaultFarmMapPosition;
   static const _recordingStartZoom = 18.5;
 
   GoogleMapController? _mapController;
@@ -94,6 +94,7 @@ class _SprayingViewState extends State<SprayingView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final vm = _effectiveViewModel;
+      unawaited(vm.loadInitialMapPosition());
       final scope = AppScope.maybeOf(context);
       if (scope?.zonesRepository != null && vm.zones.isEmpty) {
         vm.loadZones(repo: scope!.zonesRepository);
@@ -402,6 +403,11 @@ class _SprayingViewState extends State<SprayingView> {
       listenable: vm,
       builder: (context, _) {
         _updateMarkers(vm);
+        final initialCamera =
+            _savedCamera ??
+            (vm.initialMapPosition == null
+                ? null
+                : mapInitialCamera(vm.initialMapPosition!));
         if (vm.selectedZonePoints.length >= 3) {
           WidgetsBinding.instance.addPostFrameCallback(
             (_) => _fitZoneBounds(vm),
@@ -517,10 +523,7 @@ class _SprayingViewState extends State<SprayingView> {
                               polylines: vm.polylines,
                               polygons: vm.polygons,
                               onSelectPlant: (p) => vm.toggleAffectedPlant(p),
-                              initialPosition: const CameraPosition(
-                                target: _fallbackPosition,
-                                zoom: 17,
-                              ),
+                              initialPosition: initialCamera,
                             ),
                           )
                         else
@@ -538,67 +541,71 @@ class _SprayingViewState extends State<SprayingView> {
                                   _plantLayer.controller = null;
                                 }
                               },
-                              builder: (_) => GoogleMap(
-                                key: const ValueKey('spraying-google-map'),
-                                mapType: MapType.satellite,
-                                initialCameraPosition:
-                                    _savedCamera ??
-                                    const CameraPosition(
-                                      target: _fallbackPosition,
-                                      zoom: 17,
-                                    ),
-                                onCameraIdle: () {
-                                  _plantLayer.cameraIdle();
-                                  final loc = vm.userLocation;
-                                  if (vm.sessionState ==
-                                          SprayingSessionState.recording &&
-                                      loc != null) {
-                                    _lastCheckedLocation = null;
-                                    unawaited(_keepUserVisible(loc, vm));
-                                  }
-                                },
-                                onCameraMove: (position) =>
-                                    _savedCamera = position,
-                                markers: {
-                                  ..._markers,
-                                  if (vm.userLocation case final loc?)
-                                    Marker(
-                                      markerId: const MarkerId('spraying_user'),
-                                      position: LatLng(
-                                        loc.latitude,
-                                        loc.longitude,
+                              builder: (_) => initialCamera == null
+                                  ? MapInitialPlaceholder(
+                                      resolved: vm.initialMapPositionResolved,
+                                    )
+                                  : GoogleMap(
+                                      key: const ValueKey(
+                                        'spraying-google-map',
                                       ),
-                                      icon:
-                                          _userMarkerIcon ??
-                                          BitmapDescriptor.defaultMarkerWithHue(
-                                            BitmapDescriptor.hueAzure,
+                                      mapType: MapType.satellite,
+                                      initialCameraPosition: initialCamera,
+                                      onCameraIdle: () {
+                                        _plantLayer.cameraIdle();
+                                        final loc = vm.userLocation;
+                                        if (vm.sessionState ==
+                                                SprayingSessionState
+                                                    .recording &&
+                                            loc != null) {
+                                          _lastCheckedLocation = null;
+                                          unawaited(_keepUserVisible(loc, vm));
+                                        }
+                                      },
+                                      onCameraMove: (position) =>
+                                          _savedCamera = position,
+                                      markers: {
+                                        ..._markers,
+                                        if (vm.userLocation case final loc?)
+                                          Marker(
+                                            markerId: const MarkerId(
+                                              'spraying_user',
+                                            ),
+                                            position: LatLng(
+                                              loc.latitude,
+                                              loc.longitude,
+                                            ),
+                                            icon:
+                                                _userMarkerIcon ??
+                                                BitmapDescriptor.defaultMarkerWithHue(
+                                                  BitmapDescriptor.hueAzure,
+                                                ),
+                                            anchor: const Offset(0.5, 0.5),
+                                            zIndexInt: 1000,
                                           ),
-                                      anchor: const Offset(0.5, 0.5),
-                                      zIndexInt: 1000,
+                                      },
+                                      polygons: vm.polygons,
+                                      polylines: vm.polylines,
+                                      myLocationEnabled: false,
+                                      myLocationButtonEnabled: false,
+                                      zoomControlsEnabled: false,
+                                      mapToolbarEnabled: false,
+                                      onMapCreated: (ctrl) {
+                                        _mapController = ctrl;
+                                        _plantLayer.controller = ctrl;
+                                        _plantLayer.cameraIdle();
+                                        if (vm.userLocation != null &&
+                                            (_needsInitialFocus ||
+                                                !_userHasInteractedWithMap)) {
+                                          _recenterOnUser(
+                                            vm,
+                                            zoom: _needsInitialFocus
+                                                ? _recordingStartZoom
+                                                : 19,
+                                          );
+                                        }
+                                      },
                                     ),
-                                },
-                                polygons: vm.polygons,
-                                polylines: vm.polylines,
-                                myLocationEnabled: false,
-                                myLocationButtonEnabled: false,
-                                zoomControlsEnabled: false,
-                                mapToolbarEnabled: false,
-                                onMapCreated: (ctrl) {
-                                  _mapController = ctrl;
-                                  _plantLayer.controller = ctrl;
-                                  _plantLayer.cameraIdle();
-                                  if (vm.userLocation != null &&
-                                      (_needsInitialFocus ||
-                                          !_userHasInteractedWithMap)) {
-                                    _recenterOnUser(
-                                      vm,
-                                      zoom: _needsInitialFocus
-                                          ? _recordingStartZoom
-                                          : 19,
-                                    );
-                                  }
-                                },
-                              ),
                             ),
                           ),
 

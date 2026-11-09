@@ -9,6 +9,8 @@ import '../../farm/domain/user_location.dart';
 import '../../farm/domain/region_point.dart';
 import '../../farm/presentation/bounded_plant_markers.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
+import '../../farm/presentation/map_initial_camera.dart';
+import '../../farm/presentation/map_initial_placeholder.dart';
 import '../../farm/presentation/plant_spatial_index.dart';
 import '../../farm/presentation/user_map_navigation.dart';
 import '../domain/activity_models.dart';
@@ -29,10 +31,7 @@ class ActivityMapConfig {
     this.selectedZoneId,
     this.selectedZonePoints = const [],
     this.userLocation,
-    this.initialCameraPosition = const CameraPosition(
-      target: defaultFarmMapPosition,
-      zoom: OperationMapStyle.initialZoom,
-    ),
+    this.initialCameraPosition,
     this.onCameraMove,
   });
 
@@ -43,7 +42,7 @@ class ActivityMapConfig {
   final String? selectedZoneId;
   final List<RegionPoint> selectedZonePoints;
   final UserLocation? userLocation;
-  final CameraPosition initialCameraPosition;
+  final CameraPosition? initialCameraPosition;
   final ValueChanged<CameraPosition>? onCameraMove;
 }
 
@@ -71,17 +70,11 @@ class _ActivityViewState extends State<ActivityView> {
   GoogleMapController? _drawingController;
   final _mainMapNavigator = UserMapNavigator();
   final _drawingMapNavigator = UserMapNavigator();
-  CameraPosition _mainCameraPosition = const CameraPosition(
-    target: defaultFarmMapPosition,
-    zoom: OperationMapStyle.initialZoom,
-  );
+  CameraPosition? _mainCameraPosition;
   Future<void> _drawingQueue = Future.value();
   final Set<String> _activeMapSurfaces = {};
   Timer? _pauseLocationTimer;
-  CameraPosition _drawingCameraPosition = const CameraPosition(
-    target: defaultFarmMapPosition,
-    zoom: OperationMapStyle.initialZoom,
-  );
+  CameraPosition? _drawingCameraPosition;
   var _drawingEnabled = false;
   String? _lastFittedZoneSignature;
   String? _pendingFittedZoneSignature;
@@ -338,6 +331,10 @@ class _ActivityViewState extends State<ActivityView> {
     listenable: widget.viewModel,
     builder: (context, _) {
       final vm = widget.viewModel;
+      if (_mainCameraPosition == null && vm.initialMapPosition != null) {
+        _mainCameraPosition = mapInitialCamera(vm.initialMapPosition!);
+      }
+      _drawingCameraPosition ??= _mainCameraPosition;
       if (widget.mapBuilder == null) {
         _updateMarkers();
         _fitSelectedZone(vm);
@@ -352,6 +349,7 @@ class _ActivityViewState extends State<ActivityView> {
         selectedZoneId: vm.selectedZoneFilterId,
         selectedZonePoints: vm.selectedZonePoints,
         userLocation: vm.userLocation,
+        initialCameraPosition: _mainCameraPosition,
         onAddPoint: vm.addPoint,
       );
       return Scaffold(
@@ -455,6 +453,12 @@ class _ActivityViewState extends State<ActivityView> {
   );
 
   Widget _buildGoogleMap(ActivityViewModel vm, {required bool drawingSurface}) {
+    final initialCamera = drawingSurface
+        ? _drawingCameraPosition
+        : _mainCameraPosition;
+    if (initialCamera == null) {
+      return MapInitialPlaceholder(resolved: vm.initialMapPositionResolved);
+    }
     final positions = [
       for (final point in vm.points) LatLng(point.latitude, point.longitude),
     ];
@@ -486,9 +490,7 @@ class _ActivityViewState extends State<ActivityView> {
                     : 'activity-main-google-map',
               ),
               mapType: OperationMapStyle.mapType,
-              initialCameraPosition: drawingSurface
-                  ? _drawingCameraPosition
-                  : _mainCameraPosition,
+              initialCameraPosition: initialCamera,
               onCameraMove: (position) {
                 if (drawingSurface) {
                   _drawingCameraPosition = position;
