@@ -42,6 +42,8 @@ As instruções dessas skills complementam este padrão. Quando houver conflito 
 - Não instancie dependências de produção dentro de widgets. Obtenha-as pelo escopo de injeção do app.
 - Não use textos nos botões compactos abaixo do mapa; use ícone, `Tooltip`, semântica e estado visual.
 - Não abra teclado automaticamente em seletores ou modais. Campos de pesquisa não recebem foco inicial.
+- Abra formulários, filtros, editores e seletores em um bottom sheet que ocupe 100% da área segura disponível. Reutilize `showFullHeightFormModal`; reserve a altura compacta para confirmações ou modais compostos somente por informações e botões, como `Controle de Pulverização`.
+- Todo controle de formulário deve seguir `Registrar operação` de Pulverização. Para inputs e dropdowns, reutilize `appFormInputDecoration` e `AppFormFieldLabel`; não aceite o `InputDecoration` padrão do tema nem crie variações locais. Toggles, seletores e campos somente leitura devem manter os mesmos tokens de fundo tonal, raio, borda, foco, erro, label e espaçamento descritos na referência.
 - Não duplique estilos de input, cabeçalhos de bottom sheet, badges de status ou cards locais; extraia e reutilize quando aparecerem em mais de uma funcionalidade.
 - Não esconda conteúdo por sobreposição. Título/data, status e ações ocupam regiões próprias e devem continuar legíveis em telas estreitas e com escala de fonte maior.
 - Não conclua uma implementação sem manter sincronizados o código, os itens 20 e 25 do `database.md` e uma nova migration em `supabase/migrations`.
@@ -51,7 +53,8 @@ As instruções dessas skills complementam este padrão. Quando houver conflito 
 - O fluxo novo parece pertencer à mesma família de Pulverização sem depender de explicação.
 - Mapa, GPS e câmera respeitam ciclo de vida e não continuam ativos sob outra rota.
 - Ações quebram linha sem overflow e mantêm alvos de toque adequados.
-- Bottom sheets mantêm cabeçalho, raio, altura, fechamento e teclado consistentes.
+- Bottom sheets de formulário ocupam toda a área segura; folhas apenas informativas mantêm a altura compacta, e ambas preservam cabeçalho, raio, fechamento e teclado consistentes.
+- Inputs, dropdowns, toggles, seletores e campos somente leitura pertencem ao mesmo dialeto visual de `Registrar operação`, inclusive fora de Operações quando reutilizam esse fluxo, como a autenticação do Estoque.
 - Estados locais e de sincronização são explícitos, testáveis e persistidos pelo repositório.
 - O fluxo funcional está documentado na seção 20, o contrato executável de banco na seção 25 e a migration correspondente existe e segue o padrão do projeto.
 - Streams, timers e controllers são descartados.

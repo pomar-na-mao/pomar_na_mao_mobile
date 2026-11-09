@@ -70,7 +70,7 @@ const operationModules = <OperationModuleDefinition>[
         description: 'Controle entradas, saídas e saldos dos produtos.',
         icon: Icons.inventory_2_outlined,
         accent: Color(0xFF7A5A24),
-        isEnabled: false,
+        isEnabled: true,
       ),
       OperationDefinition(
         id: 'agronomic-sampling',

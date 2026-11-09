@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/ui/full_height_form_modal.dart';
 import '../../../farm/domain/zone.dart';
 import '../spraying_view_model.dart';
 
@@ -10,14 +11,9 @@ class SprayingZoneFilterModal extends StatefulWidget {
 
   final SprayingViewModel viewModel;
 
-  static Future<void> show(
-    BuildContext context,
-    SprayingViewModel viewModel,
-  ) {
-    return showModalBottomSheet<void>(
+  static Future<void> show(BuildContext context, SprayingViewModel viewModel) {
+    return showFullHeightFormModal<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => SprayingZoneFilterModal(viewModel: viewModel),
     );
   }
@@ -43,9 +39,6 @@ class _SprayingZoneFilterModalState extends State<SprayingZoneFilterModal> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final vm = widget.viewModel;
-    final screenHeight = MediaQuery.sizeOf(context).height;
-    final sheetHeight = (screenHeight * 0.78).clamp(520.0, 780.0);
-
     return ListenableBuilder(
       listenable: vm,
       builder: (context, _) {
@@ -62,7 +55,7 @@ class _SprayingZoneFilterModalState extends State<SprayingZoneFilterModal> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           clipBehavior: Clip.antiAlias,
           child: SizedBox(
-            height: sheetHeight,
+            height: double.infinity,
             child: SafeArea(
               top: false,
               child: Column(
@@ -160,7 +153,9 @@ class _SprayingZoneFilterModalState extends State<SprayingZoneFilterModal> {
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<String?>(
-                              key: const ValueKey('spraying-filter-zone-dropdown'),
+                              key: const ValueKey(
+                                'spraying-filter-zone-dropdown',
+                              ),
                               value: validSelectedZoneId,
                               isExpanded: true,
                               hint: Text(

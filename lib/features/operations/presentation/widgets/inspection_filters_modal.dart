@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/di/app_scope.dart';
+import '../../../../core/ui/full_height_form_modal.dart';
 import '../../../farm/domain/zone.dart';
 import '../inspection_view_model.dart';
 
@@ -15,10 +16,8 @@ class InspectionFiltersModal extends StatefulWidget {
     BuildContext context,
     InspectionViewModel viewModel,
   ) {
-    return showModalBottomSheet<void>(
+    return showFullHeightFormModal<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => InspectionFiltersModal(viewModel: viewModel),
     );
   }
@@ -52,9 +51,6 @@ class _InspectionFiltersModalState extends State<InspectionFiltersModal> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final vm = widget.viewModel;
-    final screenHeight = MediaQuery.sizeOf(context).height;
-    final sheetHeight = (screenHeight * 0.78).clamp(520.0, 780.0);
-
     return ListenableBuilder(
       listenable: vm,
       builder: (context, _) {
@@ -73,7 +69,7 @@ class _InspectionFiltersModalState extends State<InspectionFiltersModal> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           clipBehavior: Clip.antiAlias,
           child: SizedBox(
-            height: sheetHeight,
+            height: double.infinity,
             child: SafeArea(
               top: false,
               child: Column(

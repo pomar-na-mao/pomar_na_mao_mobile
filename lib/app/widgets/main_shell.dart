@@ -94,6 +94,9 @@ class _MainShellState extends State<MainShell> {
                             sprayingViewModel: scopeDeps?.sprayingViewModel,
                             mipdViewModel: scopeDeps?.mipdViewModel,
                             activityViewModel: scopeDeps?.activityViewModel,
+                            stockViewModel: scopeDeps?.stockViewModel,
+                            authenticationViewModel:
+                                scopeDeps?.authenticationViewModel,
                           ),
                           settings: settings,
                         );

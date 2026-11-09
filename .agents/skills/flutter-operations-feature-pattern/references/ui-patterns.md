@@ -54,7 +54,7 @@ Funcionalidade equivalente deve reutilizar o mesmo componente de botão e a mesm
 
 Fonte canônica: `lib/features/operations/presentation/widgets/spraying_zone_filter_modal.dart` (`Filtros de Plantas`).
 
-Use `showModalBottomSheet`, `isScrollControlled: true` e fundo transparente. A folha tem superfície do tema, raio superior 24 e clipping. A altura atual é 78% da tela, limitada entre 520 e 780 px; mantenha a mesma distância percebida do topo e valide telas menores com constraints seguras.
+Use `showFullHeightFormModal`, que configura `showModalBottomSheet` com controle de rolagem, área segura e fundo transparente. A folha preenche 100% da área segura disponível, usa superfície do tema, raio superior 24 e clipping.
 
 Estrutura obrigatória:
 
@@ -93,7 +93,9 @@ Fontes canônicas:
 - `lib/features/operations/presentation/widgets/spraying_review_modal.dart`
 - `lib/features/operations/presentation/widgets/activity_catalog_components.dart`
 
-Reutilize o cabeçalho e a altura de 75%. Com teclado, anime o padding inferior usando `MediaQuery.viewInsetsOf(context).bottom` e mantenha o rodapé de salvar acessível.
+Reutilize o cabeçalho e abra o fluxo com `showFullHeightFormModal`, preenchendo 100% da área segura disponível. Essa regra vale para formulários, filtros, editores, revisões interativas e seletores de catálogo. Com teclado, anime o padding inferior usando `MediaQuery.viewInsetsOf(context).bottom` e mantenha o rodapé de salvar acessível.
+
+Não aplique tela cheia a confirmações, listas somente informativas ou folhas compostas apenas por informações e botões. `Controle de Pulverização` é a referência para essa exceção compacta.
 
 Padrão dos inputs:
 
@@ -108,9 +110,21 @@ Padrão dos inputs:
 - validação no formulário e mensagens junto ao campo;
 - botão principal no rodapé com altura mínima 50.
 
+`Registrar operação`, em `spraying_registration_modal.dart`, é a fonte
+canônica. Reutilize `appFormInputDecoration` e `AppFormFieldLabel`, definidos em
+`lib/core/ui/app_form_field.dart`, em todo `TextField`, `TextFormField`,
+`DropdownButtonFormField` ou `InputDecorator`. Não deixe controles de fluxos
+associados a Operações, inclusive autenticação, herdarem apenas o
+`InputDecoration` padrão do tema. Labels ficam acima do controle, nunca como
+substituto flutuante desse padrão.
+
 Seletores de catálogos abrem outro bottom sheet, apresentam pesquisa e itens consistentes, mas o campo de pesquisa não deve ter `autofocus` nem receber `requestFocus()` ao abrir. O teclado só aparece após ação explícita do usuário.
 
-Use o mesmo tratamento para dropdowns e toggles: fundo tonal, raio 14, estados de foco/erro do tema, label clara e área de toque acessível. Não crie um segundo dialeto visual para um tipo de controle ainda não presente; componha-o a partir desses tokens.
+Use o mesmo tratamento para dropdowns, toggles, seletores e campos somente
+leitura: fundo tonal, raio 14, estados de foco/erro do tema, label clara,
+espaçamento consistente e área de toque acessível. Não crie um segundo dialeto
+visual para um tipo de controle ainda não presente; componha-o a partir desses
+tokens.
 
 ## Listas salvas localmente
 

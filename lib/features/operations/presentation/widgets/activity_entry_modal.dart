@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/ui/app_form_field.dart';
+import '../../../../core/ui/full_height_form_modal.dart';
 import '../../domain/activity_models.dart';
 import '../activity_view_model.dart';
 import 'activity_catalog_components.dart';
@@ -10,19 +12,9 @@ class ActivityEntryModal extends StatefulWidget {
   final ActivityViewModel viewModel;
 
   static Future<bool?> show(BuildContext context, ActivityViewModel viewModel) {
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.75;
-    return showModalBottomSheet<bool>(
+    return showFullHeightFormModal<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      constraints: BoxConstraints(maxHeight: maxHeight),
-      builder: (modalContext) => Padding(
-        key: const ValueKey('activity-entry-modal-top-margin'),
-        padding: EdgeInsets.only(
-          top: MediaQuery.paddingOf(modalContext).top + 24,
-        ),
-        child: ActivityEntryModal(viewModel: viewModel),
-      ),
+      builder: (_) => ActivityEntryModal(viewModel: viewModel),
     );
   }
 
@@ -70,13 +62,8 @@ class _ActivityEntryModalState extends State<ActivityEntryModal> {
   }
 
   Future<void> _selectMixture() async {
-    final item = await showModalBottomSheet<MixtureCatalogItem>(
+    final item = await showFullHeightFormModal<MixtureCatalogItem>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.75,
-      ),
       builder: (_) => _MixtureCatalogPicker(catalog: widget.viewModel.mixtures),
     );
     if (item == null || !mounted) return;
@@ -84,62 +71,13 @@ class _ActivityEntryModalState extends State<ActivityEntryModal> {
   }
 
   Future<void> _selectMachine() async {
-    final item = await showModalBottomSheet<MachineCatalogItem>(
+    final item = await showFullHeightFormModal<MachineCatalogItem>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.75,
-      ),
       builder: (_) => _MachineCatalogPicker(catalog: widget.viewModel.machines),
     );
     if (item == null || !mounted) return;
     setState(() => _machine = item);
   }
-
-  InputDecoration _inputDecoration(
-    BuildContext context, {
-    Widget? prefixIcon,
-    String? hintText,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return InputDecoration(
-      prefixIcon: prefixIcon,
-      hintText: hintText,
-      filled: true,
-      fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: colorScheme.outlineVariant),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: colorScheme.outlineVariant),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: colorScheme.primary, width: 2),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: colorScheme.error),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: colorScheme.error, width: 2),
-      ),
-    );
-  }
-
-  Widget _fieldLabel(BuildContext context, String label) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Text(
-      label,
-      style: Theme.of(context).textTheme.labelLarge
-          ?.copyWith(fontWeight: FontWeight.bold),
-    ),
-  );
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -176,10 +114,7 @@ class _ActivityEntryModalState extends State<ActivityEntryModal> {
       child: AnimatedPadding(
         duration: const Duration(milliseconds: 180),
         padding: EdgeInsets.only(bottom: viewInsets.bottom),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * 0.75,
-          ),
+        child: SizedBox.expand(
           child: SafeArea(
             top: false,
             child: Form(
@@ -251,12 +186,12 @@ class _ActivityEntryModalState extends State<ActivityEntryModal> {
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                       children: [
-                        _fieldLabel(context, 'Atividade realizada *'),
+                        const AppFormFieldLabel('Atividade realizada *'),
                         TextFormField(
                           key: const ValueKey('activity-activity'),
                           controller: _activityController,
                           textCapitalization: TextCapitalization.sentences,
-                          decoration: _inputDecoration(
+                          decoration: appFormInputDecoration(
                             context,
                             prefixIcon: const Icon(Icons.task_alt_rounded),
                             hintText: 'Ex.: roçagem',
@@ -271,7 +206,7 @@ class _ActivityEntryModalState extends State<ActivityEntryModal> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  _fieldLabel(context, 'Data *'),
+                                  const AppFormFieldLabel('Data *'),
                                   OutlinedButton.icon(
                                     key: const ValueKey('activity-date'),
                                     onPressed: _selectDate,
@@ -294,7 +229,7 @@ class _ActivityEntryModalState extends State<ActivityEntryModal> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  _fieldLabel(context, 'Hora *'),
+                                  const AppFormFieldLabel('Hora *'),
                                   OutlinedButton.icon(
                                     key: const ValueKey('activity-time'),
                                     onPressed: _selectTime,
@@ -313,12 +248,12 @@ class _ActivityEntryModalState extends State<ActivityEntryModal> {
                           ],
                         ),
                         const SizedBox(height: 14),
-                        _fieldLabel(context, 'Responsável *'),
+                        const AppFormFieldLabel('Responsável *'),
                         TextFormField(
                           key: const ValueKey('activity-responsible'),
                           controller: _responsibleController,
                           textCapitalization: TextCapitalization.words,
-                          decoration: _inputDecoration(
+                          decoration: appFormInputDecoration(
                             context,
                             prefixIcon: const Icon(
                               Icons.person_outline_rounded,

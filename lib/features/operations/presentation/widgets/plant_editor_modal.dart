@@ -1,20 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/ui/full_height_form_modal.dart';
 import '../inspection_view_model.dart';
 
 class PlantEditorModal extends StatelessWidget {
-  const PlantEditorModal({
-    required this.viewModel,
-    super.key,
-  });
+  const PlantEditorModal({required this.viewModel, super.key});
 
   final InspectionViewModel viewModel;
 
-  static Future<void> show(BuildContext context, InspectionViewModel viewModel) {
-    return showModalBottomSheet<void>(
+  static Future<void> show(
+    BuildContext context,
+    InspectionViewModel viewModel,
+  ) {
+    return showFullHeightFormModal<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => PlantEditorModal(viewModel: viewModel),
     );
   }
@@ -32,18 +31,16 @@ class PlantEditorModal extends StatelessWidget {
         final catalog = viewModel.catalog;
         final changedPlantsCount = viewModel.changedPlantsCountInCurrentDraft;
         final hasStagedChanges = viewModel.hasStagedChanges;
-        final canFinalize = (hasStagedChanges || changedPlantsCount > 0) &&
+        final canFinalize =
+            (hasStagedChanges || changedPlantsCount > 0) &&
             !viewModel.isSyncing &&
             !viewModel.isSavingLocal;
-        final screenHeight = MediaQuery.sizeOf(context).height;
-        final modalHeight = screenHeight * 0.80;
-
         return Material(
           color: colorScheme.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           clipBehavior: Clip.antiAlias,
           child: SizedBox(
-            height: modalHeight,
+            height: double.infinity,
             child: SafeArea(
               top: false,
               child: Column(
@@ -98,10 +95,18 @@ class PlantEditorModal extends StatelessWidget {
                   // Feedback message banner if any
                   if (viewModel.feedbackMessage case final message?)
                     Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
-                        color: colorScheme.primaryContainer.withValues(alpha: 0.35),
+                        color: colorScheme.primaryContainer.withValues(
+                          alpha: 0.35,
+                        ),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: colorScheme.primary.withValues(alpha: 0.25),
@@ -130,17 +135,24 @@ class PlantEditorModal extends StatelessWidget {
 
                   // Planta Inexistente Toggle
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     child: Material(
                       color: viewModel.stagedNonExistent
                           ? colorScheme.errorContainer.withValues(alpha: 0.25)
-                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                          : colorScheme.surfaceContainerHighest.withValues(
+                              alpha: 0.35,
+                            ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                         side: BorderSide(
                           color: viewModel.stagedNonExistent
                               ? colorScheme.error.withValues(alpha: 0.5)
-                              : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                              : colorScheme.outlineVariant.withValues(
+                                  alpha: 0.6,
+                                ),
                           width: viewModel.stagedNonExistent ? 1.5 : 1,
                         ),
                       ),
@@ -194,18 +206,27 @@ class PlantEditorModal extends StatelessWidget {
                             opacity: viewModel.stagedNonExistent ? 0.38 : 1.0,
                             duration: const Duration(milliseconds: 200),
                             child: IgnorePointer(
-                              key: const ValueKey('plant-occurrences-ignore-pointer'),
+                              key: const ValueKey(
+                                'plant-occurrences-ignore-pointer',
+                              ),
                               ignoring: viewModel.stagedNonExistent,
                               child: ListView.separated(
                                 key: const ValueKey('plant-occurrences-list'),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
                                 itemCount: catalog.length,
-                                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: 8),
                                 itemBuilder: (context, index) {
                                   final type = catalog[index];
-                                  final isChecked = viewModel.isOccurrenceChecked(type.id);
-                                  final isNonExistent = viewModel.stagedNonExistent;
-                                  final isItemDisabled = viewModel.isSavingLocal || isNonExistent;
+                                  final isChecked = viewModel
+                                      .isOccurrenceChecked(type.id);
+                                  final isNonExistent =
+                                      viewModel.stagedNonExistent;
+                                  final isItemDisabled =
+                                      viewModel.isSavingLocal || isNonExistent;
 
                                   return Semantics(
                                     label: type.name,
@@ -215,27 +236,36 @@ class PlantEditorModal extends StatelessWidget {
                                     hint: isNonExistent
                                         ? 'Desabilitado porque a planta está marcada como inexistente'
                                         : (isChecked
-                                            ? 'Marcado. Toque para desmarcar'
-                                            : 'Desmarcado. Toque para marcar'),
+                                              ? 'Marcado. Toque para desmarcar'
+                                              : 'Desmarcado. Toque para marcar'),
                                     child: Material(
                                       color: isChecked
-                                          ? colorScheme.primaryContainer.withValues(alpha: 0.25)
+                                          ? colorScheme.primaryContainer
+                                                .withValues(alpha: 0.25)
                                           : colorScheme.surface,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(14),
                                         side: BorderSide(
                                           color: isChecked
-                                              ? colorScheme.primary.withValues(alpha: 0.5)
-                                              : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                                              ? colorScheme.primary.withValues(
+                                                  alpha: 0.5,
+                                                )
+                                              : colorScheme.outlineVariant
+                                                    .withValues(alpha: 0.6),
                                           width: isChecked ? 1.5 : 1,
                                         ),
                                       ),
                                       clipBehavior: Clip.antiAlias,
                                       child: InkWell(
-                                        key: ValueKey('occurrence-toggle-${type.code}'),
+                                        key: ValueKey(
+                                          'occurrence-toggle-${type.code}',
+                                        ),
                                         onTap: isItemDisabled
                                             ? null
-                                            : () => viewModel.toggleStagedOccurrence(type.id),
+                                            : () => viewModel
+                                                  .toggleStagedOccurrence(
+                                                    type.id,
+                                                  ),
                                         child: Padding(
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 16,
@@ -262,7 +292,8 @@ class PlantEditorModal extends StatelessWidget {
                                                     ? Icon(
                                                         Icons.check_rounded,
                                                         size: 16,
-                                                        color: colorScheme.onPrimary,
+                                                        color: colorScheme
+                                                            .onPrimary,
                                                       )
                                                     : null,
                                               ),
@@ -270,12 +301,15 @@ class PlantEditorModal extends StatelessWidget {
                                               Expanded(
                                                 child: Text(
                                                   type.name,
-                                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                                    fontWeight: isChecked
-                                                        ? FontWeight.w600
-                                                        : FontWeight.normal,
-                                                    fontSize: 15,
-                                                  ),
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodyMedium
+                                                      ?.copyWith(
+                                                        fontWeight: isChecked
+                                                            ? FontWeight.w600
+                                                            : FontWeight.normal,
+                                                        fontSize: 15,
+                                                      ),
                                                 ),
                                               ),
                                             ],
@@ -312,8 +346,8 @@ class PlantEditorModal extends StatelessWidget {
                                   hasStagedChanges
                                       ? 'Alterações pendentes'
                                       : (changedPlantsCount == 1
-                                          ? '1 planta alterada'
-                                          : '$changedPlantsCount plantas alteradas'),
+                                            ? '1 planta alterada'
+                                            : '$changedPlantsCount plantas alteradas'),
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: colorScheme.onSurfaceVariant,
                                     fontWeight: FontWeight.w600,
@@ -328,7 +362,10 @@ class PlantEditorModal extends StatelessWidget {
                         FilledButton.icon(
                           key: const ValueKey('plant-editor-update-button'),
                           style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -362,7 +399,7 @@ class PlantEditorModal extends StatelessWidget {
             ),
           ),
         );
-    },
-  );
+      },
+    );
   }
 }

@@ -84,14 +84,10 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('activity-drawing-modal-top-margin')),
-      findsOneWidget,
-    );
-    expect(
       tester
           .getTopLeft(find.byKey(const ValueKey('activity-drawing-modal')))
           .dy,
-      greaterThanOrEqualTo(104),
+      0,
     );
     final geometrySelector = tester
         .widget<SegmentedButton<ActivityGeometryType>>(
@@ -257,14 +253,9 @@ void main() {
     await tester.tap(find.text('Abrir'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey('activity-entry-modal-top-margin')),
-      findsOneWidget,
-    );
-    expect(
-      tester.getTopLeft(find.byType(ActivityEntryModal)).dy,
-      greaterThanOrEqualTo(224),
-    );
+    final formRect = tester.getRect(find.byType(ActivityEntryModal));
+    expect(formRect.top, 0);
+    expect(formRect.height, 800);
     final dateTop = tester.getTopLeft(
       find.byKey(const ValueKey('activity-date')),
     );

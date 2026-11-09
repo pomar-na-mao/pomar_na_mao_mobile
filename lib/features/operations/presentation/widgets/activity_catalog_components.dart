@@ -303,10 +303,7 @@ class _MixtureCatalogPickerState extends State<MixtureCatalogPicker> {
       color: colorScheme.surface,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.75,
-        ),
+      child: SizedBox.expand(
         child: SafeArea(
           top: false,
           child: Column(
@@ -460,10 +457,7 @@ class _MachineCatalogPickerState extends State<MachineCatalogPicker> {
       color: colorScheme.surface,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.75,
-        ),
+      child: SizedBox.expand(
         child: SafeArea(
           top: false,
           child: Column(
