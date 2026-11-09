@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../farm/data/supabase_zones_repository.dart';
 import '../../farm/domain/region_point.dart';
+import '../../farm/domain/map_initial_position.dart';
 import '../../farm/domain/user_location.dart';
 import '../../farm/domain/user_position_tracker.dart';
 import '../../farm/domain/zone.dart';
@@ -35,6 +36,7 @@ class InspectionViewModel extends ChangeNotifier {
     required this.repository,
     required this.locationService,
     this.zonesRepository,
+    this.mapInitialPositionResolver,
     Stream<void>? plantChanges,
   }) {
     _plantChangesSubscription = plantChanges?.listen((_) {
@@ -45,6 +47,9 @@ class InspectionViewModel extends ChangeNotifier {
 
   final InspectionRepository repository;
   final LocationService locationService;
+  final MapInitialPositionResolver? mapInitialPositionResolver;
+  MapInitialPosition? initialMapPosition;
+  bool initialMapPositionResolved = false;
   ZonesRepository? zonesRepository;
 
   void attachZonesRepository(ZonesRepository repo) {
@@ -240,10 +245,18 @@ class InspectionViewModel extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    await loadInitialMapPosition();
     await _loadExistingSnapshotSilently();
     await loadZones();
     await refreshLocalInspections();
     await refreshAddedPlants();
+  }
+
+  Future<void> loadInitialMapPosition() async {
+    if (initialMapPositionResolved) return;
+    initialMapPosition = await mapInitialPositionResolver?.resolve();
+    initialMapPositionResolved = true;
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> _loadExistingSnapshotSilently() async {

@@ -211,11 +211,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('activity-open-drawing')));
     await tester.pumpAndSettle();
     expect(
-      config!.initialCameraPosition.target.latitude,
+      config!.initialCameraPosition!.target.latitude,
       closeTo(-21.05, 1e-9),
     );
     expect(
-      config!.initialCameraPosition.target.longitude,
+      config!.initialCameraPosition!.target.longitude,
       closeTo(-47.05, 1e-9),
     );
     expect(config!.selectedZoneId, 'zone-a');

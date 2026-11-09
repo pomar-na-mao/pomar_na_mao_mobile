@@ -7,6 +7,8 @@ import '../../../core/di/app_scope.dart';
 import '../../../core/ui/full_height_form_modal.dart';
 import '../../farm/domain/user_location.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
+import '../../farm/presentation/map_initial_camera.dart';
+import '../../farm/presentation/map_initial_placeholder.dart';
 import '../../farm/presentation/bounded_plant_markers.dart';
 import '../../farm/presentation/plant_spatial_index.dart';
 import '../../farm/presentation/user_map_navigation.dart';
@@ -32,6 +34,7 @@ class InspectionMapConfig {
     this.polygons = const {},
     this.userLocation,
     this.canShowUserLocation = false,
+    this.initialCameraPosition,
   });
 
   final List<InspectionPlant> plants;
@@ -42,6 +45,7 @@ class InspectionMapConfig {
   final Set<Polygon> polygons;
   final UserLocation? userLocation;
   final bool canShowUserLocation;
+  final CameraPosition? initialCameraPosition;
 }
 
 typedef InspectionMapBuilder = Widget Function(
@@ -60,8 +64,6 @@ class InspectionView extends StatefulWidget {
 }
 
 class _InspectionViewState extends State<InspectionView> {
-  static const _fallbackPosition = defaultFarmMapPosition;
-
   GoogleMapController? _mapController;
   CameraPosition? _savedCamera;
   BitmapDescriptor? _plantMarkerIcon;
@@ -326,10 +328,7 @@ class _InspectionViewState extends State<InspectionView> {
 
     if (coordinates.isNotEmpty) {
       _hasSetInitialCamera = true;
-      final viewport = calculateMapCameraViewport(
-        coordinates,
-        fallback: _fallbackPosition,
-      );
+      final viewport = calculateMapCameraViewport(coordinates);
       final bounds = viewport.bounds;
       await animateMapCamera(
         controller,
@@ -639,6 +638,11 @@ class _InspectionViewState extends State<InspectionView> {
       listenable: vm,
       builder: (context, _) {
         _updateMarkers(vm);
+        final initialCamera =
+            _savedCamera ??
+            (vm.initialMapPosition == null
+                ? null
+                : mapInitialCamera(vm.initialMapPosition!));
 
         final location = vm.userLocation;
         if (location == null) {
@@ -671,6 +675,7 @@ class _InspectionViewState extends State<InspectionView> {
           polygons: vm.polygons,
           userLocation: vm.userLocation,
           canShowUserLocation: vm.canShowUserLocation,
+          initialCameraPosition: initialCamera,
         );
 
         return Scaffold(
@@ -704,17 +709,16 @@ class _InspectionViewState extends State<InspectionView> {
                                 _handleMapActivityChanged(vm, active),
                             builder: (_) => widget.mapBuilder != null
                                 ? widget.mapBuilder!(context, mapConfig)
+                                : initialCamera == null
+                                ? MapInitialPlaceholder(
+                                    resolved: vm.initialMapPositionResolved,
+                                  )
                                 : GoogleMap(
                                     key: const ValueKey(
                                       'inspection-google-map',
                                     ),
                                     mapType: OperationMapStyle.mapType,
-                                    initialCameraPosition:
-                                        _savedCamera ??
-                                        const CameraPosition(
-                                          target: _fallbackPosition,
-                                          zoom: OperationMapStyle.initialZoom,
-                                        ),
+                                    initialCameraPosition: initialCamera,
                                     onCameraIdle: () {
                                       _plantLayer.cameraIdle();
                                       if (vm.userLocation

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../farm/domain/farm_point.dart';
+import '../../farm/domain/map_initial_position.dart';
 import '../../farm/domain/farm_repository.dart';
 import '../../farm/domain/region_point.dart';
 import '../../farm/domain/zones_repository.dart';
@@ -20,6 +21,7 @@ class InventoryViewModel extends ChangeNotifier {
     this._zonesRepository, {
     InventoryPropertyProfile? profile,
     Stream<void>? plantChanges,
+    this.mapInitialPositionResolver,
   }) : profile = profile ?? AppConfig.activeTenant.propertyProfile {
     _plantChangesSubscription = plantChanges?.listen((_) {
       if (_summaryStatus == InventoryLoadStatus.initial ||
@@ -35,6 +37,9 @@ class InventoryViewModel extends ChangeNotifier {
   final FarmRepository _farmRepository;
   final ZonesRepository _zonesRepository;
   final InventoryPropertyProfile profile;
+  final MapInitialPositionResolver? mapInitialPositionResolver;
+  MapInitialPosition? initialMapPosition;
+  bool initialMapPositionResolved = false;
 
   InventoryLoadStatus _summaryStatus = InventoryLoadStatus.initial;
   InventoryLoadStatus get summaryStatus => _summaryStatus;
@@ -63,7 +68,14 @@ class InventoryViewModel extends ChangeNotifier {
   Future<void> initialize() async {
     if (_initializationStarted || _isDisposed) return;
     _initializationStarted = true;
-    await Future.wait([loadSummary(), loadMapData()]);
+    await Future.wait([loadInitialMapPosition(), loadSummary(), loadMapData()]);
+  }
+
+  Future<void> loadInitialMapPosition() async {
+    if (initialMapPositionResolved) return;
+    initialMapPosition = await mapInitialPositionResolver?.resolve();
+    initialMapPositionResolved = true;
+    _notifySafely();
   }
 
   /// Recarrega os dados do servidor remoto, atualiza o cache local e
@@ -76,10 +88,7 @@ class InventoryViewModel extends ChangeNotifier {
     try {
       await _inventoryRepository.refreshCache();
       if (_isDisposed) return;
-      await Future.wait([
-        loadSummary(),
-        loadMapData(),
-      ]);
+      await Future.wait([loadSummary(), loadMapData()]);
     } finally {
       if (!_isDisposed) {
         _isRefreshingCache = false;
@@ -155,6 +164,19 @@ class InventoryViewModel extends ChangeNotifier {
 
     if (_isDisposed) return;
     _farmBoundaryPoints = farmPoints;
+    if (initialMapPosition == null) {
+      final firstPoint = farmPoints
+          .where((point) => point.boundaryOrder == 1)
+          .firstOrNull;
+      if (firstPoint != null) {
+        initialMapPosition = MapInitialPosition(
+          latitude: firstPoint.latitude,
+          longitude: firstPoint.longitude,
+          source: MapInitialPositionSource.farm,
+        );
+      }
+      initialMapPositionResolved = true;
+    }
     _zonePointsById = zonePointsById;
 
     final hasFarmPolygon = farmPoints.length >= 3;

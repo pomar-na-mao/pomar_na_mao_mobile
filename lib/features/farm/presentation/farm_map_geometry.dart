@@ -6,7 +6,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../domain/farm_point.dart';
 import '../domain/region_point.dart';
 
-const defaultFarmMapPosition = LatLng(-21.2349, -47.790694);
 const farmBoundaryStrokeColor = Color(0xFF1565C0);
 const farmBoundaryFillColor = Color(0x1A1976D2);
 const zoneBoundaryStrokeColor = Color(0xFF1B5E20);
@@ -97,10 +96,15 @@ class MapCameraViewport {
 
 MapCameraViewport calculateMapCameraViewport(
   Iterable<LatLng> coordinates, {
-  LatLng fallback = defaultFarmMapPosition,
+  LatLng? fallback,
 }) {
   final points = coordinates.toList(growable: false);
-  if (points.isEmpty) return MapCameraViewport(target: fallback);
+  if (points.isEmpty) {
+    if (fallback == null) {
+      throw ArgumentError('fallback is required when coordinates is empty');
+    }
+    return MapCameraViewport(target: fallback);
+  }
 
   var minLatitude = points.first.latitude;
   var maxLatitude = minLatitude;

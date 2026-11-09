@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../farm/domain/user_location.dart';
 import '../../farm/domain/user_position_tracker.dart';
+import '../../farm/domain/map_initial_position.dart';
 import '../data/mipd_photo_service.dart';
 import '../data/mipd_repository.dart';
 import '../domain/inspection_models.dart';
@@ -16,11 +17,15 @@ class MipdViewModel extends ChangeNotifier {
     required this.repository,
     required this.locationService,
     required this.photoService,
+    this.mapInitialPositionResolver,
   });
 
   final MipdRepository repository;
   final LocationService locationService;
   final MipdPhotoService photoService;
+  final MapInitialPositionResolver? mapInitialPositionResolver;
+  MapInitialPosition? initialMapPosition;
+  bool initialMapPositionResolved = false;
   List<InspectionPlant> plants = const [];
   List<OccurrenceType> catalog = const [];
   List<MipdMarking> markings = const [];
@@ -45,7 +50,18 @@ class MipdViewModel extends ChangeNotifier {
   };
 
   Future<void> initialize() async {
-    await Future.wait([loadPlants(forceRemote: false), loadMarkings()]);
+    await Future.wait([
+      loadInitialMapPosition(),
+      loadPlants(forceRemote: false),
+      loadMarkings(),
+    ]);
+  }
+
+  Future<void> loadInitialMapPosition() async {
+    if (initialMapPositionResolved) return;
+    initialMapPosition = await mapInitialPositionResolver?.resolve();
+    initialMapPositionResolved = true;
+    if (!_disposed) notifyListeners();
   }
 
   void resumeLocation() {

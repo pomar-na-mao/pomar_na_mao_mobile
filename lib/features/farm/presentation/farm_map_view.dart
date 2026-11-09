@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../domain/zone.dart';
+import '../domain/map_initial_position.dart';
 import 'farm_map_geometry.dart';
+import 'map_initial_camera.dart';
+import 'map_initial_placeholder.dart';
 import 'farm_map_view_model.dart';
 import 'bounded_plant_markers.dart';
 import 'plant_spatial_index.dart';
@@ -46,7 +49,6 @@ class FarmMapView extends StatefulWidget {
 }
 
 class _FarmMapViewState extends State<FarmMapView> {
-  static const _fallbackPosition = defaultFarmMapPosition;
   static const _allZonesValue = '';
 
   GoogleMapController? _mapController;
@@ -54,6 +56,7 @@ class _FarmMapViewState extends State<FarmMapView> {
   String? _lastCameraSignature;
   String? _lastCameraZoneId;
   var _hasSetInitialCamera = false;
+  var _preserveInitialUserCamera = false;
   BitmapDescriptor? _plantMarkerIcon;
   BitmapDescriptor? _nonExistentPlantMarkerIcon;
 
@@ -227,12 +230,19 @@ class _FarmMapViewState extends State<FarmMapView> {
 
       _hasSetInitialCamera = true;
       _lastCameraZoneId = widget.viewModel.selectedZoneId;
+      _preserveInitialUserCamera =
+          widget.viewModel.initialMapPosition?.source ==
+              MapInitialPositionSource.user &&
+          widget.viewModel.selectedZoneId == null;
+      if (_preserveInitialUserCamera) return;
     }
 
     final zoneChanged = _lastCameraZoneId != widget.viewModel.selectedZoneId;
     if (zoneChanged) {
       _lastCameraZoneId = widget.viewModel.selectedZoneId;
+      _preserveInitialUserCamera = false;
     }
+    if (_preserveInitialUserCamera) return;
 
     final signature = [
       widget.viewModel.selectedZoneId ?? _allZonesValue,
@@ -271,10 +281,8 @@ class _FarmMapViewState extends State<FarmMapView> {
       padding = 64;
     }
 
-    final viewport = calculateMapCameraViewport(
-      cameraCoordinates,
-      fallback: _fallbackPosition,
-    );
+    if (cameraCoordinates.isEmpty) return;
+    final viewport = calculateMapCameraViewport(cameraCoordinates);
     final bounds = viewport.bounds;
     await animateMapCamera(
       controller,
@@ -318,6 +326,11 @@ class _FarmMapViewState extends State<FarmMapView> {
       listenable: widget.viewModel,
       builder: (context, _) {
         _updateMarkersIfNeeded();
+        final initialCamera =
+            _savedCamera ??
+            (widget.viewModel.initialMapPosition == null
+                ? null
+                : mapInitialCamera(widget.viewModel.initialMapPosition!));
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) unawaited(_fitCameraToAvailableCoordinates());
         });
@@ -350,29 +363,30 @@ class _FarmMapViewState extends State<FarmMapView> {
                           _plantLayer.controller = null;
                         }
                       },
-                      builder: (_) => GoogleMap(
-                        mapType: MapType.satellite,
-                        initialCameraPosition:
-                            _savedCamera ??
-                            const CameraPosition(
-                              target: _fallbackPosition,
-                              zoom: 17,
+                      builder: (_) => initialCamera == null
+                          ? MapInitialPlaceholder(
+                              resolved:
+                                  widget.viewModel.initialMapPositionResolved,
+                            )
+                          : GoogleMap(
+                              mapType: MapType.satellite,
+                              initialCameraPosition: initialCamera,
+                              onCameraIdle: () {
+                                _plantLayer.cameraIdle();
+                              },
+                              onCameraMove: (position) =>
+                                  _savedCamera = position,
+                              markers: _cachedMarkers,
+                              polygons: _polygons,
+                              myLocationEnabled: false,
+                              myLocationButtonEnabled: false,
+                              onMapCreated: (controller) {
+                                _mapController = controller;
+                                _plantLayer.controller = controller;
+                                _plantLayer.cameraIdle();
+                                unawaited(_fitCameraToAvailableCoordinates());
+                              },
                             ),
-                        onCameraIdle: () {
-                          _plantLayer.cameraIdle();
-                        },
-                        onCameraMove: (position) => _savedCamera = position,
-                        markers: _cachedMarkers,
-                        polygons: _polygons,
-                        myLocationEnabled: false,
-                        myLocationButtonEnabled: false,
-                        onMapCreated: (controller) {
-                          _mapController = controller;
-                          _plantLayer.controller = controller;
-                          _plantLayer.cameraIdle();
-                          unawaited(_fitCameraToAvailableCoordinates());
-                        },
-                      ),
                     ),
                     if (widget.viewModel.plantsStatus ==
                         PlantsLoadStatus.loading)

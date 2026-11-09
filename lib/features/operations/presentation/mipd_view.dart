@@ -6,7 +6,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/ui/map_activity.dart';
 import '../../farm/domain/user_location.dart';
 import '../../farm/presentation/bounded_plant_markers.dart';
-import '../../farm/presentation/farm_map_geometry.dart';
+import '../../farm/presentation/map_initial_camera.dart';
+import '../../farm/presentation/map_initial_placeholder.dart';
 import '../../farm/presentation/plant_spatial_index.dart';
 import '../../farm/presentation/user_map_navigation.dart';
 import '../domain/inspection_models.dart';
@@ -21,10 +22,12 @@ class MipdMapConfig {
     required this.plants,
     required this.onSelectPlant,
     this.userLocation,
+    this.initialCameraPosition,
   });
   final List<InspectionPlant> plants;
   final ValueChanged<InspectionPlant> onSelectPlant;
   final UserLocation? userLocation;
+  final CameraPosition? initialCameraPosition;
 }
 
 typedef MipdMapBuilder = Widget Function(
@@ -47,6 +50,9 @@ class _MipdViewState extends State<MipdView> {
   BitmapDescriptor? _plantIcon;
   BitmapDescriptor? _userIcon;
   GoogleMapController? _controller;
+  CameraPosition? _cameraPosition;
+  final UserMapNavigator _userMapNavigator = UserMapNavigator();
+  bool _hasFocusedOnUser = false;
 
   @override
   void initState() {
@@ -112,6 +118,24 @@ class _MipdViewState extends State<MipdView> {
     );
   }
 
+  void _followUser(UserLocation location) {
+    final controller = _controller;
+    if (controller == null) return;
+    if (!_hasFocusedOnUser) {
+      _hasFocusedOnUser = true;
+      unawaited(_userMapNavigator.focus(controller, location, zoom: 19));
+      return;
+    }
+    unawaited(
+      _userMapNavigator.follow(
+        location: location,
+        controller: controller,
+        camera: () => _cameraPosition,
+        isActive: () => mounted && _controller == controller,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     widget.viewModel.pauseLocation();
@@ -125,11 +149,20 @@ class _MipdViewState extends State<MipdView> {
     listenable: widget.viewModel,
     builder: (context, _) {
       final vm = widget.viewModel;
+      if (_cameraPosition == null && vm.initialMapPosition != null) {
+        _cameraPosition = mapInitialCamera(vm.initialMapPosition!);
+      }
+      if (vm.userLocation case final location?) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _followUser(location);
+        });
+      }
       final colorScheme = Theme.of(context).colorScheme;
       if (widget.mapBuilder == null) _updateMarkers();
       final config = MipdMapConfig(
         plants: vm.plants,
         userLocation: vm.userLocation,
+        initialCameraPosition: _cameraPosition,
         onSelectPlant: (plant) => MipdPlantModal.show(context, plant, vm),
       );
       return Scaffold(
@@ -153,13 +186,16 @@ class _MipdViewState extends State<MipdView> {
                               : widget.viewModel.pauseLocation(),
                           builder: (_) => widget.mapBuilder != null
                               ? widget.mapBuilder!(context, config)
+                              : _cameraPosition == null
+                              ? MapInitialPlaceholder(
+                                  resolved: vm.initialMapPositionResolved,
+                                )
                               : GoogleMap(
                                   key: const ValueKey('mipd-google-map'),
                                   mapType: OperationMapStyle.mapType,
-                                  initialCameraPosition: const CameraPosition(
-                                    target: defaultFarmMapPosition,
-                                    zoom: OperationMapStyle.initialZoom,
-                                  ),
+                                  initialCameraPosition: _cameraPosition!,
+                                  onCameraMove: (position) =>
+                                      _cameraPosition = position,
                                   markers: {
                                     ..._markers,
                                     if (vm.userLocation case final location?)
@@ -186,6 +222,9 @@ class _MipdViewState extends State<MipdView> {
                                     _controller = controller;
                                     _plantLayer.controller = controller;
                                     _plantLayer.cameraIdle();
+                                    if (vm.userLocation case final location?) {
+                                      _followUser(location);
+                                    }
                                   },
                                 ),
                         ),

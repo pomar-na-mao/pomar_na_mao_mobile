@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../domain/farm_point.dart';
+import '../domain/map_initial_position.dart';
 import '../domain/farm_repository.dart';
 import '../domain/plant.dart';
 import '../domain/plants_repository.dart';
@@ -18,6 +19,7 @@ class FarmMapViewModel extends ChangeNotifier {
     this._zonesRepository,
     this._farmRepository, {
     Stream<void>? plantChanges,
+    this.mapInitialPositionResolver,
   }) {
     _plantChangesSubscription = plantChanges?.listen((_) {
       if (_plantsStatus == PlantsLoadStatus.initial ||
@@ -31,6 +33,9 @@ class FarmMapViewModel extends ChangeNotifier {
   final PlantsRepository _plantsRepository;
   final ZonesRepository _zonesRepository;
   final FarmRepository _farmRepository;
+  final MapInitialPositionResolver? mapInitialPositionResolver;
+  MapInitialPosition? initialMapPosition;
+  bool initialMapPositionResolved = false;
   StreamSubscription<void>? _plantChangesSubscription;
   bool _disposed = false;
 
@@ -80,7 +85,14 @@ class FarmMapViewModel extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_plantsStatus != PlantsLoadStatus.initial) return;
-    await loadFarmData();
+    await Future.wait([loadInitialMapPosition(), loadFarmData()]);
+  }
+
+  Future<void> loadInitialMapPosition() async {
+    if (initialMapPositionResolved) return;
+    initialMapPosition = await mapInitialPositionResolver?.resolve();
+    initialMapPositionResolved = true;
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> loadFarmData() async {
@@ -95,6 +107,19 @@ class FarmMapViewModel extends ChangeNotifier {
       _allPlants = await plantsFuture;
       _zones = await zonesFuture;
       _farmBoundaryPoints = await farmBoundaryFuture;
+      if (initialMapPosition == null) {
+        final firstPoint = _farmBoundaryPoints
+            .where((point) => point.boundaryOrder == 1)
+            .firstOrNull;
+        if (firstPoint != null) {
+          initialMapPosition = MapInitialPosition(
+            latitude: firstPoint.latitude,
+            longitude: firstPoint.longitude,
+            source: MapInitialPositionSource.farm,
+          );
+        }
+        initialMapPositionResolved = true;
+      }
       _plantsStatus = plants.isEmpty
           ? PlantsLoadStatus.empty
           : PlantsLoadStatus.success;
