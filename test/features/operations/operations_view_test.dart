@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pomar_na_mao_mobile/features/auth/domain/authentication_repository.dart';
+import 'package:pomar_na_mao_mobile/features/auth/presentation/authentication_view_model.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/inspection_view.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/activity_repository.dart';
 import 'package:pomar_na_mao_mobile/features/operations/domain/activity_models.dart';
@@ -14,12 +16,19 @@ import 'package:pomar_na_mao_mobile/features/operations/presentation/mipd_view_m
 import 'package:pomar_na_mao_mobile/features/farm/domain/user_location.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/operations_view.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/spraying_view.dart';
+import 'package:pomar_na_mao_mobile/features/operations/data/stock_photo_picker.dart';
+import 'package:pomar_na_mao_mobile/features/operations/data/stock_repository.dart';
+import 'package:pomar_na_mao_mobile/features/operations/domain/stock_models.dart';
+import 'package:pomar_na_mao_mobile/features/operations/presentation/stock_view.dart';
+import 'package:pomar_na_mao_mobile/features/operations/presentation/stock_view_model.dart';
 
 Widget buildSubject({
   InspectionMapBuilder? inspectionMapBuilder,
   SprayingMapBuilder? sprayingMapBuilder,
   MipdViewModel? mipdViewModel,
   ActivityViewModel? activityViewModel,
+  StockViewModel? stockViewModel,
+  AuthenticationViewModel? authenticationViewModel,
   TextScaler textScaler = TextScaler.noScaling,
 }) {
   return MaterialApp(
@@ -41,6 +50,8 @@ Widget buildSubject({
           mipdMapBuilder: (_, _) =>
               const SizedBox(key: ValueKey('test-mipd-map')),
           activityViewModel: activityViewModel,
+          stockViewModel: stockViewModel,
+          authenticationViewModel: authenticationViewModel,
           activityMapBuilder: (_, _) =>
               const SizedBox(key: ValueKey('test-activity-map')),
         ),
@@ -114,6 +125,52 @@ class _EmptyActivityRepository implements ActivityRepository {
 
   @override
   Future<bool> syncOne(String localId) async => true;
+}
+
+class _EmptyStockRepository implements StockRepository {
+  @override
+  Future<StockItem> create(StockDraft draft, {StockPhoto? photo}) =>
+      throw UnimplementedError();
+  @override
+  Future<String?> createSignedPhotoUrl(String? objectPath) async => null;
+  @override
+  Future<void> delete(StockItem item) async {}
+  @override
+  Future<List<StockItem>> fetchAll() async => const [];
+  @override
+  Future<List<String>> fetchTypes() async => defaultStockTypes;
+  @override
+  Future<StockItem> update(
+    StockItem current,
+    StockDraft draft, {
+    StockPhoto? photo,
+  }) => throw UnimplementedError();
+}
+
+class _NoStockPhotoPicker implements StockPhotoPicker {
+  @override
+  Future<StockPhoto?> pick(StockPhotoSource source) async => null;
+}
+
+class _FakeAuthenticationRepository implements AuthenticationRepository {
+  _FakeAuthenticationRepository({this.authenticated = false});
+
+  bool authenticated;
+  String? receivedEmail;
+  String? receivedPassword;
+
+  @override
+  bool get isAuthenticated => authenticated;
+
+  @override
+  Future<void> signIn({required String email, required String password}) async {
+    receivedEmail = email;
+    receivedPassword = password;
+    if (email != 'operador@pomar.com' || password != 'segredo') {
+      throw const AuthenticationFailure('E-mail ou senha inválidos.');
+    }
+    authenticated = true;
+  }
 }
 
 Future<void> setSurfaceSize(WidgetTester tester, Size size) async {
@@ -230,7 +287,7 @@ void main() {
         matching: find.byType(AnimatedOpacity),
       ),
     );
-    expect(stockOpacity.opacity, lessThan(1));
+    expect(stockOpacity.opacity, 1);
     semantics.dispose();
   });
 
@@ -253,7 +310,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    for (final id in ['stock', 'agronomic-sampling', 'activity-planning']) {
+    for (final id in ['agronomic-sampling', 'activity-planning']) {
       final card = find.byKey(ValueKey('operation-card-$id'));
       expect(card, findsOneWidget);
       await tester.tap(card);
@@ -398,6 +455,130 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.byType(OperationsView), findsOneWidget);
+  });
+
+  testWidgets('stock card authenticates before opening the management screen', (
+    tester,
+  ) async {
+    final viewModel = StockViewModel(
+      repository: _EmptyStockRepository(),
+      photoPicker: _NoStockPhotoPicker(),
+    );
+    addTearDown(viewModel.dispose);
+    final authenticationRepository = _FakeAuthenticationRepository();
+    final authenticationViewModel = AuthenticationViewModel(
+      authenticationRepository,
+    );
+    addTearDown(authenticationViewModel.dispose);
+    await setSurfaceSize(tester, const Size(420, 900));
+    await tester.pumpWidget(
+      buildSubject(
+        stockViewModel: viewModel,
+        authenticationViewModel: authenticationViewModel,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey('operations-module-orchard-routine-list')),
+      const Offset(-1000, 0),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('operation-card-stock')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('authentication-dialog')), findsOneWidget);
+    expect(find.byType(StockView), findsNothing);
+    final dialogRect = tester.getRect(
+      find.byKey(const ValueKey('authentication-dialog')),
+    );
+    expect(dialogRect, const Rect.fromLTWH(0, 0, 420, 900));
+    final dialog = tester.widget<Material>(
+      find.byKey(const ValueKey('authentication-dialog')),
+    );
+    expect(
+      dialog.borderRadius,
+      const BorderRadius.vertical(top: Radius.circular(24)),
+    );
+    expect(
+      find.byKey(const ValueKey('authentication-dialog-scroll')),
+      findsOneWidget,
+    );
+    expect(find.text('E-mail'), findsOneWidget);
+    expect(find.text('Senha'), findsOneWidget);
+    for (final key in const [
+      ValueKey('authentication-email'),
+      ValueKey('authentication-password'),
+    ]) {
+      final fieldFinder = find.byKey(key);
+      final decoration = tester.widget<TextField>(fieldFinder).decoration!;
+      final colorScheme = Theme.of(tester.element(fieldFinder)).colorScheme;
+      expect(decoration.filled, isTrue);
+      expect(
+        decoration.fillColor,
+        colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+      );
+      expect(
+        decoration.contentPadding,
+        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      );
+      expect(
+        (decoration.border! as OutlineInputBorder).borderRadius,
+        BorderRadius.circular(14),
+      );
+      expect(
+        (decoration.focusedBorder! as OutlineInputBorder).borderSide,
+        BorderSide(color: colorScheme.primary, width: 2),
+      );
+    }
+    await tester.enterText(
+      find.byKey(const ValueKey('authentication-email')),
+      'operador@pomar.com',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('authentication-password')),
+      'segredo',
+    );
+    await tester.tap(find.byKey(const ValueKey('authentication-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(StockView), findsOneWidget);
+    expect(find.byKey(const ValueKey('add-stock-item')), findsOneWidget);
+    expect(authenticationRepository.receivedEmail, 'operador@pomar.com');
+    expect(authenticationRepository.receivedPassword, 'segredo');
+  });
+
+  testWidgets('stock card reuses an existing authenticated session', (
+    tester,
+  ) async {
+    final stockViewModel = StockViewModel(
+      repository: _EmptyStockRepository(),
+      photoPicker: _NoStockPhotoPicker(),
+    );
+    final authenticationViewModel = AuthenticationViewModel(
+      _FakeAuthenticationRepository(authenticated: true),
+    );
+    addTearDown(stockViewModel.dispose);
+    addTearDown(authenticationViewModel.dispose);
+    await setSurfaceSize(tester, const Size(420, 900));
+    await tester.pumpWidget(
+      buildSubject(
+        stockViewModel: stockViewModel,
+        authenticationViewModel: authenticationViewModel,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey('operations-module-orchard-routine-list')),
+      const Offset(-1000, 0),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('operation-card-stock')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('authentication-dialog')), findsNothing);
+    expect(find.byType(StockView), findsOneWidget);
   });
 
   for (final size in [

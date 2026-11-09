@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../core/ui/full_height_form_modal.dart';
 import '../../../core/ui/map_activity.dart';
 import '../../farm/domain/user_location.dart';
 import '../../farm/domain/region_point.dart';
@@ -264,64 +265,54 @@ class _ActivityViewState extends State<ActivityView> {
     _lastFittedDrawingZoneSignature = null;
     _pendingFittedDrawingZoneSignature = null;
     _prepareDrawingCameraForSelectedZone(widget.viewModel);
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.9;
-    await showModalBottomSheet<void>(
+    await showFullHeightFormModal<void>(
       context: context,
-      isScrollControlled: true,
       enableDrag: false,
-      backgroundColor: Colors.transparent,
-      constraints: BoxConstraints(maxHeight: maxHeight),
-      builder: (modalContext) => Padding(
-        key: const ValueKey('activity-drawing-modal-top-margin'),
-        padding: EdgeInsets.only(
-          top: MediaQuery.paddingOf(modalContext).top + 24,
-        ),
-        child: StatefulBuilder(
-          builder: (context, setModalState) => ListenableBuilder(
-            listenable: widget.viewModel,
-            builder: (context, _) {
-              final vm = widget.viewModel;
-              final drawingController = _drawingController;
-              if (widget.mapBuilder == null && drawingController != null) {
-                _fitDrawingMapToSelectedZone(vm, drawingController);
-              }
-              final config = ActivityMapConfig(
-                plants: vm.plants,
-                geometryType: vm.geometryType,
-                points: vm.points,
-                selectedZoneId: vm.selectedZoneFilterId,
-                selectedZonePoints: vm.selectedZonePoints,
-                userLocation: vm.userLocation,
-                onAddPoint: vm.addPoint,
-                initialCameraPosition: _drawingCameraPosition,
-                onCameraMove: (position) {
-                  _drawingCameraPosition = position;
-                },
-              );
-              return _ActivityDrawingModal(
-                map: ActiveMapSurface(
-                  onActivityChanged: (active) =>
-                      _setMapSurfaceActive('drawing', active),
-                  builder: (_) => widget.mapBuilder != null
-                      ? widget.mapBuilder!(context, config)
-                      : _buildGoogleMap(vm, drawingSurface: true),
-                ),
-                viewModel: vm,
-                drawingEnabled: _drawingEnabled,
-                onSelectType: _selectType,
-                onToggleDrawing: () {
-                  setState(() => _drawingEnabled = !_drawingEnabled);
-                  setModalState(() {});
-                },
-                onContinue: () async {
-                  final saved = await _continue();
-                  if (saved && modalContext.mounted) {
-                    Navigator.of(modalContext).pop();
-                  }
-                },
-              );
-            },
-          ),
+      builder: (modalContext) => StatefulBuilder(
+        builder: (context, setModalState) => ListenableBuilder(
+          listenable: widget.viewModel,
+          builder: (context, _) {
+            final vm = widget.viewModel;
+            final drawingController = _drawingController;
+            if (widget.mapBuilder == null && drawingController != null) {
+              _fitDrawingMapToSelectedZone(vm, drawingController);
+            }
+            final config = ActivityMapConfig(
+              plants: vm.plants,
+              geometryType: vm.geometryType,
+              points: vm.points,
+              selectedZoneId: vm.selectedZoneFilterId,
+              selectedZonePoints: vm.selectedZonePoints,
+              userLocation: vm.userLocation,
+              onAddPoint: vm.addPoint,
+              initialCameraPosition: _drawingCameraPosition,
+              onCameraMove: (position) {
+                _drawingCameraPosition = position;
+              },
+            );
+            return _ActivityDrawingModal(
+              map: ActiveMapSurface(
+                onActivityChanged: (active) =>
+                    _setMapSurfaceActive('drawing', active),
+                builder: (_) => widget.mapBuilder != null
+                    ? widget.mapBuilder!(context, config)
+                    : _buildGoogleMap(vm, drawingSurface: true),
+              ),
+              viewModel: vm,
+              drawingEnabled: _drawingEnabled,
+              onSelectType: _selectType,
+              onToggleDrawing: () {
+                setState(() => _drawingEnabled = !_drawingEnabled);
+                setModalState(() {});
+              },
+              onContinue: () async {
+                final saved = await _continue();
+                if (saved && modalContext.mounted) {
+                  Navigator.of(modalContext).pop();
+                }
+              },
+            );
+          },
         ),
       ),
     );

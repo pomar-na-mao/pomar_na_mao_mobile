@@ -36,7 +36,7 @@ class SupabaseActivityRemoteDataSource implements ActivityRemoteDataSource {
     required int to,
   }) async {
     final response = await _client
-        .from('inputs')
+        .from('stocks')
         .select('id,name,type,active_ingredient,label_dose,dose_unit')
         .order('name')
         .order('id')
@@ -55,7 +55,7 @@ class SupabaseActivityRemoteDataSource implements ActivityRemoteDataSource {
           'id,name,is_active,observations,'
           'components:mixture_inputs('
           'id,input_id,dose,dose_unit,'
-          'input:inputs(id,name,type,active_ingredient,label_dose,dose_unit))',
+          'input:stocks(id,name,type,active_ingredient,label_dose,dose_unit))',
         )
         .eq('is_active', true)
         .order('name')

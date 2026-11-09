@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/ui/full_height_form_modal.dart';
 import '../../domain/spraying_models.dart';
 import '../spraying_view_model.dart';
 import 'spraying_registration_modal.dart';
@@ -10,12 +11,8 @@ class SprayingReviewModal extends StatefulWidget {
   final SprayingViewModel viewModel;
 
   static Future<void> show(BuildContext context, SprayingViewModel vm) {
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.75;
-    return showModalBottomSheet<void>(
+    return showFullHeightFormModal<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      constraints: BoxConstraints(maxHeight: maxHeight),
       builder: (_) => SprayingReviewModal(viewModel: vm),
     );
   }
@@ -64,10 +61,7 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
           color: colorScheme.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           clipBehavior: Clip.antiAlias,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * 0.75,
-            ),
+          child: SizedBox.expand(
             child: SafeArea(
               top: false,
               child: Column(
@@ -81,7 +75,9 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                       width: 36,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                        color: colorScheme.outlineVariant.withValues(
+                          alpha: 0.6,
+                        ),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -95,8 +91,9 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: colorScheme.primaryContainer
-                                .withValues(alpha: 0.5),
+                            color: colorScheme.primaryContainer.withValues(
+                              alpha: 0.5,
+                            ),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
@@ -206,22 +203,26 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                                       (p) => p.plantId == plant.id,
                                     )
                                   : null;
-                              final isAuto = confirmed?.matchSource ==
+                              final isAuto =
+                                  confirmed?.matchSource ==
                                   SprayingMatchSource.autoMatched;
 
                               return Material(
                                 color: isMarked
-                                    ? colorScheme.primaryContainer
-                                        .withValues(alpha: 0.25)
+                                    ? colorScheme.primaryContainer.withValues(
+                                        alpha: 0.25,
+                                      )
                                     : colorScheme.surface,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                   side: BorderSide(
                                     color: isMarked
-                                        ? colorScheme.primary
-                                            .withValues(alpha: 0.5)
-                                        : colorScheme.outlineVariant
-                                            .withValues(alpha: 0.6),
+                                        ? colorScheme.primary.withValues(
+                                            alpha: 0.5,
+                                          )
+                                        : colorScheme.outlineVariant.withValues(
+                                            alpha: 0.6,
+                                          ),
                                     width: isMarked ? 1.5 : 1,
                                   ),
                                 ),
@@ -266,7 +267,9 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                                             children: [
                                               Text(
                                                 plant.label,
-                                                style: theme.textTheme.bodyMedium
+                                                style: theme
+                                                    .textTheme
+                                                    .bodyMedium
                                                     ?.copyWith(
                                                       fontWeight: isMarked
                                                           ? FontWeight.bold
@@ -277,9 +280,12 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                                                   null)
                                                 Text(
                                                   'Distância da rota: ${confirmed!.distanceMeters!.toStringAsFixed(1)} m',
-                                                  style: theme.textTheme.bodySmall
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodySmall
                                                       ?.copyWith(
-                                                        color: colorScheme.outline,
+                                                        color:
+                                                            colorScheme.outline,
                                                       ),
                                                 ),
                                             ],
@@ -294,9 +300,10 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                                             decoration: BoxDecoration(
                                               color: isAuto
                                                   ? colorScheme.primaryContainer
-                                                      .withValues(alpha: 0.6)
-                                                  : colorScheme.secondaryContainer
-                                                      .withValues(alpha: 0.6),
+                                                        .withValues(alpha: 0.6)
+                                                  : colorScheme
+                                                        .secondaryContainer
+                                                        .withValues(alpha: 0.6),
                                               borderRadius:
                                                   BorderRadius.circular(8),
                                             ),
@@ -347,10 +354,15 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                                 borderRadius: BorderRadius.circular(14),
                               ),
                             ),
-                            icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                            icon: const Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 18,
+                            ),
                             label: Text(
                               'Registrar operação (${vm.reviewedPlants.length})',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             onPressed: () {
                               Navigator.of(context).pop();

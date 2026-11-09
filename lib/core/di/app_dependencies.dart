@@ -2,6 +2,10 @@ import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../features/auth/data/authentication_remote_data_source.dart';
+import '../../features/auth/data/default_authentication_repository.dart';
+import '../../features/auth/domain/authentication_repository.dart';
+import '../../features/auth/presentation/authentication_view_model.dart';
 import '../../features/farm/data/datasources/farm_remote_data_source.dart';
 import '../../features/farm/data/geolocator_location_service.dart';
 import '../../features/farm/data/supabase_farm_repository.dart';
@@ -32,6 +36,9 @@ import '../../features/operations/data/spraying_database.dart';
 import '../../features/operations/data/spraying_local_store.dart';
 import '../../features/operations/data/spraying_remote_data_source.dart';
 import '../../features/operations/data/spraying_repository.dart';
+import '../../features/operations/data/stock_photo_picker.dart';
+import '../../features/operations/data/stock_remote_data_source.dart';
+import '../../features/operations/data/stock_repository.dart';
 import '../../features/operations/domain/inspection_models.dart';
 import '../../features/operations/domain/mipd_models.dart';
 import '../../features/operations/domain/spraying_models.dart';
@@ -39,6 +46,7 @@ import '../../features/operations/presentation/inspection_view_model.dart';
 import '../../features/operations/presentation/activity_view_model.dart';
 import '../../features/operations/presentation/mipd_view_model.dart';
 import '../../features/operations/presentation/spraying_view_model.dart';
+import '../../features/operations/presentation/stock_view_model.dart';
 import '../config/app_config.dart';
 import '../data/shared_read_repository.dart';
 import '../ui/app_loading_controller.dart';
@@ -70,17 +78,25 @@ class AppDependencies {
     SprayingViewModel? sprayingViewModel,
     MipdViewModel? mipdViewModel,
     ActivityViewModel? activityViewModel,
+    AuthenticationRepository? authenticationRepository,
+    AuthenticationViewModel? authenticationViewModel,
+    StockRepository? stockRepository,
+    StockViewModel? stockViewModel,
   }) : loadingController = loadingController ?? AppLoadingController(),
        _injectedInspectionRepository = inspectionRepository,
        _injectedSprayingRepository = sprayingRepository,
        _injectedMipdRepository = mipdRepository,
        _injectedActivityRepository = activityRepository,
+       _injectedAuthenticationRepository = authenticationRepository,
+       _injectedStockRepository = stockRepository,
        _injectedInventoryViewModel = inventoryViewModel,
        _injectedFarmMapViewModel = farmMapViewModel,
        _injectedInspectionViewModel = inspectionViewModel,
        _injectedSprayingViewModel = sprayingViewModel,
        _injectedMipdViewModel = mipdViewModel,
-       _injectedActivityViewModel = activityViewModel;
+       _injectedActivityViewModel = activityViewModel,
+       _injectedAuthenticationViewModel = authenticationViewModel,
+       _injectedStockViewModel = stockViewModel;
 
   factory AppDependencies.fromSupabaseClient(
     SupabaseClient supabaseClient, {
@@ -141,6 +157,12 @@ class AppDependencies {
       remoteDataSource: activityRemote,
       sharedReadRepository: sharedReadRepo,
     );
+    final stockRepo = DefaultStockRepository(
+      SupabaseStockRemoteDataSource(supabaseClient),
+    );
+    final authenticationRepo = DefaultAuthenticationRepository(
+      SupabaseAuthenticationRemoteDataSource(supabaseClient),
+    );
 
     return AppDependencies(
       farmRepository: farmRepo,
@@ -158,6 +180,8 @@ class AppDependencies {
       sprayingRepository: sprayRepo,
       mipdRepository: mipdRepo,
       activityRepository: activityRepo,
+      authenticationRepository: authenticationRepo,
+      stockRepository: stockRepo,
       inventoryViewModel: InventoryViewModel(
         inventoryRepo,
         farmRepo,
@@ -183,6 +207,8 @@ class AppDependencies {
   final SprayingRepository? _injectedSprayingRepository;
   final MipdRepository? _injectedMipdRepository;
   final ActivityRepository? _injectedActivityRepository;
+  final AuthenticationRepository? _injectedAuthenticationRepository;
+  final StockRepository? _injectedStockRepository;
 
   InspectionRepository get inspectionRepository =>
       _injectedInspectionRepository ??
@@ -221,6 +247,8 @@ class AppDependencies {
   final SprayingViewModel? _injectedSprayingViewModel;
   final MipdViewModel? _injectedMipdViewModel;
   final ActivityViewModel? _injectedActivityViewModel;
+  final AuthenticationViewModel? _injectedAuthenticationViewModel;
+  final StockViewModel? _injectedStockViewModel;
 
   late final InventoryViewModel inventoryViewModel =
       _injectedInventoryViewModel ??
@@ -281,6 +309,29 @@ class AppDependencies {
     );
   }
 
+  AuthenticationViewModel? _createdAuthenticationViewModel;
+  AuthenticationViewModel? get authenticationViewModel {
+    if (_injectedAuthenticationViewModel case final injected?) {
+      return injected;
+    }
+    final repository = _injectedAuthenticationRepository;
+    if (repository == null) return null;
+    return _createdAuthenticationViewModel ??= AuthenticationViewModel(
+      repository,
+    );
+  }
+
+  StockViewModel? _createdStockViewModel;
+  StockViewModel? get stockViewModel {
+    if (_injectedStockViewModel case final injected?) return injected;
+    final repository = _injectedStockRepository;
+    if (repository == null) return null;
+    return _createdStockViewModel ??= StockViewModel(
+      repository: repository,
+      photoPicker: ImagePickerStockPhotoPicker(),
+    );
+  }
+
   /// Libera recursos e encerra listeners dos ViewModels criados.
   void dispose() {
     inventoryViewModel.dispose();
@@ -289,6 +340,9 @@ class AppDependencies {
     _injectedSprayingViewModel?.dispose();
     (_injectedMipdViewModel ?? _createdMipdViewModel)?.dispose();
     (_injectedActivityViewModel ?? _createdActivityViewModel)?.dispose();
+    (_injectedAuthenticationViewModel ?? _createdAuthenticationViewModel)
+        ?.dispose();
+    (_injectedStockViewModel ?? _createdStockViewModel)?.dispose();
     unawaited(sharedReadRepository?.dispose());
     unawaited(inspectionDatabase?.close());
     unawaited(sprayingDatabase?.close());

@@ -86,6 +86,8 @@ void main() {
         ),
         isTrue,
       );
+      expect(dependencies.stockViewModel, isNotNull);
+      expect(dependencies.authenticationViewModel, isNotNull);
 
       dependencies.dispose();
     });

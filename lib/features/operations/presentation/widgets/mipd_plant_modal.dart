@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/ui/full_height_form_modal.dart';
 import '../../domain/inspection_models.dart';
 import '../../domain/mipd_models.dart';
 import '../mipd_view_model.dart';
@@ -21,10 +22,8 @@ class MipdPlantModal extends StatefulWidget {
     BuildContext context,
     InspectionPlant plant,
     MipdViewModel viewModel,
-  ) => showModalBottomSheet<void>(
+  ) => showFullHeightFormModal<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
     builder: (_) => MipdPlantModal(plant: plant, viewModel: viewModel),
   );
 
@@ -89,14 +88,12 @@ class _MipdPlantModalState extends State<MipdPlantModal> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final canSave = _type != null && _parts.isNotEmpty && !_busy;
-    final modalHeight = MediaQuery.sizeOf(context).height * 0.80;
-
     return Material(
       color: colorScheme.surface,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
-        height: modalHeight,
+        height: double.infinity,
         child: SafeArea(
           top: false,
           child: Column(
