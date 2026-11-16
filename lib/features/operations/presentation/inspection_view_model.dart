@@ -14,6 +14,7 @@ import '../../farm/domain/user_position_tracker.dart';
 import '../../farm/domain/zone.dart';
 import '../../farm/domain/zones_repository.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
+import '../../farm/presentation/user_map_navigation.dart';
 import '../data/inspection_repository.dart';
 import '../domain/inspection_models.dart';
 
@@ -91,6 +92,7 @@ class InspectionViewModel extends ChangeNotifier {
   StreamSubscription<void>? _plantChangesSubscription;
   bool _isLocationActive = false;
   final UserPositionTracker _positionTracker = UserPositionTracker();
+  final UserMapLocationState mapLocation = UserMapLocationState();
 
   InspectionLoadStatus _loadStatus = InspectionLoadStatus.initial;
   InspectionLoadStatus get loadStatus => _loadStatus;
@@ -874,10 +876,12 @@ class InspectionViewModel extends ChangeNotifier {
       (result) {
         if (_disposed || !_isLocationActive) return;
         if (result.location case final location?) {
+          mapLocation.add(location);
           final accepted = _positionTracker.add(location);
           if (accepted == null) return;
           _locationResult = LocationResult.available(accepted);
         } else {
+          mapLocation.clear();
           _positionTracker.reset();
           _locationResult = result;
         }
@@ -885,6 +889,7 @@ class InspectionViewModel extends ChangeNotifier {
       },
       onError: (Object _) {
         if (_disposed || !_isLocationActive) return;
+        mapLocation.clear();
         _positionTracker.reset();
         _locationResult = const LocationResult.error();
         notifyListeners();
@@ -893,6 +898,7 @@ class InspectionViewModel extends ChangeNotifier {
         if (_disposed || !_isLocationActive) return;
         _isLocationActive = false;
         _locationSubscription = null;
+        mapLocation.clear();
         _positionTracker.reset();
         _locationResult = const LocationResult.error();
         notifyListeners();
@@ -904,6 +910,7 @@ class InspectionViewModel extends ChangeNotifier {
     _isLocationActive = false;
     _locationSubscription?.cancel();
     _locationSubscription = null;
+    mapLocation.clear();
     _positionTracker.reset();
   }
 
@@ -912,6 +919,7 @@ class InspectionViewModel extends ChangeNotifier {
     _disposed = true;
     pauseLocation();
     unawaited(_plantChangesSubscription?.cancel());
+    mapLocation.dispose();
     super.dispose();
   }
 

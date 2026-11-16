@@ -278,6 +278,42 @@ void main() {
     expect(viewModel.userLocation?.latitude, -23.5);
   });
 
+  test('visual location updates before the operational deadband', () async {
+    viewModel.resumeLocation();
+    final now = DateTime.now().toUtc();
+
+    locationService.emit(
+      LocationResult.available(
+        UserLocation(
+          latitude: -23.5,
+          longitude: -46.5,
+          accuracy: 3,
+          timestamp: now,
+          heading: 90,
+          speed: 1,
+        ),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    locationService.emit(
+      LocationResult.available(
+        UserLocation(
+          latitude: -23.499999,
+          longitude: -46.5,
+          accuracy: 3,
+          timestamp: now.add(const Duration(milliseconds: 250)),
+          heading: 90,
+          speed: 1,
+        ),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(viewModel.mapLocation.location?.latitude, -23.499999);
+    expect(viewModel.mapLocation.course, 90);
+    expect(viewModel.userLocation, isNull);
+  });
+
   test('pause preserves the last stable position', () async {
     viewModel.resumeLocation();
     final now = DateTime.now().toUtc();

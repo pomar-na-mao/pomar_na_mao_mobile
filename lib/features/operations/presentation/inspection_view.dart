@@ -394,7 +394,7 @@ class _InspectionViewState extends State<InspectionView> {
   }
 
   void _recenterOnUser(InspectionViewModel vm) {
-    final loc = vm.userLocation;
+    final loc = vm.mapLocation.location ?? vm.userLocation;
     if (loc == null) return;
     final changed = _cameraFollowState.resume();
     _hasFocusedOnUser = true;
@@ -679,26 +679,14 @@ class _InspectionViewState extends State<InspectionView> {
                 ? null
                 : mapInitialCamera(vm.initialMapPosition!));
 
-        final location = vm.userLocation;
-        if (location == null) {
-          if (_lastUserLocation != null) _userMapNavigator.reset();
-          _lastUserLocation = null;
-          _hasFocusedOnUser = false;
-        } else {
-          _userMapNavigator.observe(location);
-          if (!identical(_lastUserLocation, location)) {
-            _lastUserLocation = location;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _followUser(location);
-            });
-          }
-        }
-
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) unawaited(_fitCamera(vm));
         });
 
-        final mapConfig = InspectionMapConfig(
+        InspectionMapConfig mapConfigFor(
+          UserLocation? location,
+          double? course,
+        ) => InspectionMapConfig(
           plants: vm.plants,
           onSelectPlant: (plant) {
             vm.selectPlantById(plant.id);
@@ -709,16 +697,12 @@ class _InspectionViewState extends State<InspectionView> {
           onRemoveAddedPlant: (plant) => vm.removeAddedPlant(plant.localId),
           addedPlants: vm.addedPlants,
           polygons: vm.polygons,
-          userLocation: vm.userLocation,
-          canShowUserLocation: vm.canShowUserLocation,
+          userLocation: location,
+          canShowUserLocation: location != null,
           isFollowingUser: _cameraFollowState.isFollowing,
-          userCourse: _userMapNavigator.course,
+          userCourse: course,
           initialCameraPosition: initialCamera,
         );
-        final userMarker = inspectionUserMarkerForCourse(
-          _userMapNavigator.course,
-        );
-
         return Scaffold(
           backgroundColor: const Color(0xFFF4F7F2),
           appBar: AppBar(
@@ -726,7 +710,7 @@ class _InspectionViewState extends State<InspectionView> {
             surfaceTintColor: Colors.transparent,
             title: const Text('Ocorrências'),
             actions: [
-              if (vm.userLocation != null)
+              if (vm.mapLocation.location != null || vm.userLocation != null)
                 IconButton(
                   icon: const Icon(Icons.my_location),
                   tooltip: 'Minha localização',
@@ -751,69 +735,98 @@ class _InspectionViewState extends State<InspectionView> {
                           child: ActiveMapSurface(
                             onActivityChanged: (active) =>
                                 _handleMapActivityChanged(vm, active),
-                            builder: (_) => widget.mapBuilder != null
-                                ? widget.mapBuilder!(context, mapConfig)
-                                : initialCamera == null
-                                ? MapInitialPlaceholder(
-                                    resolved: vm.initialMapPositionResolved,
-                                  )
-                                : GoogleMap(
-                                    key: const ValueKey(
-                                      'inspection-google-map',
+                            builder: (_) => ListenableBuilder(
+                              listenable: vm.mapLocation,
+                              builder: (context, _) {
+                                final location = vm.mapLocation.location;
+                                if (location == null) {
+                                  if (_lastUserLocation != null) {
+                                    _userMapNavigator.reset();
+                                  }
+                                  _lastUserLocation = null;
+                                  _hasFocusedOnUser = false;
+                                } else {
+                                  _userMapNavigator.observe(location);
+                                  if (!identical(_lastUserLocation, location)) {
+                                    _lastUserLocation = location;
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                          if (mounted) _followUser(location);
+                                        });
+                                  }
+                                }
+                                final userMarker = userMapMarkerForCourse(
+                                  vm.mapLocation.course,
+                                );
+                                if (widget.mapBuilder != null) {
+                                  return widget.mapBuilder!(
+                                    context,
+                                    mapConfigFor(
+                                      location,
+                                      vm.mapLocation.course,
                                     ),
-                                    mapType: OperationMapStyle.mapType,
-                                    initialCameraPosition: initialCamera,
-                                    onCameraIdle: () {
-                                      _plantLayer.cameraIdle();
-                                    },
-                                    onCameraMoveStarted:
-                                        _handleCameraMoveStarted,
-                                    onCameraMove: (position) =>
-                                        _savedCamera = position,
-                                    markers: {
-                                      ..._markers,
-                                      ..._addedPlantMarkers(vm),
-                                      if (vm.userLocation case final location?)
-                                        Marker(
-                                          markerId: const MarkerId(
-                                            'inspection_user',
-                                          ),
-                                          position: LatLng(
-                                            location.latitude,
-                                            location.longitude,
-                                          ),
-                                          icon:
-                                              (userMarker.kind ==
-                                                      InspectionUserMarkerKind
-                                                          .directional
-                                                  ? _directionalUserMarkerIcon
-                                                  : _userMarkerIcon) ??
-                                              BitmapDescriptor.defaultMarkerWithHue(
-                                                BitmapDescriptor.hueAzure,
-                                              ),
-                                          anchor: userMarker.anchor,
-                                          rotation: userMarker.rotation,
-                                          flat: userMarker.flat,
-                                          zIndexInt: OperationMapStyle
-                                              .userMarkerZIndex,
+                                  );
+                                }
+                                if (initialCamera == null) {
+                                  return MapInitialPlaceholder(
+                                    resolved: vm.initialMapPositionResolved,
+                                  );
+                                }
+                                return GoogleMap(
+                                  key: const ValueKey('inspection-google-map'),
+                                  mapType: OperationMapStyle.mapType,
+                                  initialCameraPosition: initialCamera,
+                                  onCameraIdle: () {
+                                    _plantLayer.cameraIdle();
+                                  },
+                                  onCameraMoveStarted: _handleCameraMoveStarted,
+                                  onCameraMove: (position) =>
+                                      _savedCamera = position,
+                                  markers: {
+                                    ..._markers,
+                                    ..._addedPlantMarkers(vm),
+                                    if (location != null)
+                                      Marker(
+                                        markerId: const MarkerId(
+                                          'inspection_user',
                                         ),
-                                    },
-                                    polygons: vm.polygons,
-                                    myLocationEnabled: false,
-                                    myLocationButtonEnabled: false,
-                                    onLongPress: (position) =>
-                                        _showAddPlantModal(vm, position),
-                                    onMapCreated: (controller) {
-                                      _mapController = controller;
-                                      _plantLayer.controller = controller;
-                                      _plantLayer.cameraIdle();
-                                      unawaited(_fitCamera(vm));
-                                      if (vm.userLocation
-                                          case final location?) {
-                                        _followUser(location);
-                                      }
-                                    },
-                                  ),
+                                        position: LatLng(
+                                          location.latitude,
+                                          location.longitude,
+                                        ),
+                                        icon:
+                                            (userMarker.kind ==
+                                                    UserMapMarkerKind
+                                                        .directional
+                                                ? _directionalUserMarkerIcon
+                                                : _userMarkerIcon) ??
+                                            BitmapDescriptor.defaultMarkerWithHue(
+                                              BitmapDescriptor.hueAzure,
+                                            ),
+                                        anchor: userMarker.anchor,
+                                        rotation: userMarker.rotation,
+                                        flat: userMarker.flat,
+                                        zIndexInt:
+                                            OperationMapStyle.userMarkerZIndex,
+                                      ),
+                                  },
+                                  polygons: vm.polygons,
+                                  myLocationEnabled: false,
+                                  myLocationButtonEnabled: false,
+                                  onLongPress: (position) =>
+                                      _showAddPlantModal(vm, position),
+                                  onMapCreated: (controller) {
+                                    _mapController = controller;
+                                    _plantLayer.controller = controller;
+                                    _plantLayer.cameraIdle();
+                                    unawaited(_fitCamera(vm));
+                                    if (location != null) {
+                                      _followUser(location);
+                                    }
+                                  },
+                                );
+                              },
+                            ),
                           ),
                         ),
 

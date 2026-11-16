@@ -12,6 +12,7 @@ import '../../farm/domain/user_location.dart';
 import '../../farm/domain/zone.dart';
 import '../../farm/domain/zones_repository.dart';
 import '../../farm/presentation/farm_map_geometry.dart';
+import '../../farm/presentation/user_map_navigation.dart';
 import '../../../core/data/shared_read_repository.dart';
 import '../domain/activity_models.dart';
 import '../data/inspection_repository.dart';
@@ -95,6 +96,9 @@ class SprayingViewModel extends ChangeNotifier {
   UserLocation? _userLocation;
   UserLocation? get userLocation => _userLocation;
   final SprayingLocationFilter _locationFilter = SprayingLocationFilter();
+  final UserMapLocationState mapLocation = UserMapLocationState(
+    maxAccuracyMeters: 25,
+  );
   bool _startingPreparedSession = false;
   bool get isPreparingSession => _startingPreparedSession;
 
@@ -364,6 +368,7 @@ class SprayingViewModel extends ChangeNotifier {
         if (result.availability == LocationAvailability.available &&
             result.location != null) {
           final location = result.location!;
+          mapLocation.add(location);
           final accepted = _locationFilter.add(location);
           if (accepted != null) {
             _userLocation = accepted;
@@ -372,14 +377,18 @@ class SprayingViewModel extends ChangeNotifier {
             }
             notifyListeners();
           }
+        } else {
+          mapLocation.clear();
         }
       },
       onError: (Object _) {
+        mapLocation.clear();
         stopLocationTracking();
       },
       onDone: () {
         _isLocationActive = false;
         _locationSubscription = null;
+        mapLocation.clear();
       },
     );
   }
@@ -388,6 +397,7 @@ class SprayingViewModel extends ChangeNotifier {
     _locationSubscription?.cancel();
     _locationSubscription = null;
     _isLocationActive = false;
+    mapLocation.clear();
   }
 
   void _recordTrackPoint(UserLocation loc) {
@@ -870,6 +880,7 @@ class SprayingViewModel extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     stopLocationTracking();
+    mapLocation.dispose();
     super.dispose();
   }
 }

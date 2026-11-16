@@ -38,10 +38,42 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       if (secondsAgo > 0) {
         expect(viewModel.userLocation, isNull);
+        expect(viewModel.mapLocation.location, isNotNull);
       }
     }
 
     expect(viewModel.userLocation, isNotNull);
+  });
+
+  test('limpa a localização visual ao pausar e retoma sem duplicar', () async {
+    final locationService = _LocationService();
+    final viewModel = MipdViewModel(
+      repository: _Repository(),
+      locationService: locationService,
+      photoService: MipdPhotoService(picker: _PhotoPicker()),
+    );
+    addTearDown(() {
+      viewModel.dispose();
+      locationService.dispose();
+    });
+
+    viewModel.resumeLocation();
+    locationService.emit(
+      LocationResult.available(
+        UserLocation(
+          latitude: -21.177,
+          longitude: -47.81,
+          accuracy: 3,
+          timestamp: DateTime.now().toUtc(),
+        ),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(viewModel.mapLocation.location, isNotNull);
+
+    viewModel.pauseLocation();
+    expect(viewModel.mapLocation.location, isNull);
+    viewModel.resumeLocation();
   });
 
   test('retoma o monitoramento de localização sem espera bloqueante', () async {

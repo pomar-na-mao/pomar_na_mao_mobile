@@ -11,6 +11,36 @@ import '../domain/user_position_tracker.dart';
 const userFollowZoom = 20.5;
 const directionalUserMarkerCanvasSize = 72;
 const directionalUserMarkerDisplaySize = 32.0;
+const userMapMarkerAnchor = Offset(0.5, 0.5);
+
+enum UserMapMarkerKind { neutral, directional }
+
+class UserMapMarkerPresentation {
+  const UserMapMarkerPresentation({
+    required this.kind,
+    required this.rotation,
+    required this.flat,
+    required this.anchor,
+  });
+
+  final UserMapMarkerKind kind;
+  final double rotation;
+  final bool flat;
+  final Offset anchor;
+}
+
+UserMapMarkerPresentation userMapMarkerForCourse(double? course) {
+  final isDirectional =
+      course != null && course.isFinite && course >= 0 && course < 360;
+  return UserMapMarkerPresentation(
+    kind: isDirectional
+        ? UserMapMarkerKind.directional
+        : UserMapMarkerKind.neutral,
+    rotation: isDirectional ? course : 0,
+    flat: isDirectional,
+    anchor: userMapMarkerAnchor,
+  );
+}
 
 Future<BitmapDescriptor> createUserLocationMarkerIcon() async {
   const size = 64;
@@ -140,6 +170,56 @@ class UserCourseTracker {
         math.sin(latitudeA) * math.cos(latitudeB) * math.cos(longitudeDelta);
     _course = (math.atan2(east, north) * 180 / math.pi + 360) % 360;
     _bearingOrigin = location;
+  }
+}
+
+class UserMapLocationState extends ChangeNotifier {
+  UserMapLocationState({this.maxAccuracyMeters = 12});
+
+  final double maxAccuracyMeters;
+  final UserCourseTracker _courseTracker = UserCourseTracker();
+  UserLocation? _location;
+
+  UserLocation? get location => _location;
+  double? get course => _courseTracker.course;
+
+  bool add(UserLocation location, {DateTime? now}) {
+    final receivedAt = (now ?? DateTime.now()).toUtc();
+    final timestamp = (location.timestamp ?? receivedAt).toUtc();
+    final age = receivedAt.difference(timestamp);
+    final accuracy = location.accuracy;
+    if (!location.latitude.isFinite ||
+        !location.longitude.isFinite ||
+        location.latitude.abs() > 90 ||
+        location.longitude.abs() > 180 ||
+        accuracy == null ||
+        !accuracy.isFinite ||
+        accuracy <= 0 ||
+        accuracy > maxAccuracyMeters ||
+        age > const Duration(seconds: 5) ||
+        age < const Duration(seconds: -2)) {
+      return false;
+    }
+
+    final visualLocation = UserLocation(
+      latitude: location.latitude,
+      longitude: location.longitude,
+      accuracy: accuracy,
+      timestamp: timestamp,
+      heading: location.heading,
+      speed: location.speed,
+    );
+    _courseTracker.add(visualLocation);
+    _location = visualLocation;
+    notifyListeners();
+    return true;
+  }
+
+  void clear() {
+    final hadValue = _location != null || _courseTracker.course != null;
+    _location = null;
+    _courseTracker.reset();
+    if (hadValue) notifyListeners();
   }
 }
 
