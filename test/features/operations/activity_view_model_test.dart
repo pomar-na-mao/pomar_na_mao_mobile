@@ -13,16 +13,46 @@ import 'package:pomar_na_mao_mobile/features/operations/presentation/activity_vi
 void main() {
   late _Repository repository;
   late ActivityViewModel viewModel;
+  late _LocationService locationService;
 
   setUp(() {
     repository = _Repository();
+    locationService = _LocationService();
     viewModel = ActivityViewModel(
       repository: repository,
-      locationService: _NoLocationService(),
+      locationService: locationService,
     );
   });
 
-  tearDown(() => viewModel.dispose());
+  tearDown(() {
+    viewModel.dispose();
+    locationService.dispose();
+  });
+
+  test(
+    'publishes visual updates while operational position stabilizes',
+    () async {
+      viewModel.resumeLocation();
+      final now = DateTime.now().toUtc();
+      locationService.emit(
+        LocationResult.available(
+          UserLocation(
+            latitude: -21,
+            longitude: -47,
+            accuracy: 3,
+            timestamp: now,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(viewModel.mapLocation.location?.latitude, -21);
+      expect(viewModel.userLocation, isNull);
+
+      viewModel.pauseLocation();
+      expect(viewModel.mapLocation.location, isNull);
+    },
+  );
 
   test('loads plants, catalog and saved queue', () async {
     await viewModel.initialize();
@@ -209,4 +239,18 @@ class _NoLocationService implements LocationService {
 
   @override
   Stream<LocationResult> watchLocation() => const Stream.empty();
+}
+
+class _LocationService implements LocationService {
+  final _controller = StreamController<LocationResult>.broadcast();
+
+  @override
+  Future<LocationResult> getCurrentLocation() async =>
+      const LocationResult.serviceDisabled();
+
+  @override
+  Stream<LocationResult> watchLocation() => _controller.stream;
+
+  void emit(LocationResult result) => _controller.add(result);
+  void dispose() => _controller.close();
 }

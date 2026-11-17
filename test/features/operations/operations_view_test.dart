@@ -210,7 +210,14 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('Inspeção'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('operation-card-inspection')),
+        matching: find.text('Ocorrências'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Inspeção'), findsNothing);
     expect(find.text('MIPD'), findsOneWidget);
     expect(find.text('Pulverização'), findsOneWidget);
     expect(find.text('Irrigação'), findsOneWidget);
@@ -235,7 +242,7 @@ void main() {
         find.byKey(const ValueKey('operation-card-inspection')),
       ),
       matchesSemantics(
-        label: 'Inspeção',
+        label: 'Ocorrências',
         hint: 'Toque duas vezes para abrir',
         isButton: true,
         hasEnabledState: true,

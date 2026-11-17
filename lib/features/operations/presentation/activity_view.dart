@@ -31,6 +31,7 @@ class ActivityMapConfig {
     this.selectedZoneId,
     this.selectedZonePoints = const [],
     this.userLocation,
+    this.userCourse,
     this.initialCameraPosition,
     this.onCameraMove,
   });
@@ -42,6 +43,7 @@ class ActivityMapConfig {
   final String? selectedZoneId;
   final List<RegionPoint> selectedZonePoints;
   final UserLocation? userLocation;
+  final double? userCourse;
   final CameraPosition? initialCameraPosition;
   final ValueChanged<CameraPosition>? onCameraMove;
 }
@@ -66,6 +68,7 @@ class _ActivityViewState extends State<ActivityView> {
   Set<Marker> _markers = const {};
   BitmapDescriptor? _plantIcon;
   BitmapDescriptor? _userIcon;
+  BitmapDescriptor? _directionalUserIcon;
   GoogleMapController? _controller;
   GoogleMapController? _drawingController;
   final _mainMapNavigator = UserMapNavigator();
@@ -98,11 +101,13 @@ class _ActivityViewState extends State<ActivityView> {
         highlightColor: OperationMapStyle.plantHighlightColor,
       ),
       createUserLocationMarkerIcon(),
+      createDirectionalUserLocationMarkerIcon(),
     ]);
     if (!mounted) return;
     setState(() {
       _plantIcon = icons[0];
       _userIcon = icons[1];
+      _directionalUserIcon = icons[2];
     });
   }
 
@@ -151,7 +156,6 @@ class _ActivityViewState extends State<ActivityView> {
   }
 
   void _followUserLocation(UserLocation location) {
-    if (widget.mapBuilder != null) return;
     _mainMapNavigator.observe(location);
     _drawingMapNavigator.observe(location);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -288,7 +292,31 @@ class _ActivityViewState extends State<ActivityView> {
                 onActivityChanged: (active) =>
                     _setMapSurfaceActive('drawing', active),
                 builder: (_) => widget.mapBuilder != null
-                    ? widget.mapBuilder!(context, config)
+                    ? ListenableBuilder(
+                        listenable: vm.mapLocation,
+                        builder: (context, _) {
+                          final location = vm.mapLocation.location;
+                          if (location != null) {
+                            _followUserLocation(location);
+                          }
+                          return widget.mapBuilder!(
+                            context,
+                            ActivityMapConfig(
+                              plants: config.plants,
+                              geometryType: config.geometryType,
+                              points: config.points,
+                              onAddPoint: config.onAddPoint,
+                              selectedZoneId: config.selectedZoneId,
+                              selectedZonePoints: config.selectedZonePoints,
+                              userLocation: location,
+                              userCourse: _drawingMapNavigator.course,
+                              initialCameraPosition:
+                                  config.initialCameraPosition,
+                              onCameraMove: config.onCameraMove,
+                            ),
+                          );
+                        },
+                      )
                     : _buildGoogleMap(vm, drawingSurface: true),
               ),
               viewModel: vm,
@@ -338,9 +366,6 @@ class _ActivityViewState extends State<ActivityView> {
       if (widget.mapBuilder == null) {
         _updateMarkers();
         _fitSelectedZone(vm);
-        if (vm.userLocation case final location?) {
-          _followUserLocation(location);
-        }
       }
       final config = ActivityMapConfig(
         plants: vm.plants,
@@ -371,7 +396,32 @@ class _ActivityViewState extends State<ActivityView> {
                           onActivityChanged: (active) =>
                               _setMapSurfaceActive('main', active),
                           builder: (_) => widget.mapBuilder != null
-                              ? widget.mapBuilder!(context, config)
+                              ? ListenableBuilder(
+                                  listenable: vm.mapLocation,
+                                  builder: (context, _) {
+                                    final location = vm.mapLocation.location;
+                                    if (location != null) {
+                                      _followUserLocation(location);
+                                    }
+                                    return widget.mapBuilder!(
+                                      context,
+                                      ActivityMapConfig(
+                                        plants: config.plants,
+                                        geometryType: config.geometryType,
+                                        points: config.points,
+                                        onAddPoint: config.onAddPoint,
+                                        selectedZoneId: config.selectedZoneId,
+                                        selectedZonePoints:
+                                            config.selectedZonePoints,
+                                        userLocation: location,
+                                        userCourse: _mainMapNavigator.course,
+                                        initialCameraPosition:
+                                            config.initialCameraPosition,
+                                        onCameraMove: config.onCameraMove,
+                                      ),
+                                    );
+                                  },
+                                )
                               : _buildGoogleMap(vm, drawingSurface: false),
                         ),
                       ),
@@ -483,67 +533,82 @@ class _ActivityViewState extends State<ActivityView> {
         Positioned.fill(
           child: IgnorePointer(
             ignoring: _drawingEnabled,
-            child: GoogleMap(
-              key: ValueKey(
-                drawingSurface
-                    ? 'activity-drawing-google-map'
-                    : 'activity-main-google-map',
-              ),
-              mapType: OperationMapStyle.mapType,
-              initialCameraPosition: initialCamera,
-              onCameraMove: (position) {
-                if (drawingSurface) {
-                  _drawingCameraPosition = position;
-                } else {
-                  _mainCameraPosition = position;
-                }
-              },
-              markers: {
-                ..._markers,
-                if (vm.userLocation case final location?)
-                  Marker(
-                    markerId: const MarkerId('activity_user'),
-                    position: LatLng(location.latitude, location.longitude),
-                    icon:
-                        _userIcon ??
-                        BitmapDescriptor.defaultMarkerWithHue(
-                          BitmapDescriptor.hueAzure,
-                        ),
-                    anchor: OperationMapStyle.markerAnchor,
+            child: ListenableBuilder(
+              listenable: vm.mapLocation,
+              builder: (context, _) {
+                final location = vm.mapLocation.location;
+                if (location != null) _followUserLocation(location);
+                final navigator = drawingSurface
+                    ? _drawingMapNavigator
+                    : _mainMapNavigator;
+                final userMarker = userMapMarkerForCourse(navigator.course);
+                return GoogleMap(
+                  key: ValueKey(
+                    drawingSurface
+                        ? 'activity-drawing-google-map'
+                        : 'activity-main-google-map',
                   ),
-              },
-              polylines:
-                  vm.geometryType == ActivityGeometryType.route &&
-                      positions.length >= 2
-                  ? {
-                      Polyline(
-                        polylineId: const PolylineId('activity_route'),
-                        points: positions,
-                        color: const Color(0xFF0F766E),
-                        width: 5,
-                      ),
+                  mapType: OperationMapStyle.mapType,
+                  initialCameraPosition: initialCamera,
+                  onCameraMove: (position) {
+                    if (drawingSurface) {
+                      _drawingCameraPosition = position;
+                    } else {
+                      _mainCameraPosition = position;
                     }
-                  : const {},
-              polygons: polygons,
-              onCameraIdle: drawingSurface ? null : _plantLayer.cameraIdle,
-              onMapCreated: (controller) {
-                if (drawingSurface) {
-                  _drawingController = controller;
-                  _drawingMapNavigator.invalidate();
-                  _fitDrawingMapToSelectedZone(vm, controller);
-                } else {
-                  _controller = controller;
-                  _plantLayer.controller = controller;
-                  _plantLayer.cameraIdle();
-                  _mainMapNavigator.invalidate();
-                  _fitSelectedZone(vm);
-                }
-                if (vm.userLocation case final location?) {
-                  _followUserLocation(location);
-                }
+                  },
+                  markers: {
+                    ..._markers,
+                    if (location != null)
+                      Marker(
+                        markerId: const MarkerId('activity_user'),
+                        position: LatLng(location.latitude, location.longitude),
+                        icon:
+                            (userMarker.kind == UserMapMarkerKind.directional
+                                ? _directionalUserIcon
+                                : _userIcon) ??
+                            BitmapDescriptor.defaultMarkerWithHue(
+                              BitmapDescriptor.hueAzure,
+                            ),
+                        anchor: userMarker.anchor,
+                        rotation: userMarker.rotation,
+                        flat: userMarker.flat,
+                      ),
+                  },
+                  polylines:
+                      vm.geometryType == ActivityGeometryType.route &&
+                          positions.length >= 2
+                      ? {
+                          Polyline(
+                            polylineId: const PolylineId('activity_route'),
+                            points: positions,
+                            color: const Color(0xFF0F766E),
+                            width: 5,
+                          ),
+                        }
+                      : const {},
+                  polygons: polygons,
+                  onCameraIdle: drawingSurface ? null : _plantLayer.cameraIdle,
+                  onMapCreated: (controller) {
+                    if (drawingSurface) {
+                      _drawingController = controller;
+                      _drawingMapNavigator.invalidate();
+                      _fitDrawingMapToSelectedZone(vm, controller);
+                    } else {
+                      _controller = controller;
+                      _plantLayer.controller = controller;
+                      _plantLayer.cameraIdle();
+                      _mainMapNavigator.invalidate();
+                      _fitSelectedZone(vm);
+                    }
+                    if (location != null) {
+                      _followUserLocation(location);
+                    }
+                  },
+                  myLocationEnabled: false,
+                  myLocationButtonEnabled: false,
+                );
               },
-              myLocationEnabled: false,
-              myLocationButtonEnabled: false,
             ),
           ),
         ),

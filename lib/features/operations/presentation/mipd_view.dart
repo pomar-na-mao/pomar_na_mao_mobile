@@ -22,11 +22,13 @@ class MipdMapConfig {
     required this.plants,
     required this.onSelectPlant,
     this.userLocation,
+    this.userCourse,
     this.initialCameraPosition,
   });
   final List<InspectionPlant> plants;
   final ValueChanged<InspectionPlant> onSelectPlant;
   final UserLocation? userLocation;
+  final double? userCourse;
   final CameraPosition? initialCameraPosition;
 }
 
@@ -49,10 +51,12 @@ class _MipdViewState extends State<MipdView> {
   Set<Marker> _markers = const {};
   BitmapDescriptor? _plantIcon;
   BitmapDescriptor? _userIcon;
+  BitmapDescriptor? _directionalUserIcon;
   GoogleMapController? _controller;
   CameraPosition? _cameraPosition;
   final UserMapNavigator _userMapNavigator = UserMapNavigator();
   bool _hasFocusedOnUser = false;
+  UserLocation? _lastUserLocation;
 
   @override
   void initState() {
@@ -71,11 +75,13 @@ class _MipdViewState extends State<MipdView> {
         highlightColor: OperationMapStyle.plantHighlightColor,
       ),
       createUserLocationMarkerIcon(),
+      createDirectionalUserLocationMarkerIcon(),
     ]);
     if (mounted) {
       setState(() {
         _plantIcon = icons[0];
         _userIcon = icons[1];
+        _directionalUserIcon = icons[2];
       });
     }
   }
@@ -152,11 +158,6 @@ class _MipdViewState extends State<MipdView> {
       if (_cameraPosition == null && vm.initialMapPosition != null) {
         _cameraPosition = mapInitialCamera(vm.initialMapPosition!);
       }
-      if (vm.userLocation case final location?) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _followUser(location);
-        });
-      }
       final colorScheme = Theme.of(context).colorScheme;
       if (widget.mapBuilder == null) _updateMarkers();
       final config = MipdMapConfig(
@@ -184,49 +185,92 @@ class _MipdViewState extends State<MipdView> {
                           onActivityChanged: (active) => active
                               ? widget.viewModel.resumeLocation()
                               : widget.viewModel.pauseLocation(),
-                          builder: (_) => widget.mapBuilder != null
-                              ? widget.mapBuilder!(context, config)
-                              : _cameraPosition == null
-                              ? MapInitialPlaceholder(
+                          builder: (_) => ListenableBuilder(
+                            listenable: vm.mapLocation,
+                            builder: (context, _) {
+                              final location = vm.mapLocation.location;
+                              if (location == null) {
+                                if (_lastUserLocation != null) {
+                                  _userMapNavigator.reset();
+                                }
+                                _lastUserLocation = null;
+                                _hasFocusedOnUser = false;
+                              } else {
+                                _userMapNavigator.observe(location);
+                                if (!identical(_lastUserLocation, location)) {
+                                  _lastUserLocation = location;
+                                  WidgetsBinding.instance.addPostFrameCallback((
+                                    _,
+                                  ) {
+                                    if (mounted) _followUser(location);
+                                  });
+                                }
+                              }
+                              final userMarker = userMapMarkerForCourse(
+                                vm.mapLocation.course,
+                              );
+                              if (widget.mapBuilder != null) {
+                                return widget.mapBuilder!(
+                                  context,
+                                  MipdMapConfig(
+                                    plants: config.plants,
+                                    onSelectPlant: config.onSelectPlant,
+                                    userLocation: location,
+                                    userCourse: vm.mapLocation.course,
+                                    initialCameraPosition:
+                                        config.initialCameraPosition,
+                                  ),
+                                );
+                              }
+                              if (_cameraPosition == null) {
+                                return MapInitialPlaceholder(
                                   resolved: vm.initialMapPositionResolved,
-                                )
-                              : GoogleMap(
-                                  key: const ValueKey('mipd-google-map'),
-                                  mapType: OperationMapStyle.mapType,
-                                  initialCameraPosition: _cameraPosition!,
-                                  onCameraMove: (position) =>
-                                      _cameraPosition = position,
-                                  markers: {
-                                    ..._markers,
-                                    if (vm.userLocation case final location?)
-                                      Marker(
-                                        markerId: const MarkerId('mipd_user'),
-                                        position: LatLng(
-                                          location.latitude,
-                                          location.longitude,
-                                        ),
-                                        icon:
-                                            _userIcon ??
-                                            BitmapDescriptor.defaultMarkerWithHue(
-                                              BitmapDescriptor.hueAzure,
-                                            ),
-                                        anchor: OperationMapStyle.markerAnchor,
-                                        zIndexInt:
-                                            OperationMapStyle.userMarkerZIndex,
+                                );
+                              }
+                              return GoogleMap(
+                                key: const ValueKey('mipd-google-map'),
+                                mapType: OperationMapStyle.mapType,
+                                initialCameraPosition: _cameraPosition!,
+                                onCameraMove: (position) =>
+                                    _cameraPosition = position,
+                                markers: {
+                                  ..._markers,
+                                  if (location != null)
+                                    Marker(
+                                      markerId: const MarkerId('mipd_user'),
+                                      position: LatLng(
+                                        location.latitude,
+                                        location.longitude,
                                       ),
-                                  },
-                                  myLocationEnabled: false,
-                                  myLocationButtonEnabled: false,
-                                  onCameraIdle: _plantLayer.cameraIdle,
-                                  onMapCreated: (controller) {
-                                    _controller = controller;
-                                    _plantLayer.controller = controller;
-                                    _plantLayer.cameraIdle();
-                                    if (vm.userLocation case final location?) {
-                                      _followUser(location);
-                                    }
-                                  },
-                                ),
+                                      icon:
+                                          (userMarker.kind ==
+                                                  UserMapMarkerKind.directional
+                                              ? _directionalUserIcon
+                                              : _userIcon) ??
+                                          BitmapDescriptor.defaultMarkerWithHue(
+                                            BitmapDescriptor.hueAzure,
+                                          ),
+                                      anchor: userMarker.anchor,
+                                      rotation: userMarker.rotation,
+                                      flat: userMarker.flat,
+                                      zIndexInt:
+                                          OperationMapStyle.userMarkerZIndex,
+                                    ),
+                                },
+                                myLocationEnabled: false,
+                                myLocationButtonEnabled: false,
+                                onCameraIdle: _plantLayer.cameraIdle,
+                                onMapCreated: (controller) {
+                                  _controller = controller;
+                                  _plantLayer.controller = controller;
+                                  _plantLayer.cameraIdle();
+                                  if (location != null) {
+                                    _followUser(location);
+                                  }
+                                },
+                              );
+                            },
+                          ),
                         ),
                       ),
                       if (vm.status == MipdLoadStatus.loading)

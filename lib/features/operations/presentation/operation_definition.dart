@@ -42,7 +42,7 @@ const operationModules = <OperationModuleDefinition>[
     operations: [
       OperationDefinition(
         id: 'inspection',
-        title: 'Inspeção',
+        title: 'Ocorrências',
         description: 'Registre ocorrências e acompanhe cada planta no mapa.',
         icon: Icons.fact_check_outlined,
         accent: Color(0xFF2F6B45),

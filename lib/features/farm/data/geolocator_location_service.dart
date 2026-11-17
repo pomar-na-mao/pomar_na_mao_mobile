@@ -4,16 +4,18 @@ import 'package:geolocator/geolocator.dart';
 import '../domain/user_location.dart';
 
 class GeolocatorLocationService implements LocationService {
-  static LocationSettings _createLocationSettings() {
-    if (defaultTargetPlatform == TargetPlatform.android) {
+  @visibleForTesting
+  static LocationSettings createLocationSettingsForPlatform(
+    TargetPlatform platform,
+  ) {
+    if (platform == TargetPlatform.android) {
       return AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 0,
-        intervalDuration: const Duration(seconds: 1),
+        intervalDuration: const Duration(milliseconds: 250),
       );
     }
-    if (defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.macOS) {
+    if (platform == TargetPlatform.iOS || platform == TargetPlatform.macOS) {
       return AppleSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         activityType: ActivityType.fitness,
@@ -27,6 +29,9 @@ class GeolocatorLocationService implements LocationService {
       distanceFilter: 0,
     );
   }
+
+  static LocationSettings _createLocationSettings() =>
+      createLocationSettingsForPlatform(defaultTargetPlatform);
 
   @override
   Future<LocationResult> getCurrentLocation() async {

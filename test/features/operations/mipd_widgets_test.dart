@@ -95,6 +95,54 @@ void main() {
     expect(find.text('Cancelar'), findsNothing);
   });
 
+  testWidgets('publishes directional visual location to the map', (
+    tester,
+  ) async {
+    final locationService = _ControlledLocationService();
+    final localViewModel = MipdViewModel(
+      repository: repository,
+      locationService: locationService,
+      photoService: MipdPhotoService(picker: _NoPhotoPicker()),
+    );
+    addTearDown(() {
+      localViewModel.dispose();
+      locationService.dispose();
+    });
+    MipdMapConfig? config;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MipdView(
+          viewModel: localViewModel,
+          mapBuilder: (_, value) {
+            config = value;
+            return const SizedBox.expand();
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    localViewModel.resumeLocation();
+    locationService.emit(
+      LocationResult.available(
+        UserLocation(
+          latitude: -21,
+          longitude: -47,
+          accuracy: 3,
+          timestamp: DateTime.now().toUtc(),
+          heading: 90,
+          speed: 1,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(config?.userLocation?.latitude, -21);
+    expect(config?.userCourse, 90);
+  });
+
   testWidgets(
     'modal requires pest type and supports multiple plant parts without photo',
     (tester) async {
@@ -303,6 +351,7 @@ class _ControlledLocationService implements LocationService {
   @override
   Stream<LocationResult> watchLocation() => _controller.stream;
 
+  void emit(LocationResult result) => _controller.add(result);
   void dispose() => _controller.close();
 }
 
