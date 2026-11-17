@@ -8,6 +8,7 @@ import '../../farm/domain/user_location.dart';
 import '../../farm/domain/user_position_tracker.dart';
 import '../../farm/domain/zone.dart';
 import '../../farm/domain/zones_repository.dart';
+import '../../farm/presentation/user_map_navigation.dart';
 import '../data/activity_repository.dart';
 import '../domain/activity_models.dart';
 import '../domain/inspection_models.dart';
@@ -30,6 +31,7 @@ class ActivityViewModel extends ChangeNotifier {
   bool initialMapPositionResolved = false;
   final ActivityGeometryBuilder drawing = ActivityGeometryBuilder();
   final UserPositionTracker _positionTracker = UserPositionTracker();
+  final UserMapLocationState mapLocation = UserMapLocationState();
 
   List<InspectionPlant> _allPlants = const [];
   List<InspectionPlant> _filteredPlants = const [];
@@ -265,10 +267,12 @@ class ActivityViewModel extends ChangeNotifier {
       (result) {
         if (_disposed || !_isLocationActive) return;
         if (result.location case final location?) {
+          mapLocation.add(location);
           final accepted = _positionTracker.add(location);
           if (accepted == null) return;
           _locationResult = LocationResult.available(accepted);
         } else {
+          mapLocation.clear();
           _positionTracker.reset();
           _locationResult = result;
         }
@@ -276,6 +280,7 @@ class ActivityViewModel extends ChangeNotifier {
       },
       onError: (Object _) {
         if (_disposed || !_isLocationActive) return;
+        mapLocation.clear();
         _positionTracker.reset();
         _locationResult = const LocationResult.error();
         notifyListeners();
@@ -284,6 +289,7 @@ class ActivityViewModel extends ChangeNotifier {
         if (_disposed || !_isLocationActive) return;
         _isLocationActive = false;
         _locationSubscription = null;
+        mapLocation.clear();
         _positionTracker.reset();
         _locationResult = const LocationResult.error();
         notifyListeners();
@@ -295,6 +301,7 @@ class ActivityViewModel extends ChangeNotifier {
     _isLocationActive = false;
     unawaited(_locationSubscription?.cancel());
     _locationSubscription = null;
+    mapLocation.clear();
     _positionTracker.reset();
   }
 
@@ -302,6 +309,7 @@ class ActivityViewModel extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     pauseLocation();
+    mapLocation.dispose();
     super.dispose();
   }
 }

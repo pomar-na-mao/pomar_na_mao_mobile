@@ -249,6 +249,7 @@ void main() {
     tester,
   ) async {
     final phone = FakeLocationService();
+    SprayingMapConfig? mapConfig;
     final vm = SprayingViewModel(
       sprayingRepository: FakeSprayingRepository(),
       inspectionRepository: FakeInspectionRepository(),
@@ -259,11 +260,31 @@ void main() {
       MaterialApp(
         home: SprayingView(
           viewModel: vm,
-          mapBuilder: (_, _) => const SizedBox.expand(),
+          mapBuilder: (_, config) {
+            mapConfig = config;
+            return const SizedBox.expand();
+          },
         ),
       ),
     );
     await tester.pump();
+    vm.startLocationTracking();
+    phone.emit(
+      LocationResult.available(
+        UserLocation(
+          latitude: -21,
+          longitude: -47,
+          accuracy: 3,
+          timestamp: DateTime.now().toUtc(),
+          heading: 270,
+          speed: 1,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(mapConfig?.userLocation?.latitude, -21);
+    expect(mapConfig?.userCourse, 270);
     await tester.tap(find.byKey(const ValueKey('action-spraying-session')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('btn-start-spraying')));
@@ -557,6 +578,7 @@ void main() {
       await pumpEventQueue();
 
       expect(viewModel.userLocation, same(initialLocation));
+      expect(viewModel.mapLocation.location?.latitude, -21.1765);
       expect(viewModel.activeTrackPoints, hasLength(1));
       expect(viewModel.polylines, isEmpty);
 

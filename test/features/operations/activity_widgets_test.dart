@@ -514,6 +514,7 @@ void main() {
     }
 
     expect(viewModel.userLocation, isNotNull);
+    expect(config?.userLocation, isNotNull);
     expect(find.byKey(const ValueKey('spraying-signal-message')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('activity-open-drawing')));
@@ -540,6 +541,7 @@ void main() {
     }
 
     expect(config!.userLocation!.timestamp, isNot(previousLocationTimestamp));
+    expect(config!.userCourse, closeTo(180, 1));
     expect(config!.initialCameraPosition, userCamera);
   });
 

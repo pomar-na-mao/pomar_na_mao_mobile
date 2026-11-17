@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../farm/domain/user_location.dart';
 import '../../farm/domain/user_position_tracker.dart';
 import '../../farm/domain/map_initial_position.dart';
+import '../../farm/presentation/user_map_navigation.dart';
 import '../data/mipd_photo_service.dart';
 import '../data/mipd_repository.dart';
 import '../domain/inspection_models.dart';
@@ -34,6 +35,7 @@ class MipdViewModel extends ChangeNotifier {
   bool syncing = false;
   StreamSubscription<LocationResult>? _locationSubscription;
   final UserPositionTracker _positionTracker = UserPositionTracker();
+  final UserMapLocationState mapLocation = UserMapLocationState();
   LocationResult? _locationResult;
   bool _isLocationActive = false;
   bool _disposed = false;
@@ -73,10 +75,12 @@ class MipdViewModel extends ChangeNotifier {
       (result) {
         if (_disposed || !_isLocationActive) return;
         if (result.location case final location?) {
+          mapLocation.add(location);
           final accepted = _positionTracker.add(location);
           if (accepted == null) return;
           _locationResult = LocationResult.available(accepted);
         } else {
+          mapLocation.clear();
           _positionTracker.reset();
           _locationResult = result;
         }
@@ -84,6 +88,7 @@ class MipdViewModel extends ChangeNotifier {
       },
       onError: (Object _) {
         if (_disposed || !_isLocationActive) return;
+        mapLocation.clear();
         _positionTracker.reset();
         _locationResult = const LocationResult.error();
         notifyListeners();
@@ -92,6 +97,7 @@ class MipdViewModel extends ChangeNotifier {
         if (_disposed || !_isLocationActive) return;
         _isLocationActive = false;
         _locationSubscription = null;
+        mapLocation.clear();
         _positionTracker.reset();
         _locationResult = const LocationResult.error();
         notifyListeners();
@@ -167,12 +173,15 @@ class MipdViewModel extends ChangeNotifier {
     _isLocationActive = false;
     unawaited(_locationSubscription?.cancel());
     _locationSubscription = null;
+    mapLocation.clear();
+    _positionTracker.reset();
   }
 
   @override
   void dispose() {
     _disposed = true;
     pauseLocation();
+    mapLocation.dispose();
     super.dispose();
   }
 }

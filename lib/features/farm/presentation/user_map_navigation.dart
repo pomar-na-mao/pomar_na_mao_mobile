@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,38 @@ import '../domain/user_location.dart';
 import '../domain/user_position_tracker.dart';
 
 const userFollowZoom = 20.5;
+const directionalUserMarkerCanvasSize = 72;
+const directionalUserMarkerDisplaySize = 32.0;
+const userMapMarkerAnchor = Offset(0.5, 0.5);
+
+enum UserMapMarkerKind { neutral, directional }
+
+class UserMapMarkerPresentation {
+  const UserMapMarkerPresentation({
+    required this.kind,
+    required this.rotation,
+    required this.flat,
+    required this.anchor,
+  });
+
+  final UserMapMarkerKind kind;
+  final double rotation;
+  final bool flat;
+  final Offset anchor;
+}
+
+UserMapMarkerPresentation userMapMarkerForCourse(double? course) {
+  final isDirectional =
+      course != null && course.isFinite && course >= 0 && course < 360;
+  return UserMapMarkerPresentation(
+    kind: isDirectional
+        ? UserMapMarkerKind.directional
+        : UserMapMarkerKind.neutral,
+    rotation: isDirectional ? course : 0,
+    flat: isDirectional,
+    anchor: userMapMarkerAnchor,
+  );
+}
 
 Future<BitmapDescriptor> createUserLocationMarkerIcon() async {
   const size = 64;
@@ -30,6 +63,52 @@ Future<BitmapDescriptor> createUserLocationMarkerIcon() async {
     bytes!.buffer.asUint8List(),
     width: 28,
     height: 28,
+  );
+}
+
+@visibleForTesting
+Future<Uint8List> createDirectionalUserLocationMarkerBytes() async {
+  const size = directionalUserMarkerCanvasSize;
+  const center = Offset(size / 2, size / 2);
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  canvas.drawCircle(center, 33, Paint()..color = Colors.white);
+
+  final arrow = Path()
+    ..moveTo(center.dx, 7)
+    ..lineTo(61, 61)
+    ..lineTo(center.dx, 50)
+    ..lineTo(11, 61)
+    ..close();
+  canvas.drawPath(
+    arrow,
+    Paint()
+      ..color = const Color(0xFF1976D2)
+      ..style = PaintingStyle.fill,
+  );
+  canvas.drawPath(
+    arrow,
+    Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeJoin = StrokeJoin.round,
+  );
+
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(size, size);
+  picture.dispose();
+  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+  image.dispose();
+  return bytes!.buffer.asUint8List();
+}
+
+Future<BitmapDescriptor> createDirectionalUserLocationMarkerIcon() async {
+  final bytes = await createDirectionalUserLocationMarkerBytes();
+  return BitmapDescriptor.bytes(
+    bytes,
+    width: directionalUserMarkerDisplaySize,
+    height: directionalUserMarkerDisplaySize,
   );
 }
 
@@ -94,6 +173,56 @@ class UserCourseTracker {
   }
 }
 
+class UserMapLocationState extends ChangeNotifier {
+  UserMapLocationState({this.maxAccuracyMeters = 12});
+
+  final double maxAccuracyMeters;
+  final UserCourseTracker _courseTracker = UserCourseTracker();
+  UserLocation? _location;
+
+  UserLocation? get location => _location;
+  double? get course => _courseTracker.course;
+
+  bool add(UserLocation location, {DateTime? now}) {
+    final receivedAt = (now ?? DateTime.now()).toUtc();
+    final timestamp = (location.timestamp ?? receivedAt).toUtc();
+    final age = receivedAt.difference(timestamp);
+    final accuracy = location.accuracy;
+    if (!location.latitude.isFinite ||
+        !location.longitude.isFinite ||
+        location.latitude.abs() > 90 ||
+        location.longitude.abs() > 180 ||
+        accuracy == null ||
+        !accuracy.isFinite ||
+        accuracy <= 0 ||
+        accuracy > maxAccuracyMeters ||
+        age > const Duration(seconds: 5) ||
+        age < const Duration(seconds: -2)) {
+      return false;
+    }
+
+    final visualLocation = UserLocation(
+      latitude: location.latitude,
+      longitude: location.longitude,
+      accuracy: accuracy,
+      timestamp: timestamp,
+      heading: location.heading,
+      speed: location.speed,
+    );
+    _courseTracker.add(visualLocation);
+    _location = visualLocation;
+    notifyListeners();
+    return true;
+  }
+
+  void clear() {
+    final hadValue = _location != null || _courseTracker.course != null;
+    _location = null;
+    _courseTracker.reset();
+    if (hadValue) notifyListeners();
+  }
+}
+
 double? nextUserMapBearing(double current, double? course) {
   if (course == null || !course.isFinite) return null;
   if (!current.isFinite) return course;
@@ -145,6 +274,8 @@ class UserMapNavigator {
   UserLocation? _queuedLocation;
   bool _checkingVisibleRegion = false;
 
+  double? get course => _courseTracker.course;
+
   void reset() {
     _courseTracker.reset();
     _lastCheckedLocation = null;
@@ -185,18 +316,33 @@ class UserMapNavigator {
     required CameraPosition? Function() camera,
     required bool Function() isActive,
   }) async {
-    if (controller == null ||
-        !isActive() ||
-        identical(_lastCheckedLocation, location)) {
-      return;
-    }
+    if (controller == null) return;
+    await followWithCallbacks(
+      location: location,
+      getVisibleRegion: controller.getVisibleRegion,
+      animateCamera: (position) =>
+          controller.animateCamera(CameraUpdate.newCameraPosition(position)),
+      camera: camera,
+      isActive: isActive,
+    );
+  }
+
+  @visibleForTesting
+  Future<void> followWithCallbacks({
+    required UserLocation location,
+    required Future<LatLngBounds> Function() getVisibleRegion,
+    required Future<void> Function(CameraPosition position) animateCamera,
+    required CameraPosition? Function() camera,
+    required bool Function() isActive,
+  }) async {
+    if (!isActive() || identical(_lastCheckedLocation, location)) return;
     if (_checkingVisibleRegion) {
       _queuedLocation = location;
       return;
     }
     _checkingVisibleRegion = true;
     try {
-      final bounds = await controller.getVisibleRegion();
+      final bounds = await getVisibleRegion();
       if (!isActive()) return;
       _lastCheckedLocation = location;
       final user = LatLng(location.latitude, location.longitude);
@@ -212,8 +358,8 @@ class UserMapNavigator {
         outsideFocusArea: !isInsideUserFocusArea(bounds, user),
         bearing: bearing,
       );
-      if (next != null) {
-        await controller.animateCamera(CameraUpdate.newCameraPosition(next));
+      if (next != null && isActive()) {
+        await animateCamera(next);
       }
     } catch (error) {
       debugPrint('Erro ao acompanhar localizacao no mapa: $error');
@@ -223,9 +369,10 @@ class UserMapNavigator {
       _queuedLocation = null;
       if (queued != null && isActive()) {
         _lastCheckedLocation = null;
-        await follow(
+        await followWithCallbacks(
           location: queued,
-          controller: controller,
+          getVisibleRegion: getVisibleRegion,
+          animateCamera: animateCamera,
           camera: camera,
           isActive: isActive,
         );

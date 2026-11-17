@@ -36,6 +36,8 @@ class SprayingMapConfig {
     required this.polygons,
     required this.onSelectPlant,
     this.initialPosition,
+    this.userLocation,
+    this.userCourse,
   });
 
   final List<InspectionPlant> plants;
@@ -43,6 +45,8 @@ class SprayingMapConfig {
   final Set<Polygon> polygons;
   final ValueChanged<InspectionPlant> onSelectPlant;
   final CameraPosition? initialPosition;
+  final UserLocation? userLocation;
+  final double? userCourse;
 }
 
 typedef SprayingMapBuilder = Widget Function(
@@ -68,6 +72,7 @@ class _SprayingViewState extends State<SprayingView> {
   BitmapDescriptor? _plantMarkerIcon;
   BitmapDescriptor? _pulverizedPlantMarkerIcon;
   BitmapDescriptor? _userMarkerIcon;
+  BitmapDescriptor? _directionalUserMarkerIcon;
   final SprayingCourseTracker _courseTracker = SprayingCourseTracker();
   Set<Marker> _markers = const {};
   final _plantLayer = BoundedPlantMarkers();
@@ -117,11 +122,13 @@ class _SprayingViewState extends State<SprayingView> {
         highlightColor: const Color(0xFF60A5FA),
       ),
       createUserLocationMarkerIcon(),
+      createDirectionalUserLocationMarkerIcon(),
     ]);
     if (!mounted) return;
     _plantMarkerIcon = icons[0];
     _pulverizedPlantMarkerIcon = icons[1];
     _userMarkerIcon = icons[2];
+    _directionalUserMarkerIcon = icons[3];
     _updateMarkers(_effectiveViewModel);
     setState(() {});
   }
@@ -242,7 +249,7 @@ class _SprayingViewState extends State<SprayingView> {
   }
 
   void _recenterOnUser(SprayingViewModel vm, {double zoom = 19}) {
-    final loc = vm.userLocation;
+    final loc = vm.mapLocation.location ?? vm.userLocation;
     final controller = _mapController;
     if (loc == null || controller == null) return;
     _needsInitialFocus = false;
@@ -497,7 +504,7 @@ class _SprayingViewState extends State<SprayingView> {
             surfaceTintColor: Colors.transparent,
             title: const Text('Pulverização'),
             actions: [
-              if (vm.userLocation != null)
+              if (vm.mapLocation.location != null || vm.userLocation != null)
                 IconButton(
                   icon: const Icon(Icons.my_location),
                   tooltip: 'Minha localização',
@@ -516,14 +523,19 @@ class _SprayingViewState extends State<SprayingView> {
                     child: Stack(
                       children: [
                         if (widget.mapBuilder != null)
-                          widget.mapBuilder!(
-                            context,
-                            SprayingMapConfig(
-                              plants: vm.displayedPlants,
-                              polylines: vm.polylines,
-                              polygons: vm.polygons,
-                              onSelectPlant: (p) => vm.toggleAffectedPlant(p),
-                              initialPosition: initialCamera,
+                          ListenableBuilder(
+                            listenable: vm.mapLocation,
+                            builder: (context, _) => widget.mapBuilder!(
+                              context,
+                              SprayingMapConfig(
+                                plants: vm.displayedPlants,
+                                polylines: vm.polylines,
+                                polygons: vm.polygons,
+                                onSelectPlant: (p) => vm.toggleAffectedPlant(p),
+                                initialPosition: initialCamera,
+                                userLocation: vm.mapLocation.location,
+                                userCourse: vm.mapLocation.course,
+                              ),
                             ),
                           )
                         else
@@ -545,65 +557,84 @@ class _SprayingViewState extends State<SprayingView> {
                                   ? MapInitialPlaceholder(
                                       resolved: vm.initialMapPositionResolved,
                                     )
-                                  : GoogleMap(
-                                      key: const ValueKey(
-                                        'spraying-google-map',
-                                      ),
-                                      mapType: MapType.satellite,
-                                      initialCameraPosition: initialCamera,
-                                      onCameraIdle: () {
-                                        _plantLayer.cameraIdle();
-                                        final loc = vm.userLocation;
-                                        if (vm.sessionState ==
-                                                SprayingSessionState
-                                                    .recording &&
-                                            loc != null) {
-                                          _lastCheckedLocation = null;
-                                          unawaited(_keepUserVisible(loc, vm));
-                                        }
-                                      },
-                                      onCameraMove: (position) =>
-                                          _savedCamera = position,
-                                      markers: {
-                                        ..._markers,
-                                        if (vm.userLocation case final loc?)
-                                          Marker(
-                                            markerId: const MarkerId(
-                                              'spraying_user',
-                                            ),
-                                            position: LatLng(
-                                              loc.latitude,
-                                              loc.longitude,
-                                            ),
-                                            icon:
-                                                _userMarkerIcon ??
-                                                BitmapDescriptor.defaultMarkerWithHue(
-                                                  BitmapDescriptor.hueAzure,
-                                                ),
-                                            anchor: const Offset(0.5, 0.5),
-                                            zIndexInt: 1000,
+                                  : ListenableBuilder(
+                                      listenable: vm.mapLocation,
+                                      builder: (context, _) {
+                                        final location =
+                                            vm.mapLocation.location;
+                                        final userMarker =
+                                            userMapMarkerForCourse(
+                                              vm.mapLocation.course,
+                                            );
+                                        return GoogleMap(
+                                          key: const ValueKey(
+                                            'spraying-google-map',
                                           ),
-                                      },
-                                      polygons: vm.polygons,
-                                      polylines: vm.polylines,
-                                      myLocationEnabled: false,
-                                      myLocationButtonEnabled: false,
-                                      zoomControlsEnabled: false,
-                                      mapToolbarEnabled: false,
-                                      onMapCreated: (ctrl) {
-                                        _mapController = ctrl;
-                                        _plantLayer.controller = ctrl;
-                                        _plantLayer.cameraIdle();
-                                        if (vm.userLocation != null &&
-                                            (_needsInitialFocus ||
-                                                !_userHasInteractedWithMap)) {
-                                          _recenterOnUser(
-                                            vm,
-                                            zoom: _needsInitialFocus
-                                                ? _recordingStartZoom
-                                                : 19,
-                                          );
-                                        }
+                                          mapType: MapType.satellite,
+                                          initialCameraPosition: initialCamera,
+                                          onCameraIdle: () {
+                                            _plantLayer.cameraIdle();
+                                            final loc = vm.userLocation;
+                                            if (vm.sessionState ==
+                                                    SprayingSessionState
+                                                        .recording &&
+                                                loc != null) {
+                                              _lastCheckedLocation = null;
+                                              unawaited(
+                                                _keepUserVisible(loc, vm),
+                                              );
+                                            }
+                                          },
+                                          onCameraMove: (position) =>
+                                              _savedCamera = position,
+                                          markers: {
+                                            ..._markers,
+                                            if (location case final loc?)
+                                              Marker(
+                                                markerId: const MarkerId(
+                                                  'spraying_user',
+                                                ),
+                                                position: LatLng(
+                                                  loc.latitude,
+                                                  loc.longitude,
+                                                ),
+                                                icon:
+                                                    (userMarker.kind ==
+                                                            UserMapMarkerKind
+                                                                .directional
+                                                        ? _directionalUserMarkerIcon
+                                                        : _userMarkerIcon) ??
+                                                    BitmapDescriptor.defaultMarkerWithHue(
+                                                      BitmapDescriptor.hueAzure,
+                                                    ),
+                                                anchor: userMarker.anchor,
+                                                rotation: userMarker.rotation,
+                                                flat: userMarker.flat,
+                                                zIndexInt: 1000,
+                                              ),
+                                          },
+                                          polygons: vm.polygons,
+                                          polylines: vm.polylines,
+                                          myLocationEnabled: false,
+                                          myLocationButtonEnabled: false,
+                                          zoomControlsEnabled: false,
+                                          mapToolbarEnabled: false,
+                                          onMapCreated: (ctrl) {
+                                            _mapController = ctrl;
+                                            _plantLayer.controller = ctrl;
+                                            _plantLayer.cameraIdle();
+                                            if (vm.userLocation != null &&
+                                                (_needsInitialFocus ||
+                                                    !_userHasInteractedWithMap)) {
+                                              _recenterOnUser(
+                                                vm,
+                                                zoom: _needsInitialFocus
+                                                    ? _recordingStartZoom
+                                                    : 19,
+                                              );
+                                            }
+                                          },
+                                        );
                                       },
                                     ),
                             ),

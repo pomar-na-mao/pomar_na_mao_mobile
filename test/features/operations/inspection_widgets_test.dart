@@ -373,6 +373,41 @@ void main() {
     viewModel.dispose();
   });
 
+  testWidgets('shows Ocorrências title with the back action', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: ElevatedButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => InspectionView(
+                    viewModel: viewModel,
+                    mapBuilder: (_, _) => const SizedBox(),
+                  ),
+                ),
+              ),
+              child: const Text('Abrir'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Abrir'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.text('Ocorrências'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(BackButton), findsOneWidget);
+    expect(find.text('Inspeção'), findsNothing);
+  });
+
   testWidgets(
     'action card touch targets and responsiveness at 320, 768, 1024 px',
     (tester) async {
@@ -421,6 +456,68 @@ void main() {
     expect(find.text('Aguardando sinal estabilizar'), findsNothing);
     expect(controlledViewModel.userLocation?.latitude, -23.1);
   });
+
+  testWidgets(
+    'keeps updating the marker while manual exploration suspends following',
+    (tester) async {
+      final controlledLocation = ControlledLocationService();
+      final controlledViewModel = InspectionViewModel(
+        repository: repo,
+        locationService: controlledLocation,
+      );
+      addTearDown(controlledViewModel.dispose);
+      addTearDown(controlledLocation.dispose);
+      InspectionMapConfig? latestConfig;
+
+      await tester.pumpWidget(
+        buildTestWidget(
+          viewModel: controlledViewModel,
+          mapBuilder: (_, config) {
+            latestConfig = config;
+            return Text(
+              '${config.userLocation?.latitude}|${config.isFollowingUser}',
+              key: const ValueKey('inspection-map-state'),
+            );
+          },
+        ),
+      );
+      await tester.pump();
+
+      final timestamp = DateTime.now().toUtc();
+      controlledLocation.emitStableLocation(
+        latitude: -23.1,
+        longitude: -46.1,
+        endTimestamp: timestamp,
+      );
+      await tester.pump();
+      expect(latestConfig?.isFollowingUser, isTrue);
+      expect(latestConfig?.userCourse, isNull);
+
+      latestConfig!.onMapGestureStarted();
+      await tester.pump();
+      expect(latestConfig?.isFollowingUser, isFalse);
+
+      controlledLocation.emitMovement(
+        latitude: -23.09996,
+        longitude: -46.1,
+        startTimestamp: timestamp,
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(latestConfig?.userLocation?.latitude, -23.09996);
+      expect(latestConfig?.isFollowingUser, isFalse);
+      expect(latestConfig?.userCourse, closeTo(0, 1));
+      expect(find.text('-23.09996|false'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Minha localização'));
+      await tester.pump();
+      expect(latestConfig?.isFollowingUser, isTrue);
+
+      latestConfig!.onMapGestureStarted();
+      await tester.pump();
+      expect(latestConfig?.isFollowingUser, isFalse);
+    },
+  );
 
   testWidgets('keeps GPS tracking while plant editor modal is open', (
     tester,
