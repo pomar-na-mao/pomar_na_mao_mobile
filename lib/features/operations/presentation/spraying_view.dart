@@ -205,17 +205,10 @@ class _SprayingViewState extends State<SprayingView> {
         _pulverizedPlantMarkerIcon ??
         BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
 
-    void select(String id) {
-      final plant = vm.plantById(id);
-      if (plant != null) {
-        vm.toggleAffectedPlant(plant);
-      }
-    }
-
     _plantLayer.update(
       revision: (
         vm.displayedPlants,
-        vm.reviewedPlantsRevision,
+        vm.affectedPlantsRevision,
         _plantMarkerIcon,
         _pulverizedPlantMarkerIcon,
       ),
@@ -225,7 +218,7 @@ class _SprayingViewState extends State<SprayingView> {
           .toList(growable: false),
       markerFor: (node) {
         final plant = vm.plantById(node.plantId!);
-        final isPulverized = vm.reviewedPlantIds.contains(node.plantId);
+        final isPulverized = vm.affectedPlantIds.contains(node.plantId);
         return Marker(
           markerId: MarkerId(node.plantId!),
           position: LatLng(node.latitude, node.longitude),
@@ -235,7 +228,6 @@ class _SprayingViewState extends State<SprayingView> {
             snippet: isPulverized ? 'Planta Atingida (Azul)' : null,
           ),
           anchor: const Offset(0.5, 0.5),
-          onTap: () => select(node.plantId!),
         );
       },
       onClusterTap: (node) => showPlantClusterMembers(
@@ -243,7 +235,7 @@ class _SprayingViewState extends State<SprayingView> {
         layer: _plantLayer,
         node: node,
         labelFor: (id) => vm.plantById(id)?.label ?? id,
-        onSelect: select,
+        onSelect: (_) {},
       ),
     );
   }
@@ -531,7 +523,7 @@ class _SprayingViewState extends State<SprayingView> {
                                 plants: vm.displayedPlants,
                                 polylines: vm.polylines,
                                 polygons: vm.polygons,
-                                onSelectPlant: (p) => vm.toggleAffectedPlant(p),
+                                onSelectPlant: (_) {},
                                 initialPosition: initialCamera,
                                 userLocation: vm.mapLocation.location,
                                 userCourse: vm.mapLocation.course,
@@ -749,9 +741,7 @@ class _DummySprayingRemoteDataSource implements SprayingRemoteDataSource {
   ) async => SprayingSyncResult(
     fieldOperationId: '',
     routeId: '',
-    trackPointsCount: 0,
-    inputsCount: 0,
-    confirmedPlantsCount: 0,
+    syncStatus: 'synced',
     syncedAt: DateTime.now().toUtc(),
   );
 

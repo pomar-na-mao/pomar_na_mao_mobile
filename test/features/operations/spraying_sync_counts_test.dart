@@ -40,7 +40,6 @@ class _Remote implements SprayingRemoteDataSource {
   final SprayingSyncResult result;
   Map<String, dynamic>? payload;
   bool recalculationCalled = false;
-  String? recalculationZoneId;
 
   @override
   Future<SprayingSyncResult> syncSprayingOperation(
@@ -57,7 +56,6 @@ class _Remote implements SprayingRemoteDataSource {
     double maxDistanceMeters = 9,
   }) async {
     recalculationCalled = true;
-    recalculationZoneId = zoneId;
     return const [];
   }
 }
@@ -65,7 +63,7 @@ class _Remote implements SprayingRemoteDataSource {
 void main() {
   final now = DateTime.utc(2026, 10, 4, 12);
 
-  SprayingOperation operation() => SprayingOperation(
+  SprayingOperation operation({bool validRoute = true}) => SprayingOperation(
     localId: 'op-1',
     startedAt: now,
     finishedAt: now.add(const Duration(minutes: 1)),
@@ -73,128 +71,78 @@ void main() {
     syncStatus: SprayingSyncStatus.reviewed,
     route: SprayingRoute(
       localId: 'route-1',
-      geojson: const {'type': 'LineString', 'coordinates': []},
+      geojson: {
+        'type': 'LineString',
+        'coordinates': validRoute
+            ? [
+                [-47.0, -21.0],
+                [-47.0, -21.0001],
+              ]
+            : <List<double>>[],
+      },
       distanceMeters: 5,
       startedAt: now,
       finishedAt: now.add(const Duration(minutes: 1)),
     ),
-    trackPoints: [
-      SprayingTrackPoint(
-        localId: 'point-1',
-        recordedAt: now,
-        latitude: -21,
-        longitude: -47,
-      ),
-      SprayingTrackPoint(
-        localId: 'point-2',
-        recordedAt: now.add(const Duration(seconds: 1)),
-        latitude: -21.0001,
-        longitude: -47,
-      ),
-    ],
     inputs: const [
       SprayingInput(
         localId: 'input-1',
         inputType: 'fungicide',
         productName: 'Produto 1',
       ),
-      SprayingInput(
-        localId: 'input-2',
-        inputType: 'fungicide',
-        productName: 'Produto 2',
-      ),
     ],
-    confirmedPlants: List.generate(
-      16,
-      (index) => SprayingConfirmedPlant(
-        localId: 'match-$index',
-        plantId: 'plant-$index',
-        matchSource: SprayingMatchSource.autoMatched,
-      ),
-    ),
   );
 
-  SprayingSyncResult result({required int plants, required int inputs}) =>
-      SprayingSyncResult(
-        fieldOperationId: 'remote-op',
-        routeId: 'remote-route',
-        trackPointsCount: 2,
-        inputsCount: inputs,
-        confirmedPlantsCount: plants,
-        syncedAt: now,
-      );
+  final result = SprayingSyncResult(
+    fieldOperationId: 'remote-op',
+    routeId: 'remote-route',
+    syncStatus: 'synced',
+    syncedAt: now,
+  );
 
-  for (final plantCount in [0, 10]) {
-    test('partial RPC count $plantCount/16 stays retryable', () async {
-      final store = _Store(operation());
-      final remote = _Remote(result(plants: plantCount, inputs: 2));
-      final repository = DefaultSprayingRepository(
-        localStore: store,
-        remoteDataSource: remote,
-      );
-
-      await expectLater(
-        repository.syncOperation('op-1'),
-        throwsA(isA<StateError>()),
-      );
-
-      expect(store.operation.syncStatus, SprayingSyncStatus.error);
-      expect((remote.payload!['confirmedPlants'] as List).length, 16);
-      expect((remote.payload!['inputs'] as List).length, 2);
-      expect((remote.payload!['operation'] as Map)['zoneId'], isNull);
-    });
-  }
-
-  test('matching RPC counts mark the operation synced', () async {
+  test('sync payload contains only operation and route data', () async {
     final store = _Store(operation());
-    final repository = DefaultSprayingRepository(
-      localStore: store,
-      remoteDataSource: _Remote(result(plants: 16, inputs: 2)),
-    );
-
-    final synced = await repository.syncOperation('op-1');
-
-    expect(synced.confirmedPlantsCount, 16);
-    expect(synced.inputsCount, 2);
-    expect(store.operation.syncStatus, SprayingSyncStatus.synced);
-  });
-
-  test('operation without reviewed plants is rejected before RPC', () async {
-    final store = _Store(operation().copyWith(confirmedPlants: const []));
-    final remote = _Remote(result(plants: 0, inputs: 2));
+    final remote = _Remote(result);
     final repository = DefaultSprayingRepository(
       localStore: store,
       remoteDataSource: remote,
     );
 
-    await expectLater(
-      repository.syncOperation('op-1'),
-      throwsA(
-        isA<StateError>().having(
-          (error) => error.message,
-          'message',
-          contains('ao menos uma planta'),
-        ),
-      ),
-    );
+    await repository.syncOperation('op-1');
 
-    expect(remote.payload, isNull);
-    expect(store.operation.syncStatus, SprayingSyncStatus.reviewed);
+    expect(remote.payload, containsPair('operation', isA<Map>()));
+    expect(remote.payload, containsPair('route', isA<Map>()));
+    expect(remote.payload, isNot(contains('trackPoints')));
+    expect(remote.payload, isNot(contains('inputs')));
+    expect(remote.payload, isNot(contains('confirmedPlants')));
+    expect(store.operation.syncStatus, SprayingSyncStatus.synced);
   });
 
-  test('affected-plants RPC receives a null zoneId', () async {
-    final remote = _Remote(result(plants: 16, inputs: 2));
+  test('operation with invalid route is rejected before RPC', () async {
+    final store = _Store(operation(validRoute: false));
+    final remote = _Remote(result);
+    final repository = DefaultSprayingRepository(
+      localStore: store,
+      remoteDataSource: remote,
+    );
+
+    await expectLater(repository.syncOperation('op-1'), throwsStateError);
+    expect(remote.payload, isNull);
+  });
+
+  test('affected-plants RPC can return zero plants', () async {
+    final remote = _Remote(result);
     final repository = DefaultSprayingRepository(
       localStore: _Store(operation()),
       remoteDataSource: remote,
     );
 
-    await repository.calculateAffectedPlants(
+    final affected = await repository.calculateAffectedPlants(
       operation: operation(),
       candidatePlants: const <InspectionPlant>[],
     );
 
     expect(remote.recalculationCalled, isTrue);
-    expect(remote.recalculationZoneId, isNull);
+    expect(affected, isEmpty);
   });
 }

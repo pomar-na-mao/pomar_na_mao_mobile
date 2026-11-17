@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:uuid/uuid.dart';
-
 import '../domain/inspection_models.dart';
 import '../domain/spraying_geometry_service.dart';
 import '../domain/spraying_models.dart';
@@ -17,16 +15,12 @@ abstract interface class SprayingRepository {
     List<SprayingTrackPoint> points,
   );
   Future<void> saveInputs(String operationLocalId, List<SprayingInput> inputs);
-  Future<void> saveConfirmedPlants(
-    String operationLocalId,
-    List<SprayingConfirmedPlant> plants,
-  );
   Future<List<SprayingOperation>> listOperations();
   Future<SprayingOperation?> getOperation(String operationLocalId);
   Future<void> deleteOperation(String operationLocalId);
   Future<SprayingSyncResult> syncOperation(String operationLocalId);
   Future<int> syncAllReviewed();
-  Future<List<SprayingConfirmedPlant>> calculateAffectedPlants({
+  Future<List<SprayingAffectedPlant>> calculateAffectedPlants({
     required SprayingOperation operation,
     required List<InspectionPlant> candidatePlants,
     double maxDistanceMeters = 9.0,
@@ -69,12 +63,6 @@ class DefaultSprayingRepository implements SprayingRepository {
   ) => localStore.saveInputs(operationLocalId, inputs);
 
   @override
-  Future<void> saveConfirmedPlants(
-    String operationLocalId,
-    List<SprayingConfirmedPlant> plants,
-  ) => localStore.saveConfirmedPlants(operationLocalId, plants);
-
-  @override
   Future<List<SprayingOperation>> listOperations() =>
       localStore.listOperations();
 
@@ -93,56 +81,8 @@ class DefaultSprayingRepository implements SprayingRepository {
       throw StateError('Operação $operationLocalId não encontrada');
     }
 
-    if (op.route == null) {
-      throw StateError('A operação não possui rota gravada');
-    }
-
-    if (!op.hasReviewedPlants) {
-      throw StateError(
-        'A pulverização precisa ter ao menos uma planta revisada para sincronizar',
-      );
-    }
-
-    var effectiveOp = op;
-
-    // Se houver menos de 2 trackPoints mas a rota tiver coordenadas no GeoJSON,
-    // reconstrói os trackPoints a partir da geometria da rota para viabilizar o sync.
-    if (effectiveOp.trackPoints.length < 2 && effectiveOp.route != null) {
-      final geojson = effectiveOp.route!.geojson;
-      final coords = geojson['geometry']?['coordinates'] as List?;
-      if (coords != null && coords.length >= 2) {
-        final duration = effectiveOp.finishedAt.difference(
-          effectiveOp.startedAt,
-        );
-        final stepMs = coords.length > 1
-            ? (duration.inMilliseconds / (coords.length - 1)).round()
-            : 0;
-        final reconstructed = <SprayingTrackPoint>[];
-        for (var i = 0; i < coords.length; i++) {
-          final c = coords[i] as List;
-          final lon = (c[0] as num).toDouble();
-          final lat = (c[1] as num).toDouble();
-          reconstructed.add(
-            SprayingTrackPoint(
-              localId: const Uuid().v4(),
-              recordedAt: effectiveOp.startedAt.add(
-                Duration(milliseconds: stepMs * i),
-              ),
-              latitude: lat,
-              longitude: lon,
-            ),
-          );
-        }
-        await localStore.insertTrackPointsBatch(
-          operationLocalId,
-          reconstructed,
-        );
-        effectiveOp = effectiveOp.copyWith(trackPoints: reconstructed);
-      }
-    }
-
-    if (effectiveOp.trackPoints.length < 2) {
-      throw StateError('A rota precisa de pelo menos 2 pontos GPS');
+    if (!op.hasValidRoute) {
+      throw StateError('A operação precisa de uma rota válida');
     }
 
     await localStore.updateSyncStatus(
@@ -152,17 +92,8 @@ class DefaultSprayingRepository implements SprayingRepository {
 
     try {
       final deviceId = await localStore.getDeviceId();
-      final payload = effectiveOp.toRpcPayload(deviceId: deviceId);
+      final payload = op.toRpcPayload(deviceId: deviceId);
       final result = await remoteDataSource.syncSprayingOperation(payload);
-
-      if (effectiveOp.confirmedPlants.isNotEmpty &&
-          result.confirmedPlantsCount != effectiveOp.confirmedPlants.length) {
-        throw StateError(
-          'O servidor confirmou ${result.confirmedPlantsCount} de '
-          '${effectiveOp.confirmedPlants.length} plantas. '
-          'Confira o talhão e as plantas antes de sincronizar novamente.',
-        );
-      }
 
       await localStore.updateSyncStatus(
         operationLocalId,
@@ -199,7 +130,7 @@ class DefaultSprayingRepository implements SprayingRepository {
   }
 
   @override
-  Future<List<SprayingConfirmedPlant>> calculateAffectedPlants({
+  Future<List<SprayingAffectedPlant>> calculateAffectedPlants({
     required SprayingOperation operation,
     required List<InspectionPlant> candidatePlants,
     double maxDistanceMeters = 9.0,
@@ -214,16 +145,12 @@ class DefaultSprayingRepository implements SprayingRepository {
         );
 
         if (remoteMatches.isNotEmpty) {
-          final now = DateTime.now().toUtc();
           return remoteMatches.map((m) {
             final plantId = (m['plant_id'] ?? m['plantId']) as String;
             final dist = (m['distance_meters'] ?? m['distanceMeters'] as num?)
                 ?.toDouble();
-            return SprayingConfirmedPlant(
-              localId: const Uuid().v4(),
+            return SprayingAffectedPlant(
               plantId: plantId,
-              matchSource: SprayingMatchSource.autoMatched,
-              matchedAt: now,
               distanceMeters: dist,
             );
           }).toList();

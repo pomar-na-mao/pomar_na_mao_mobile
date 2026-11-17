@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'package:uuid/uuid.dart';
 
 import 'inspection_models.dart';
 import 'spraying_models.dart';
@@ -101,17 +100,14 @@ class SprayingGeometryService {
   ///
   /// Executa poda espacial prévia por Bounding Box para manter performance fluida
   /// mesmo em pomares com milhares de plantas.
-  List<SprayingConfirmedPlant> calculateAffectedPlants({
+  List<SprayingAffectedPlant> calculateAffectedPlants({
     required List<InspectionPlant> candidatePlants,
     required List<SprayingTrackPoint> trackPoints,
     double maxDistanceMeters = 9.0,
-    String Function()? idGenerator,
   }) {
     if (trackPoints.isEmpty || candidatePlants.isEmpty) {
       return const [];
     }
-
-    final genId = idGenerator ?? const Uuid().v4;
 
     // 1. Poda espacial: Bounding Box dos trackPoints
     var minLat = double.infinity;
@@ -139,7 +135,7 @@ class SprayingGeometryService {
     final bboxMinLon = minLon - bufferDegreesLon;
     final bboxMaxLon = maxLon + bufferDegreesLon;
 
-    final affected = <SprayingConfirmedPlant>[];
+    final affected = <SprayingAffectedPlant>[];
 
     for (final plant in candidatePlants) {
       if (!plant.hasValidCoordinates || plant.nonExistent) continue;
@@ -154,22 +150,22 @@ class SprayingGeometryService {
         continue;
       }
 
-      // Encontra distância mínima à polyline e o trackPoint mais próximo
+      // Encontra a distância mínima à polyline.
       var minDistance = double.infinity;
-      SprayingTrackPoint? nearestPoint;
 
       // Se temos apenas 1 ponto GPS
       if (trackPoints.length == 1) {
         final tp = trackPoints.first;
-        final d = haversineDistanceMeters(pLat, pLon, tp.latitude, tp.longitude);
+        final d = haversineDistanceMeters(
+          pLat,
+          pLon,
+          tp.latitude,
+          tp.longitude,
+        );
         if (d <= maxDistanceMeters) {
           affected.add(
-            SprayingConfirmedPlant(
-              localId: genId(),
+            SprayingAffectedPlant(
               plantId: plant.id,
-              matchSource: SprayingMatchSource.autoMatched,
-              matchedAt: tp.recordedAt,
-              nearestTrackPointLocalId: tp.localId,
               distanceMeters: double.parse(d.toStringAsFixed(2)),
             ),
           );
@@ -193,21 +189,13 @@ class SprayingGeometryService {
 
         if (segDist < minDistance) {
           minDistance = segDist;
-          // Ponto mais próximo entre os extremos do segmento
-          final distA = haversineDistanceMeters(pLat, pLon, a.latitude, a.longitude);
-          final distB = haversineDistanceMeters(pLat, pLon, b.latitude, b.longitude);
-          nearestPoint = distA <= distB ? a : b;
         }
       }
 
       if (minDistance <= maxDistanceMeters) {
         affected.add(
-          SprayingConfirmedPlant(
-            localId: genId(),
+          SprayingAffectedPlant(
             plantId: plant.id,
-            matchSource: SprayingMatchSource.autoMatched,
-            matchedAt: nearestPoint?.recordedAt ?? trackPoints.first.recordedAt,
-            nearestTrackPointLocalId: nearestPoint?.localId,
             distanceMeters: double.parse(minDistance.toStringAsFixed(2)),
           ),
         );

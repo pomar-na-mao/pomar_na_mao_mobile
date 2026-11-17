@@ -263,7 +263,7 @@ class _SprayingOperationCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSyncing = viewModel.isSyncing;
-    final hasReviewedPlants = operation.hasReviewedPlants;
+    final hasValidRoute = operation.hasValidRoute;
     final responsible = operation.responsible.trim();
     final displayedResponsible =
         responsible.isEmpty || responsible == 'Operador'
@@ -383,10 +383,10 @@ class _SprayingOperationCard extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: _MetricTile(
-                        key: const ValueKey('spraying-plants-metric'),
-                        icon: Icons.eco_outlined,
-                        label: 'Plantas',
-                        value: '${operation.confirmedPlants.length}',
+                        key: const ValueKey('spraying-route-points-metric'),
+                        icon: Icons.route_outlined,
+                        label: 'Pontos GPS',
+                        value: '${operation.trackPoints.length}',
                         color: const Color(0xFF15803D),
                       ),
                     ),
@@ -482,9 +482,9 @@ class _SprayingOperationCard extends StatelessWidget {
                           },
                         ),
                         Tooltip(
-                          message: hasReviewedPlants
+                          message: hasValidRoute
                               ? 'Sincronizar pulverização'
-                              : 'Revise e associe ao menos uma planta para sincronizar',
+                              : 'A pulverização precisa de uma rota válida',
                           child: FilledButton.icon(
                             key: ValueKey('sync-spraying-${operation.localId}'),
                             style: FilledButton.styleFrom(
@@ -515,7 +515,7 @@ class _SprayingOperationCard extends StatelessWidget {
                                     size: 18,
                                   ),
                             label: const Text('Sincronizar'),
-                            onPressed: isSyncing || !hasReviewedPlants
+                            onPressed: isSyncing || !hasValidRoute
                                 ? null
                                 : () => viewModel.syncOperation(
                                     operation.localId,

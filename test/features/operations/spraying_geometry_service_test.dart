@@ -7,42 +7,48 @@ void main() {
   const service = SprayingGeometryService();
 
   group('SprayingGeometryService', () {
-    test('calculateTotalDistanceMeters returns zero for less than two points', () {
-      expect(service.calculateTotalDistanceMeters([]), 0.0);
-      expect(
-        service.calculateTotalDistanceMeters([
+    test(
+      'calculateTotalDistanceMeters returns zero for less than two points',
+      () {
+        expect(service.calculateTotalDistanceMeters([]), 0.0);
+        expect(
+          service.calculateTotalDistanceMeters([
+            SprayingTrackPoint(
+              localId: '1',
+              recordedAt: DateTime.now(),
+              latitude: -23.0,
+              longitude: -47.0,
+            ),
+          ]),
+          0.0,
+        );
+      },
+    );
+
+    test(
+      'calculateTotalDistanceMeters calculates distance between two points',
+      () {
+        final points = [
           SprayingTrackPoint(
             localId: '1',
             recordedAt: DateTime.now(),
-            latitude: -23.0,
-            longitude: -47.0,
+            latitude: -23.000000,
+            longitude: -47.000000,
           ),
-        ]),
-        0.0,
-      );
-    });
+          SprayingTrackPoint(
+            localId: '2',
+            recordedAt: DateTime.now(),
+            latitude: -23.001000,
+            longitude: -47.000000,
+          ),
+        ];
 
-    test('calculateTotalDistanceMeters calculates distance between two points', () {
-      final points = [
-        SprayingTrackPoint(
-          localId: '1',
-          recordedAt: DateTime.now(),
-          latitude: -23.000000,
-          longitude: -47.000000,
-        ),
-        SprayingTrackPoint(
-          localId: '2',
-          recordedAt: DateTime.now(),
-          latitude: -23.001000,
-          longitude: -47.000000,
-        ),
-      ];
-
-      final dist = service.calculateTotalDistanceMeters(points);
-      // ~111 meters for 0.001 deg latitude
-      expect(dist, greaterThan(110.0));
-      expect(dist, lessThan(112.0));
-    });
+        final dist = service.calculateTotalDistanceMeters(points);
+        // ~111 meters for 0.001 deg latitude
+        expect(dist, greaterThan(110.0));
+        expect(dist, lessThan(112.0));
+      },
+    );
 
     test('calculateAffectedPlants identifies plants within 9m and ignores distant plants', () {
       // Route going along longitude -47.000000 from lat -23.000000 to -23.001000
@@ -91,7 +97,6 @@ void main() {
 
       expect(affected.length, 1);
       expect(affected.first.plantId, 'close-1');
-      expect(affected.first.matchSource, SprayingMatchSource.autoMatched);
       expect(affected.first.distanceMeters, lessThanOrEqualTo(9.0));
     });
 
