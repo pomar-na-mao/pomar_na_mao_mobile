@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/ui/full_height_form_modal.dart';
-import '../../domain/spraying_models.dart';
 import '../spraying_view_model.dart';
 import 'spraying_registration_modal.dart';
 
@@ -33,29 +32,16 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
       listenable: widget.viewModel,
       builder: (context, _) {
         final vm = widget.viewModel;
-        final allPlants = vm.displayedPlants;
-        final reviewedSet = vm.reviewedPlantIds;
+        final affectedSet = vm.affectedPlantIds;
 
-        final filtered = allPlants.where((p) {
+        final filtered = vm.displayedPlants.where((p) {
+          if (!affectedSet.contains(p.id)) return false;
           if (_searchQuery.isEmpty) return true;
           return p.label.toLowerCase().contains(_searchQuery.toLowerCase()) ||
               p.id.toLowerCase().contains(_searchQuery.toLowerCase());
         }).toList();
 
-        filtered.sort((a, b) {
-          final aMarked = reviewedSet.contains(a.id);
-          final bMarked = reviewedSet.contains(b.id);
-          if (aMarked && !bMarked) return -1;
-          if (!aMarked && bMarked) return 1;
-          return a.label.compareTo(b.label);
-        });
-
-        final autoCount = vm.reviewedPlants
-            .where((p) => p.matchSource == SprayingMatchSource.autoMatched)
-            .length;
-        final manualCount = vm.reviewedPlants
-            .where((p) => p.matchSource == SprayingMatchSource.manualAdded)
-            .length;
+        filtered.sort((a, b) => a.label.compareTo(b.label));
 
         return Material(
           color: colorScheme.surface,
@@ -108,14 +94,14 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Revisão de Plantas',
+                                'Plantas afetadas',
                                 style: theme.textTheme.titleLarge?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 20,
                                 ),
                               ),
                               Text(
-                                '${vm.reviewedPlants.length} confirmadas ($autoCount auto, $manualCount manual)',
+                                '${vm.affectedPlants.length} identificadas pela rota',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: colorScheme.outline,
                                 ),
@@ -197,15 +183,10 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                                 const SizedBox(height: 8),
                             itemBuilder: (ctx, idx) {
                               final plant = filtered[idx];
-                              final isMarked = reviewedSet.contains(plant.id);
-                              final confirmed = isMarked
-                                  ? vm.reviewedPlants.firstWhere(
-                                      (p) => p.plantId == plant.id,
-                                    )
-                                  : null;
-                              final isAuto =
-                                  confirmed?.matchSource ==
-                                  SprayingMatchSource.autoMatched;
+                              final affected = vm.affectedPlants.firstWhere(
+                                (p) => p.plantId == plant.id,
+                              );
+                              final isMarked = affectedSet.contains(plant.id);
 
                               return Material(
                                 color: isMarked
@@ -228,7 +209,7 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                                 ),
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(14),
-                                  onTap: () => vm.toggleAffectedPlant(plant),
+                                  onTap: null,
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 16,
@@ -276,10 +257,10 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                                                           : FontWeight.normal,
                                                     ),
                                               ),
-                                              if (confirmed?.distanceMeters !=
+                                              if (affected.distanceMeters !=
                                                   null)
                                                 Text(
-                                                  'Distância da rota: ${confirmed!.distanceMeters!.toStringAsFixed(1)} m',
+                                                  'Distância da rota: ${affected.distanceMeters!.toStringAsFixed(1)} m',
                                                   style: theme
                                                       .textTheme
                                                       .bodySmall
@@ -298,23 +279,18 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                                               vertical: 3,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: isAuto
-                                                  ? colorScheme.primaryContainer
-                                                        .withValues(alpha: 0.6)
-                                                  : colorScheme
-                                                        .secondaryContainer
-                                                        .withValues(alpha: 0.6),
+                                              color: colorScheme
+                                                  .primaryContainer
+                                                  .withValues(alpha: 0.6),
                                               borderRadius:
                                                   BorderRadius.circular(8),
                                             ),
                                             child: Text(
-                                              isAuto ? 'AUTO' : 'MANUAL',
+                                              'ROTA',
                                               style: TextStyle(
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.bold,
-                                                color: isAuto
-                                                    ? colorScheme.primary
-                                                    : colorScheme.secondary,
+                                                color: colorScheme.primary,
                                               ),
                                             ),
                                           ),
@@ -359,7 +335,7 @@ class _SprayingReviewModalState extends State<SprayingReviewModal> {
                               size: 18,
                             ),
                             label: Text(
-                              'Registrar operação (${vm.reviewedPlants.length})',
+                              'Registrar operação',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                               ),

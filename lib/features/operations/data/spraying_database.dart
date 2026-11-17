@@ -46,7 +46,7 @@ class SprayingDatabase {
     final db = await resolvedFactory.openDatabase(
       p.join(root, 'spraying_$fileId.db'),
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) => _migrate(db, 0, version),
         onUpgrade: _migrate,
@@ -91,6 +91,9 @@ class SprayingDatabase {
     if (oldVersion < 2) {
       await _applyVersionTwo(db);
     }
+    if (oldVersion < 3) {
+      await db.execute('DROP TABLE IF EXISTS local_spraying_confirmed_plants');
+    }
   }
 
   static Future<void> _applyVersionTwo(Database db) async {
@@ -103,10 +106,10 @@ class SprayingDatabase {
       'mixture_id': 'TEXT',
       'mixture_name_snapshot': 'TEXT',
     };
-    final info = await db.rawQuery('PRAGMA table_info(local_spraying_operations)');
-    final existingColumns = info
-        .map((r) => r['name'] as String)
-        .toSet();
+    final info = await db.rawQuery(
+      'PRAGMA table_info(local_spraying_operations)',
+    );
+    final existingColumns = info.map((r) => r['name'] as String).toSet();
     for (final entry in columns.entries) {
       if (!existingColumns.contains(entry.key)) {
         await db.execute(
@@ -116,10 +119,12 @@ class SprayingDatabase {
     }
   }
 
-  Future<String> get deviceId async => (await (await database).query(
-    'installation',
-    columns: ['device_id'],
-  )).single['device_id'] as String;
+  Future<String> get deviceId async =>
+      (await (await database).query(
+            'installation',
+            columns: ['device_id'],
+          )).single['device_id']
+          as String;
 
   Future<void> close() async {
     _closed = true;
@@ -183,24 +188,12 @@ class SprayingDatabase {
       total_quantity_unit TEXT,
       notes TEXT
     )''',
-    '''CREATE TABLE local_spraying_confirmed_plants (
-      local_id TEXT PRIMARY KEY,
-      operation_local_id TEXT NOT NULL REFERENCES local_spraying_operations(local_id) ON DELETE CASCADE,
-      plant_id TEXT NOT NULL,
-      match_source TEXT NOT NULL,
-      matched_at TEXT,
-      nearest_track_point_local_id TEXT,
-      distance_meters REAL,
-      notes TEXT
-    )''',
     '''CREATE INDEX idx_spraying_track_points_op
        ON local_spraying_track_points (operation_local_id)''',
     '''CREATE INDEX idx_spraying_routes_op
        ON local_spraying_routes (operation_local_id)''',
     '''CREATE INDEX idx_spraying_inputs_op
        ON local_spraying_inputs (operation_local_id)''',
-    '''CREATE INDEX idx_spraying_confirmed_plants_op
-       ON local_spraying_confirmed_plants (operation_local_id)''',
     '''CREATE INDEX idx_spraying_operations_sync
        ON local_spraying_operations (sync_status)''',
   ];

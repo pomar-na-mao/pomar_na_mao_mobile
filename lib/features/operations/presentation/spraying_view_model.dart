@@ -151,16 +151,16 @@ class SprayingViewModel extends ChangeNotifier {
   double _totalDistanceMeters = 0.0;
   double get totalDistanceMeters => _totalDistanceMeters;
 
-  // Plantas confirmadas/revisadas para a operação atual ou em revisão
-  List<SprayingConfirmedPlant> _reviewedPlants = [];
-  List<SprayingConfirmedPlant> get reviewedPlants =>
-      List.unmodifiable(_reviewedPlants);
+  // Resultado espacial temporário exibido durante a revisão.
+  List<SprayingAffectedPlant> _affectedPlants = [];
+  List<SprayingAffectedPlant> get affectedPlants =>
+      List.unmodifiable(_affectedPlants);
 
-  int _reviewedPlantsRevision = 0;
-  int get reviewedPlantsRevision => _reviewedPlantsRevision;
+  int _affectedPlantsRevision = 0;
+  int get affectedPlantsRevision => _affectedPlantsRevision;
 
-  Set<String> get reviewedPlantIds =>
-      _reviewedPlants.map((p) => p.plantId).toSet();
+  Set<String> get affectedPlantIds =>
+      _affectedPlants.map((p) => p.plantId).toSet();
 
   // Histórico de pulverizações salvas
   List<SprayingOperation> _localOperations = const [];
@@ -335,6 +335,11 @@ class SprayingViewModel extends ChangeNotifier {
     if (_sessionState != SprayingSessionState.idle || isPreparingSession) {
       return;
     }
+    if (_allPlants.isEmpty && _loadStatus != InspectionLoadStatus.loading) {
+      // A gravação da rota não depende da rede, mas o mapa deve continuar
+      // carregando as plantas em paralelo para exibi-las durante a aplicação.
+      unawaited(loadPlants(forceRemote: true));
+    }
     startLocationTracking();
     unawaited(_startPreparedSession());
   }
@@ -466,8 +471,8 @@ class SprayingViewModel extends ChangeNotifier {
 
     _activeTrackPoints = [];
     _totalDistanceMeters = 0.0;
-    _reviewedPlants = [];
-    _reviewedPlantsRevision++;
+    _affectedPlants = [];
+    _affectedPlantsRevision++;
     _sessionState = SprayingSessionState.recording;
 
     await sprayingRepository.saveOperation(_currentOperation!);
@@ -568,8 +573,8 @@ class SprayingViewModel extends ChangeNotifier {
       _sessionState = SprayingSessionState.idle;
       _currentOperation = null;
       _activeTrackPoints = [];
-      _reviewedPlants = [];
-      _reviewedPlantsRevision++;
+      _affectedPlants = [];
+      _affectedPlantsRevision++;
 
       await loadLocalOperations();
     }
@@ -589,25 +594,17 @@ class SprayingViewModel extends ChangeNotifier {
       await loadPlants();
     }
 
-    if (op.confirmedPlants.isNotEmpty) {
-      _reviewedPlants = List.from(op.confirmedPlants);
-      _reviewedPlantsRevision++;
-    } else {
-      try {
-        final calculated = await sprayingRepository.calculateAffectedPlants(
-          operation: op,
-          candidatePlants: displayedPlants,
-          maxDistanceMeters: 9.0,
-        );
-        _reviewedPlants = List.from(calculated);
-        _reviewedPlantsRevision++;
-        await sprayingRepository.saveConfirmedPlants(
-          op.localId,
-          _reviewedPlants,
-        );
-      } catch (e) {
-        _errorMessage = 'Erro ao determinar plantas afetadas: $e';
-      }
+    try {
+      _affectedPlants = await sprayingRepository.calculateAffectedPlants(
+        operation: op,
+        candidatePlants: displayedPlants,
+        maxDistanceMeters: 9.0,
+      );
+      _affectedPlantsRevision++;
+    } catch (e) {
+      _affectedPlants = [];
+      _affectedPlantsRevision++;
+      _errorMessage = 'Erro ao determinar plantas afetadas: $e';
     }
 
     // Carrega rascunhos de insumos se houver
@@ -623,52 +620,16 @@ class SprayingViewModel extends ChangeNotifier {
     if (op.notes != null) draftNotes = op.notes;
 
     _feedbackMessage =
-        '${_reviewedPlants.length} plantas afetadas identificadas e marcadas em azul!';
+        '${_affectedPlants.length} plantas afetadas identificadas e marcadas em azul.';
     notifyListeners();
   }
 
   /// Cancela o modo de revisão ativo.
   void cancelReviewing() {
     _reviewingOperation = null;
-    _reviewedPlants = [];
-    _reviewedPlantsRevision++;
+    _affectedPlants = [];
+    _affectedPlantsRevision++;
     resetInputsDraft();
-    notifyListeners();
-  }
-
-  /// Alterna a marcação de uma planta afetada na revisão manual.
-  void toggleAffectedPlant(InspectionPlant plant) {
-    final existingIdx = _reviewedPlants.indexWhere(
-      (p) => p.plantId == plant.id,
-    );
-
-    if (existingIdx >= 0) {
-      // Remove da lista
-      _reviewedPlants.removeAt(existingIdx);
-    } else {
-      // Adiciona manualmente
-      _reviewedPlants.add(
-        SprayingConfirmedPlant(
-          localId: const Uuid().v4(),
-          plantId: plant.id,
-          matchSource: SprayingMatchSource.manualAdded,
-          matchedAt: DateTime.now().toUtc(),
-          notes: 'Adicionada manualmente pelo operador',
-        ),
-      );
-    }
-
-    _reviewedPlantsRevision++;
-
-    if (_reviewingOperation != null) {
-      unawaited(
-        sprayingRepository.saveConfirmedPlants(
-          _reviewingOperation!.localId,
-          _reviewedPlants,
-        ),
-      );
-    }
-
     notifyListeners();
   }
 
@@ -694,9 +655,6 @@ class SprayingViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final opId = targetOp.localId;
-      await sprayingRepository.saveConfirmedPlants(opId, _reviewedPlants);
-
       final updatedOp = targetOp.copyWith(
         responsible: trimmedResponsible,
         performedAt: performedAt,
@@ -706,7 +664,6 @@ class SprayingViewModel extends ChangeNotifier {
         mixtureId: mixture?.id,
         mixtureNameSnapshot: mixture?.name,
         syncStatus: SprayingSyncStatus.reviewed,
-        confirmedPlants: _reviewedPlants,
       );
 
       await sprayingRepository.saveOperation(updatedOp);
@@ -719,8 +676,8 @@ class SprayingViewModel extends ChangeNotifier {
       _currentOperation = null;
       _reviewingOperation = null;
       _activeTrackPoints = [];
-      _reviewedPlants = [];
-      _reviewedPlantsRevision++;
+      _affectedPlants = [];
+      _affectedPlantsRevision++;
 
       await loadLocalOperations();
       _saving = false;
@@ -754,7 +711,6 @@ class SprayingViewModel extends ChangeNotifier {
 
     final opId = targetOp.localId;
     await sprayingRepository.saveInputs(opId, inputs);
-    await sprayingRepository.saveConfirmedPlants(opId, _reviewedPlants);
 
     final updatedOp = targetOp.copyWith(
       operatorName: operatorName ?? targetOp.operatorName,
@@ -764,7 +720,6 @@ class SprayingViewModel extends ChangeNotifier {
       notes: notes ?? targetOp.notes,
       syncStatus: SprayingSyncStatus.reviewed,
       inputs: inputs,
-      confirmedPlants: _reviewedPlants,
     );
 
     await sprayingRepository.saveOperation(updatedOp);
@@ -777,8 +732,8 @@ class SprayingViewModel extends ChangeNotifier {
     _currentOperation = null;
     _reviewingOperation = null;
     _activeTrackPoints = [];
-    _reviewedPlants = [];
-    _reviewedPlantsRevision++;
+    _affectedPlants = [];
+    _affectedPlantsRevision++;
 
     await loadLocalOperations();
     notifyListeners();
@@ -794,8 +749,8 @@ class SprayingViewModel extends ChangeNotifier {
     _sessionState = SprayingSessionState.idle;
     _currentOperation = null;
     _activeTrackPoints = [];
-    _reviewedPlants = [];
-    _reviewedPlantsRevision++;
+    _affectedPlants = [];
+    _affectedPlantsRevision++;
     notifyListeners();
   }
 
@@ -816,9 +771,8 @@ class SprayingViewModel extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-    if (!operation.hasReviewedPlants) {
-      _errorMessage =
-          'Revise e associe ao menos uma planta antes de sincronizar.';
+    if (!operation.hasValidRoute) {
+      _errorMessage = 'A pulverização precisa de uma rota válida.';
       notifyListeners();
       return false;
     }
@@ -828,9 +782,8 @@ class SprayingViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final result = await sprayingRepository.syncOperation(operationLocalId);
-      _feedbackMessage =
-          'Sincronizado com sucesso! (${result.confirmedPlantsCount} plantas, ${result.inputsCount} insumos)';
+      await sprayingRepository.syncOperation(operationLocalId);
+      _feedbackMessage = 'Pulverização e rota sincronizadas com sucesso!';
       await loadLocalOperations();
       _isSyncing = false;
       notifyListeners();
