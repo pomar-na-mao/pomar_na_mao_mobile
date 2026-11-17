@@ -92,19 +92,6 @@ class FakeSprayingRepository implements SprayingRepository {
   }
 
   @override
-  Future<void> saveConfirmedPlants(
-    String operationLocalId,
-    List<SprayingConfirmedPlant> confirmedPlants,
-  ) async {
-    final existing = operations[operationLocalId];
-    if (existing != null) {
-      operations[operationLocalId] = existing.copyWith(
-        confirmedPlants: confirmedPlants,
-      );
-    }
-  }
-
-  @override
   Future<List<SprayingOperation>> listOperations() async {
     return operations.values.toList();
   }
@@ -136,9 +123,7 @@ class FakeSprayingRepository implements SprayingRepository {
     return SprayingSyncResult(
       fieldOperationId: 'remote-field-op-uuid',
       routeId: 'remote-route-uuid',
-      trackPointsCount: existing?.trackPoints.length ?? 0,
-      inputsCount: existing?.inputs.length ?? 0,
-      confirmedPlantsCount: existing?.confirmedPlants.length ?? 0,
+      syncStatus: 'synced',
       syncedAt: DateTime.now().toUtc(),
     );
   }
@@ -156,7 +141,7 @@ class FakeSprayingRepository implements SprayingRepository {
   }
 
   @override
-  Future<List<SprayingConfirmedPlant>> calculateAffectedPlants({
+  Future<List<SprayingAffectedPlant>> calculateAffectedPlants({
     required SprayingOperation operation,
     required List<InspectionPlant> candidatePlants,
     double maxDistanceMeters = 9.0,
@@ -249,10 +234,23 @@ void main() {
     tester,
   ) async {
     final phone = FakeLocationService();
+    final inspectionRepo = FakeInspectionRepository()
+      ..snapshot = InspectionSnapshot(
+        plants: [
+          InspectionPlant(
+            id: 'plant-visible-during-spraying',
+            description: 'Planta visível durante a pulverização',
+            latitude: -21.0001,
+            longitude: -47.0001,
+          ),
+        ],
+        types: const [],
+        loadedAt: DateTime(2026, 11, 17),
+      );
     SprayingMapConfig? mapConfig;
     final vm = SprayingViewModel(
       sprayingRepository: FakeSprayingRepository(),
-      inspectionRepository: FakeInspectionRepository(),
+      inspectionRepository: inspectionRepo,
       locationService: phone,
       zonesRepository: FakeZonesRepository(),
     );
@@ -293,11 +291,47 @@ void main() {
     expect(vm.isPreparingSession, isFalse);
     expect(vm.sessionState, SprayingSessionState.recording);
     expect(vm.currentOperation, isNotNull);
+    expect(
+      mapConfig?.plants.map((plant) => plant.id),
+      contains('plant-visible-during-spraying'),
+    );
 
     await tester.pumpWidget(const SizedBox());
     vm.dispose();
     phone.dispose();
   });
+
+  test(
+    'starting a session requests plants without blocking route recording',
+    () async {
+      final phone = FakeLocationService();
+      final inspectionRepo = FakeInspectionRepository()
+        ..snapshot = InspectionSnapshot(
+          plants: [InspectionPlant(id: 'plant-loaded-on-start')],
+          types: const [],
+          loadedAt: DateTime(2026, 11, 17),
+        );
+      final vm = SprayingViewModel(
+        sprayingRepository: FakeSprayingRepository(),
+        inspectionRepository: inspectionRepo,
+        locationService: phone,
+        zonesRepository: FakeZonesRepository(),
+      );
+
+      vm.prepareSessionStart();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(vm.sessionState, SprayingSessionState.recording);
+      expect(
+        vm.allPlants.map((plant) => plant.id),
+        contains('plant-loaded-on-start'),
+      );
+
+      vm.dispose();
+      phone.dispose();
+    },
+  );
 
   group('Spraying RPC Serialization', () {
     test('toRpcPayload produces compliant JSON structure', () {
@@ -346,15 +380,6 @@ void main() {
             totalQuantityUnit: 'L',
           ),
         ],
-        confirmedPlants: [
-          SprayingConfirmedPlant(
-            localId: 'cp-1',
-            plantId: 'plant-100',
-            matchSource: SprayingMatchSource.autoMatched,
-            matchedAt: now,
-            distanceMeters: 4.2,
-          ),
-        ],
       );
 
       final payload = operation.toRpcPayload(deviceId: 'device-xyz-789');
@@ -373,19 +398,9 @@ void main() {
       final routeMap = payload['route'] as Map<String, dynamic>;
       expect(routeMap['localId'], equals('route-1'));
       expect(routeMap['distanceMeters'], equals(520.5));
-
-      final trackPoints = payload['trackPoints'] as List;
-      expect(trackPoints.length, equals(1));
-      expect((trackPoints.first as Map)['latitude'], equals(-21.1));
-
-      final inputs = payload['inputs'] as List;
-      expect(inputs.length, equals(1));
-      expect((inputs.first as Map)['productName'], equals('Score Flexi'));
-
-      final plants = payload['confirmedPlants'] as List;
-      expect(plants.length, equals(1));
-      expect((plants.first as Map)['matchSource'], equals('auto_matched'));
-      expect((plants.first as Map)['distanceMeters'], equals(4.2));
+      expect(payload, isNot(contains('trackPoints')));
+      expect(payload, isNot(contains('inputs')));
+      expect(payload, isNot(contains('confirmedPlants')));
     });
 
     test(
@@ -394,38 +409,28 @@ void main() {
         final snakeCaseResponse = {
           'field_operation_id': 'op-remote-1',
           'route_id': 'route-remote-1',
-          'track_points_count': 10,
-          'inputs_count': 2,
-          'confirmed_plants_count': 15,
+          'sync_status': 'synced',
           'synced_at': '2026-10-02T12:00:00.000Z',
         };
         final res1 = SprayingSyncResult.fromRpc(snakeCaseResponse);
         expect(res1.fieldOperationId, equals('op-remote-1'));
         expect(res1.routeId, equals('route-remote-1'));
-        expect(res1.trackPointsCount, equals(10));
-        expect(res1.inputsCount, equals(2));
-        expect(res1.confirmedPlantsCount, equals(15));
 
         final camelCaseResponse = {
           'fieldOperationId': 'op-remote-2',
           'routeId': 'route-remote-2',
-          'trackPointsCount': 5,
-          'inputsCount': 1,
-          'confirmedPlantsCount': 8,
+          'syncStatus': 'synced',
           'syncedAt': '2026-10-02T12:30:00.000Z',
         };
         final res2 = SprayingSyncResult.fromRpc(camelCaseResponse);
         expect(res2.fieldOperationId, equals('op-remote-2'));
         expect(res2.routeId, equals('route-remote-2'));
-        expect(res2.trackPointsCount, equals(5));
-        expect(res2.inputsCount, equals(1));
-        expect(res2.confirmedPlantsCount, equals(8));
 
         expect(
           () => SprayingSyncResult.fromRpc({
-            'field_operation_id': 'op-remote-3',
+            'field_operation_id': '',
             'route_id': 'route-remote-3',
-            'track_points_count': 5,
+            'sync_status': 'synced',
             'synced_at': '2026-10-02T12:30:00.000Z',
           }),
           throwsFormatException,
@@ -461,11 +466,11 @@ void main() {
     });
 
     test(
-      'initial state is idle with empty track points and reviewed plants',
+      'initial state is idle with empty track points and affected plants',
       () {
         expect(viewModel.sessionState, equals(SprayingSessionState.idle));
         expect(viewModel.activeTrackPoints, isEmpty);
-        expect(viewModel.reviewedPlants, isEmpty);
+        expect(viewModel.affectedPlants, isEmpty);
         expect(viewModel.totalDistanceMeters, equals(0.0));
       },
     );
@@ -730,34 +735,9 @@ void main() {
 
       expect(viewModel.isReviewing, isTrue);
       expect(viewModel.reviewingOperation, isNotNull);
-      expect(viewModel.reviewedPlants.length, equals(1));
-      expect(viewModel.reviewedPlants.first.plantId, equals('plant-near'));
-      expect(
-        viewModel.reviewedPlants.first.matchSource,
-        equals(SprayingMatchSource.autoMatched),
-      );
+      expect(viewModel.affectedPlants.length, equals(1));
+      expect(viewModel.affectedPlants.first.plantId, equals('plant-near'));
       expect(viewModel.polylines.isNotEmpty, isTrue);
-    });
-
-    test('toggleAffectedPlant allows manual toggling of plants', () {
-      final plant = InspectionPlant(
-        id: 'plant-custom-1',
-        description: 'Planta Customizada',
-        latitude: -21.177,
-        longitude: -47.810,
-      );
-
-      expect(viewModel.reviewedPlantIds.contains('plant-custom-1'), isFalse);
-
-      viewModel.toggleAffectedPlant(plant);
-      expect(viewModel.reviewedPlantIds.contains('plant-custom-1'), isTrue);
-      expect(
-        viewModel.reviewedPlants.first.matchSource,
-        equals(SprayingMatchSource.manualAdded),
-      );
-
-      viewModel.toggleAffectedPlant(plant);
-      expect(viewModel.reviewedPlantIds.contains('plant-custom-1'), isFalse);
     });
 
     test(
@@ -840,18 +820,17 @@ void main() {
           syncStatus: SprayingSyncStatus.reviewed,
           route: SprayingRoute(
             localId: 'r-1',
-            geojson: const {'type': 'LineString', 'coordinates': []},
+            geojson: const {
+              'type': 'LineString',
+              'coordinates': [
+                [-47.0, -21.0],
+                [-47.001, -21.001],
+              ],
+            },
             distanceMeters: 100.0,
             startedAt: DateTime.now().toUtc(),
             finishedAt: DateTime.now().toUtc(),
           ),
-          confirmedPlants: const [
-            SprayingConfirmedPlant(
-              localId: 'match-ready-1',
-              plantId: 'plant-ready-1',
-              matchSource: SprayingMatchSource.manualAdded,
-            ),
-          ],
         );
         await sprayingRepo.saveOperation(op);
         await viewModel.loadLocalOperations();
@@ -861,7 +840,10 @@ void main() {
         await viewModel.syncOperation('op-ready-1');
 
         expect(sprayingRepo.syncCallCount, equals(1));
-        expect(viewModel.feedbackMessage, contains('Sincronizado com sucesso'));
+        expect(
+          viewModel.feedbackMessage,
+          contains('sincronizadas com sucesso'),
+        );
         expect(
           sprayingRepo.operations['op-ready-1']!.syncStatus,
           equals(SprayingSyncStatus.synced),
@@ -869,30 +851,27 @@ void main() {
       },
     );
 
-    test(
-      'syncOperation refuses an operation without reviewed plants',
-      () async {
-        final now = DateTime.now().toUtc();
-        await sprayingRepo.saveOperation(
-          SprayingOperation(
-            localId: 'op-without-plants',
-            startedAt: now,
-            finishedAt: now,
-            syncStatus: SprayingSyncStatus.reviewed,
-          ),
-        );
-        await viewModel.loadLocalOperations();
+    test('syncOperation refuses an operation without a valid route', () async {
+      final now = DateTime.now().toUtc();
+      await sprayingRepo.saveOperation(
+        SprayingOperation(
+          localId: 'op-without-plants',
+          startedAt: now,
+          finishedAt: now,
+          syncStatus: SprayingSyncStatus.reviewed,
+        ),
+      );
+      await viewModel.loadLocalOperations();
 
-        final synced = await viewModel.syncOperation('op-without-plants');
+      final synced = await viewModel.syncOperation('op-without-plants');
 
-        expect(synced, isFalse);
-        expect(sprayingRepo.syncCallCount, 0);
-        expect(viewModel.isSyncing, isFalse);
-        expect(viewModel.errorMessage, contains('ao menos uma planta'));
-      },
-    );
+      expect(synced, isFalse);
+      expect(sprayingRepo.syncCallCount, 0);
+      expect(viewModel.isSyncing, isFalse);
+      expect(viewModel.errorMessage, contains('rota válida'));
+    });
 
-    test('completes an operation with plants from one zone', () async {
+    test('completes an operation with affected plants from one zone', () async {
       final now = DateTime.now().toUtc();
       inspectionRepo.snapshot = InspectionSnapshot(
         plants: [InspectionPlant(id: 'plant-b', zoneId: 'zone-b')],
@@ -904,13 +883,6 @@ void main() {
         startedAt: now,
         finishedAt: now,
         operatorName: 'Operador',
-        confirmedPlants: const [
-          SprayingConfirmedPlant(
-            localId: 'match-b',
-            plantId: 'plant-b',
-            matchSource: SprayingMatchSource.autoMatched,
-          ),
-        ],
       );
       await sprayingRepo.saveOperation(operation);
       await viewModel.startReviewingOperation(operation);
@@ -926,11 +898,10 @@ void main() {
       );
 
       expect(saved, isTrue);
-      expect(sprayingRepo.operations['op-zone']?.confirmedPlants.length, 1);
       expect(sprayingRepo.operations['op-zone']?.inputs.length, 1);
     });
 
-    test('saves reviewed plants that span multiple zones', () async {
+    test('saves operation data when affected plants span zones', () async {
       final now = DateTime.now().toUtc();
       inspectionRepo.snapshot = InspectionSnapshot(
         plants: [
@@ -945,18 +916,6 @@ void main() {
         startedAt: now,
         finishedAt: now,
         operatorName: 'Operador',
-        confirmedPlants: const [
-          SprayingConfirmedPlant(
-            localId: 'match-a',
-            plantId: 'plant-a',
-            matchSource: SprayingMatchSource.autoMatched,
-          ),
-          SprayingConfirmedPlant(
-            localId: 'match-b',
-            plantId: 'plant-b',
-            matchSource: SprayingMatchSource.autoMatched,
-          ),
-        ],
       );
       await sprayingRepo.saveOperation(operation);
       await viewModel.startReviewingOperation(operation);
@@ -978,7 +937,6 @@ void main() {
         sprayingRepo.operations['op-mixed']?.syncStatus,
         SprayingSyncStatus.reviewed,
       );
-      expect(sprayingRepo.operations['op-mixed']?.confirmedPlants.length, 2);
       expect(sprayingRepo.operations['op-mixed']?.inputs.length, 1);
     });
 
@@ -991,13 +949,6 @@ void main() {
         startedAt: now,
         finishedAt: now,
         operatorName: 'Operador',
-        confirmedPlants: const [
-          SprayingConfirmedPlant(
-            localId: 'match-a',
-            plantId: 'plant-a',
-            matchSource: SprayingMatchSource.autoMatched,
-          ),
-        ],
       );
       await viewModel.startReviewingOperation(operation);
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1025,7 +976,7 @@ void main() {
         final inputs = tester.getRect(
           find.byKey(const ValueKey('btn-review-proceed-inputs')),
         );
-        expect(find.text('1'), findsOneWidget);
+        expect(find.text('0'), findsOneWidget);
         expect(find.text('Plantas atingidas'), findsOneWidget);
         expect(list.top - count.bottom, greaterThanOrEqualTo(8));
         expect(inputs.left - list.right, greaterThanOrEqualTo(8));
@@ -1117,7 +1068,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey('spraying-plants-metric')),
+        find.byKey(const ValueKey('spraying-route-points-metric')),
         findsOneWidget,
       );
       final identity = tester.getRect(
@@ -1188,7 +1139,7 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
-    testWidgets('sync button is disabled when no plants were reviewed', (
+    testWidgets('sync button is disabled when the route is invalid', (
       tester,
     ) async {
       final now = DateTime.now().toUtc();
@@ -1234,13 +1185,19 @@ void main() {
           finishedAt: now,
           operatorName: 'Operador',
           syncStatus: SprayingSyncStatus.reviewed,
-          confirmedPlants: const [
-            SprayingConfirmedPlant(
-              localId: 'match-sync-error',
-              plantId: 'plant-sync-error',
-              matchSource: SprayingMatchSource.manualAdded,
-            ),
-          ],
+          route: SprayingRoute(
+            localId: 'route-sync-error',
+            geojson: const {
+              'type': 'LineString',
+              'coordinates': [
+                [-47.0, -21.0],
+                [-47.001, -21.001],
+              ],
+            },
+            distanceMeters: 100,
+            startedAt: now,
+            finishedAt: now,
+          ),
         ),
       );
       await viewModel.loadLocalOperations();

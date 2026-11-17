@@ -75,7 +75,7 @@ class SprayingReviewActionBar extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
-                                'Toque no mapa para marcar/desmarcar plantas',
+                                'Revise a rota e preencha os dados da operação',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: colorScheme.outline,
                                   fontSize: 11,
@@ -97,7 +97,7 @@ class SprayingReviewActionBar extends StatelessWidget {
                       key: const ValueKey('review-plants-count'),
                       children: [
                         Text(
-                          '${vm.reviewedPlants.length}',
+                          '${vm.affectedPlants.length}',
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: const Color(0xFF1D4ED8),

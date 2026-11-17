@@ -18,32 +18,28 @@ class SprayingLocalStore {
   Future<void> saveOperation(SprayingOperation op) async {
     final db = await _database;
     await db.transaction((txn) async {
-      await txn.insert(
-        'local_spraying_operations',
-        {
-          'local_id': op.localId,
-          // Compatibilidade com a coluna legada NOT NULL do banco local.
-          'zone_id': '',
-          'operator_name': op.responsible,
-          'responsible': op.responsible,
-          'started_at': op.startedAt.toUtc().toIso8601String(),
-          'finished_at': op.finishedAt.toUtc().toIso8601String(),
-          'performed_at': op.performedAt.toUtc().toIso8601String(),
-          'machine_id': op.machineId,
-          'machine_name_snapshot': op.machineNameSnapshot,
-          'machine_brand_snapshot': op.machineBrandSnapshot,
-          'mixture_id': op.mixtureId,
-          'mixture_name_snapshot': op.mixtureNameSnapshot,
-          'title': op.title,
-          'machine_name': op.machineNameSnapshot ?? op.machineName,
-          'tractor_identifier': op.tractorIdentifier,
-          'notes': op.notes,
-          'sync_status': op.syncStatus.toDbValue(),
-          'remote_field_operation_id': op.remoteFieldOperationId,
-          'synced_at': op.syncedAt?.toUtc().toIso8601String(),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await txn.insert('local_spraying_operations', {
+        'local_id': op.localId,
+        // Compatibilidade com a coluna legada NOT NULL do banco local.
+        'zone_id': '',
+        'operator_name': op.responsible,
+        'responsible': op.responsible,
+        'started_at': op.startedAt.toUtc().toIso8601String(),
+        'finished_at': op.finishedAt.toUtc().toIso8601String(),
+        'performed_at': op.performedAt.toUtc().toIso8601String(),
+        'machine_id': op.machineId,
+        'machine_name_snapshot': op.machineNameSnapshot,
+        'machine_brand_snapshot': op.machineBrandSnapshot,
+        'mixture_id': op.mixtureId,
+        'mixture_name_snapshot': op.mixtureNameSnapshot,
+        'title': op.title,
+        'machine_name': op.machineNameSnapshot ?? op.machineName,
+        'tractor_identifier': op.tractorIdentifier,
+        'notes': op.notes,
+        'sync_status': op.syncStatus.toDbValue(),
+        'remote_field_operation_id': op.remoteFieldOperationId,
+        'synced_at': op.syncedAt?.toUtc().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
 
       if (op.route != null) {
         await _saveRouteTxn(txn, op.localId, op.route!);
@@ -56,10 +52,6 @@ class SprayingLocalStore {
       if (op.inputs.isNotEmpty) {
         await _saveInputsTxn(txn, op.localId, op.inputs);
       }
-
-      if (op.confirmedPlants.isNotEmpty) {
-        await _saveConfirmedPlantsTxn(txn, op.localId, op.confirmedPlants);
-      }
     });
     _db.publishCommit();
   }
@@ -70,19 +62,15 @@ class SprayingLocalStore {
     List<SprayingTrackPoint> points,
   ) async {
     for (final point in points) {
-      await txn.insert(
-        'local_spraying_track_points',
-        {
-          'local_id': point.localId,
-          'operation_local_id': operationLocalId,
-          'recorded_at': point.recordedAt.toUtc().toIso8601String(),
-          'latitude': point.latitude,
-          'longitude': point.longitude,
-          'speed_mps': point.speedMps,
-          'accuracy_m': point.accuracyM,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await txn.insert('local_spraying_track_points', {
+        'local_id': point.localId,
+        'operation_local_id': operationLocalId,
+        'recorded_at': point.recordedAt.toUtc().toIso8601String(),
+        'latitude': point.latitude,
+        'longitude': point.longitude,
+        'speed_mps': point.speedMps,
+        'accuracy_m': point.accuracyM,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 
@@ -137,18 +125,14 @@ class SprayingLocalStore {
     String operationLocalId,
     SprayingRoute route,
   ) async {
-    await txn.insert(
-      'local_spraying_routes',
-      {
-        'local_id': route.localId,
-        'operation_local_id': operationLocalId,
-        'geojson': jsonEncode(route.geojson),
-        'distance_meters': route.distanceMeters,
-        'started_at': route.startedAt.toUtc().toIso8601String(),
-        'finished_at': route.finishedAt.toUtc().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await txn.insert('local_spraying_routes', {
+      'local_id': route.localId,
+      'operation_local_id': operationLocalId,
+      'geojson': jsonEncode(route.geojson),
+      'distance_meters': route.distanceMeters,
+      'started_at': route.startedAt.toUtc().toIso8601String(),
+      'finished_at': route.finishedAt.toUtc().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Salva a lista de insumos de uma operação.
@@ -174,62 +158,18 @@ class SprayingLocalStore {
       whereArgs: [operationLocalId],
     );
     for (final input in inputs) {
-      await txn.insert(
-        'local_spraying_inputs',
-        {
-          'local_id': input.localId,
-          'operation_local_id': operationLocalId,
-          'input_type': input.inputType,
-          'product_name': input.productName,
-          'active_ingredient': input.activeIngredient,
-          'dose': input.dose,
-          'dose_unit': input.doseUnit,
-          'total_quantity': input.totalQuantity,
-          'total_quantity_unit': input.totalQuantityUnit,
-          'notes': input.notes,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-    }
-  }
-
-  /// Salva a lista de plantas confirmadas/revisadas.
-  Future<void> saveConfirmedPlants(
-    String operationLocalId,
-    List<SprayingConfirmedPlant> plants,
-  ) async {
-    final db = await _database;
-    await db.transaction((txn) async {
-      await _saveConfirmedPlantsTxn(txn, operationLocalId, plants);
-    });
-    _db.publishCommit();
-  }
-
-  Future<void> _saveConfirmedPlantsTxn(
-    DatabaseExecutor txn,
-    String operationLocalId,
-    List<SprayingConfirmedPlant> plants,
-  ) async {
-    await txn.delete(
-      'local_spraying_confirmed_plants',
-      where: 'operation_local_id = ?',
-      whereArgs: [operationLocalId],
-    );
-    for (final plant in plants) {
-      await txn.insert(
-        'local_spraying_confirmed_plants',
-        {
-          'local_id': plant.localId,
-          'operation_local_id': operationLocalId,
-          'plant_id': plant.plantId,
-          'match_source': plant.matchSource.value,
-          'matched_at': plant.matchedAt?.toUtc().toIso8601String(),
-          'nearest_track_point_local_id': plant.nearestTrackPointLocalId,
-          'distance_meters': plant.distanceMeters,
-          'notes': plant.notes,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await txn.insert('local_spraying_inputs', {
+        'local_id': input.localId,
+        'operation_local_id': operationLocalId,
+        'input_type': input.inputType,
+        'product_name': input.productName,
+        'active_ingredient': input.activeIngredient,
+        'dose': input.dose,
+        'dose_unit': input.doseUnit,
+        'total_quantity': input.totalQuantity,
+        'total_quantity_unit': input.totalQuantityUnit,
+        'notes': input.notes,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 
@@ -284,11 +224,6 @@ class SprayingLocalStore {
       where: 'operation_local_id = ?',
       whereArgs: [operationLocalId],
     );
-    final plantRows = await db.query(
-      'local_spraying_confirmed_plants',
-      where: 'operation_local_id = ?',
-      whereArgs: [operationLocalId],
-    );
 
     return SprayingOperation(
       localId: opRow['local_id'] as String,
@@ -297,9 +232,12 @@ class SprayingLocalStore {
       performedAt: opRow['performed_at'] != null
           ? DateTime.parse(opRow['performed_at'] as String)
           : DateTime.parse(opRow['finished_at'] as String),
-      responsible: (opRow['responsible'] ?? opRow['operator_name'] ?? 'Operador') as String,
+      responsible:
+          (opRow['responsible'] ?? opRow['operator_name'] ?? 'Operador')
+              as String,
       machineId: opRow['machine_id'] as String?,
-      machineNameSnapshot: (opRow['machine_name_snapshot'] ?? opRow['machine_name']) as String?,
+      machineNameSnapshot:
+          (opRow['machine_name_snapshot'] ?? opRow['machine_name']) as String?,
       machineBrandSnapshot: opRow['machine_brand_snapshot'] as String?,
       mixtureId: opRow['mixture_id'] as String?,
       mixtureNameSnapshot: opRow['mixture_name_snapshot'] as String?,
@@ -307,7 +245,9 @@ class SprayingLocalStore {
       machineName: opRow['machine_name'] as String?,
       tractorIdentifier: opRow['tractor_identifier'] as String?,
       notes: opRow['notes'] as String?,
-      syncStatus: SprayingSyncStatus.fromString(opRow['sync_status'] as String?),
+      syncStatus: SprayingSyncStatus.fromString(
+        opRow['sync_status'] as String?,
+      ),
       remoteFieldOperationId: opRow['remote_field_operation_id'] as String?,
       syncedAt: opRow['synced_at'] != null
           ? DateTime.parse(opRow['synced_at'] as String)
@@ -317,7 +257,6 @@ class SprayingLocalStore {
           : null,
       trackPoints: trackPointRows.map(SprayingTrackPoint.fromJson).toList(),
       inputs: inputRows.map(SprayingInput.fromJson).toList(),
-      confirmedPlants: plantRows.map(SprayingConfirmedPlant.fromJson).toList(),
     );
   }
 
@@ -348,11 +287,6 @@ class SprayingLocalStore {
         where: 'operation_local_id = ?',
         whereArgs: [opId],
       );
-      final plantRows = await db.query(
-        'local_spraying_confirmed_plants',
-        where: 'operation_local_id = ?',
-        whereArgs: [opId],
-      );
 
       result.add(
         SprayingOperation(
@@ -362,9 +296,13 @@ class SprayingLocalStore {
           performedAt: opRow['performed_at'] != null
               ? DateTime.parse(opRow['performed_at'] as String)
               : DateTime.parse(opRow['finished_at'] as String),
-          responsible: (opRow['responsible'] ?? opRow['operator_name'] ?? 'Operador') as String,
+          responsible:
+              (opRow['responsible'] ?? opRow['operator_name'] ?? 'Operador')
+                  as String,
           machineId: opRow['machine_id'] as String?,
-          machineNameSnapshot: (opRow['machine_name_snapshot'] ?? opRow['machine_name']) as String?,
+          machineNameSnapshot:
+              (opRow['machine_name_snapshot'] ?? opRow['machine_name'])
+                  as String?,
           machineBrandSnapshot: opRow['machine_brand_snapshot'] as String?,
           mixtureId: opRow['mixture_id'] as String?,
           mixtureNameSnapshot: opRow['mixture_name_snapshot'] as String?,
@@ -384,9 +322,6 @@ class SprayingLocalStore {
               : null,
           trackPoints: trackPointRows.map(SprayingTrackPoint.fromJson).toList(),
           inputs: inputRows.map(SprayingInput.fromJson).toList(),
-          confirmedPlants: plantRows
-              .map(SprayingConfirmedPlant.fromJson)
-              .toList(),
         ),
       );
     }

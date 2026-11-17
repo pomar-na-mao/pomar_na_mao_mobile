@@ -31,19 +31,6 @@ enum SprayingSyncStatus {
 }
 
 /// Origem de inclusão da planta na operação de pulverização.
-enum SprayingMatchSource {
-  autoMatched('auto_matched'),
-  manualAdded('manual_added');
-
-  const SprayingMatchSource(this.value);
-  final String value;
-
-  static SprayingMatchSource fromString(String? val) {
-    if (val == 'manual_added') return SprayingMatchSource.manualAdded;
-    return SprayingMatchSource.autoMatched;
-  }
-}
-
 /// Ponto geográfico de rastreamento da rota da máquina/trator.
 class SprayingTrackPoint {
   const SprayingTrackPoint({
@@ -190,58 +177,12 @@ class SprayingInput {
   );
 }
 
-/// Registro de planta afetada/confirmada na pulverização.
-class SprayingConfirmedPlant {
-  const SprayingConfirmedPlant({
-    required this.localId,
-    required this.plantId,
-    required this.matchSource,
-    this.matchedAt,
-    this.nearestTrackPointLocalId,
-    this.distanceMeters,
-    this.notes,
-  });
+/// Resultado temporário do cálculo espacial de plantas afetadas.
+class SprayingAffectedPlant {
+  const SprayingAffectedPlant({required this.plantId, this.distanceMeters});
 
-  final String localId;
   final String plantId;
-  final SprayingMatchSource matchSource;
-  final DateTime? matchedAt;
-  final String? nearestTrackPointLocalId;
   final double? distanceMeters;
-  final String? notes;
-
-  Map<String, dynamic> toJson() => {
-    'localId': localId,
-    'plantId': plantId,
-    'matchSource': matchSource.value,
-    if (matchedAt != null) 'matchedAt': matchedAt!.toUtc().toIso8601String(),
-    if (nearestTrackPointLocalId != null &&
-        nearestTrackPointLocalId!.isNotEmpty)
-      'nearestTrackPointLocalId': nearestTrackPointLocalId,
-    if (distanceMeters != null) 'distanceMeters': distanceMeters,
-    if (notes != null && notes!.isNotEmpty) 'notes': notes,
-  };
-
-  factory SprayingConfirmedPlant.fromJson(Map<String, dynamic> json) =>
-      SprayingConfirmedPlant(
-        localId: json['localId'] as String? ?? json['local_id'] as String,
-        plantId: json['plantId'] as String? ?? json['plant_id'] as String,
-        matchSource: SprayingMatchSource.fromString(
-          json['matchSource'] as String? ?? json['match_source'] as String?,
-        ),
-        matchedAt: json['matchedAt'] != null
-            ? DateTime.parse(json['matchedAt'] as String)
-            : json['matched_at'] != null
-            ? DateTime.parse(json['matched_at'] as String)
-            : null,
-        nearestTrackPointLocalId:
-            json['nearestTrackPointLocalId'] as String? ??
-            json['nearest_track_point_local_id'] as String?,
-        distanceMeters:
-            (json['distanceMeters'] ?? json['distance_meters'] as num?)
-                ?.toDouble(),
-        notes: json['notes'] as String?,
-      );
 }
 
 /// Operação de pulverização consolidada.
@@ -268,7 +209,6 @@ class SprayingOperation {
     this.route,
     this.trackPoints = const [],
     this.inputs = const [],
-    this.confirmedPlants = const [],
   }) : responsible = responsible ?? operatorName ?? 'Operador',
        performedAt = performedAt ?? finishedAt;
 
@@ -295,12 +235,23 @@ class SprayingOperation {
   final SprayingRoute? route;
   final List<SprayingTrackPoint> trackPoints;
   final List<SprayingInput> inputs;
-  final List<SprayingConfirmedPlant> confirmedPlants;
-
-  bool get hasReviewedPlants => confirmedPlants.isNotEmpty;
+  bool get hasValidRoute {
+    final rawCoordinates = route?.geojson['coordinates'];
+    if (rawCoordinates is! List || rawCoordinates.length < 2) return false;
+    final coordinates = rawCoordinates.whereType<List>().toList();
+    if (coordinates.length < 2 || coordinates.first.length < 2) return false;
+    return coordinates
+        .skip(1)
+        .any(
+          (coordinate) =>
+              coordinate.length >= 2 &&
+              (coordinate[0] != coordinates.first[0] ||
+                  coordinate[1] != coordinates.first[1]),
+        );
+  }
 
   bool get isEligibleForSync =>
-      hasReviewedPlants &&
+      hasValidRoute &&
       (syncStatus == SprayingSyncStatus.reviewed ||
           syncStatus == SprayingSyncStatus.error);
 
@@ -326,7 +277,6 @@ class SprayingOperation {
     SprayingRoute? route,
     List<SprayingTrackPoint>? trackPoints,
     List<SprayingInput>? inputs,
-    List<SprayingConfirmedPlant>? confirmedPlants,
   }) => SprayingOperation(
     localId: localId ?? this.localId,
     startedAt: startedAt ?? this.startedAt,
@@ -353,7 +303,6 @@ class SprayingOperation {
     route: route ?? this.route,
     trackPoints: trackPoints ?? this.trackPoints,
     inputs: inputs ?? this.inputs,
-    confirmedPlants: confirmedPlants ?? this.confirmedPlants,
   );
 
   /// Serializa para o payload exato esperado pela RPC `sync_reviewed_spraying_operation`.
@@ -372,16 +321,16 @@ class SprayingOperation {
         'responsible': responsible,
         'operatorName': responsible,
         'activity': 'Pulverização',
+        if (title != null && title!.isNotEmpty) 'title': title,
+        if (notes != null && notes!.isNotEmpty) 'notes': notes,
         if (machineId != null) 'machineId': machineId,
         if (machineNameSnapshot != null || machineName != null)
           'machineName': machineNameSnapshot ?? machineName,
+        if (machineBrandSnapshot != null) 'machineBrand': machineBrandSnapshot,
         if (mixtureId != null) 'mixtureId': mixtureId,
         if (mixtureNameSnapshot != null) 'mixtureName': mixtureNameSnapshot,
       },
       'route': route!.toJson(),
-      'trackPoints': trackPoints.map((tp) => tp.toJson()).toList(),
-      'inputs': inputs.map((i) => i.toJson()).toList(),
-      'confirmedPlants': confirmedPlants.map((cp) => cp.toJson()).toList(),
     };
   }
 }
@@ -391,17 +340,13 @@ class SprayingSyncResult {
   const SprayingSyncResult({
     required this.fieldOperationId,
     required this.routeId,
-    required this.trackPointsCount,
-    required this.inputsCount,
-    required this.confirmedPlantsCount,
+    required this.syncStatus,
     required this.syncedAt,
   });
 
   final String fieldOperationId;
   final String routeId;
-  final int trackPointsCount;
-  final int inputsCount;
-  final int confirmedPlantsCount;
+  final String syncStatus;
   final DateTime syncedAt;
 
   factory SprayingSyncResult.fromRpc(dynamic response) {
@@ -414,39 +359,23 @@ class SprayingSyncResult {
       throw FormatException('Formato de resposta RPC inválido: $response');
     }
 
-    int count(List<String> keys) {
+    String requiredString(List<String> keys) {
       for (final key in keys) {
         final val = map[key];
-        if (val is num && val.isFinite && val >= 0) return val.toInt();
+        if (val != null && val.toString().isNotEmpty) return val.toString();
       }
-      throw FormatException(
-        'Contagem ${keys.first} inválida na resposta RPC: $map',
-      );
+      throw FormatException('Campo ${keys.first} ausente na resposta RPC');
     }
 
     return SprayingSyncResult(
-      fieldOperationId:
-          (map['field_operation_id'] ?? map['fieldOperationId'])?.toString() ??
-          '',
-      routeId: (map['route_id'] ?? map['routeId'])?.toString() ?? '',
-      trackPointsCount: count([
-        'track_points_count',
-        'trackPointsCount',
-        'points_count',
-        'pointsCount',
+      fieldOperationId: requiredString([
+        'field_operation_id',
+        'fieldOperationId',
       ]),
-      inputsCount: count(['inputs_count', 'inputsCount']),
-      confirmedPlantsCount: count([
-        'confirmed_plants_count',
-        'confirmedPlantsCount',
-        'affected_plants_count',
-        'affectedPlantsCount',
-      ]),
-      syncedAt:
-          DateTime.tryParse(
-            (map['synced_at'] ?? map['syncedAt'])?.toString() ?? '',
-          ) ??
-          DateTime.now(),
+      routeId: requiredString(['route_id', 'routeId']),
+      syncStatus:
+          (map['sync_status'] ?? map['syncStatus'])?.toString() ?? 'synced',
+      syncedAt: DateTime.parse(requiredString(['synced_at', 'syncedAt'])),
     );
   }
 }

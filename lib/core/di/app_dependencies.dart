@@ -407,9 +407,7 @@ class _FakeEmptySprayingRemoteDataSource implements SprayingRemoteDataSource {
     return SprayingSyncResult(
       fieldOperationId: '',
       routeId: '',
-      trackPointsCount: 0,
-      inputsCount: 0,
-      confirmedPlantsCount: 0,
+      syncStatus: 'synced',
       syncedAt: DateTime.now().toUtc(),
     );
   }
