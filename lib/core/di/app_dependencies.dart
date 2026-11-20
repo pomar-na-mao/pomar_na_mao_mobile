@@ -25,6 +25,10 @@ import '../../features/operations/data/activity_database.dart';
 import '../../features/operations/data/activity_local_store.dart';
 import '../../features/operations/data/activity_remote_data_source.dart';
 import '../../features/operations/data/activity_repository.dart';
+import '../../features/operations/data/harvest_forecast_database.dart';
+import '../../features/operations/data/harvest_forecast_local_store.dart';
+import '../../features/operations/data/harvest_forecast_remote_data_source.dart';
+import '../../features/operations/data/harvest_forecast_repository.dart';
 import '../../features/operations/data/inspection_local_store.dart';
 import '../../features/operations/data/inspection_remote_data_source.dart';
 import '../../features/operations/data/inspection_repository.dart';
@@ -41,10 +45,12 @@ import '../../features/operations/data/stock_photo_picker.dart';
 import '../../features/operations/data/stock_remote_data_source.dart';
 import '../../features/operations/data/stock_repository.dart';
 import '../../features/operations/domain/inspection_models.dart';
+import '../../features/operations/domain/harvest_forecast_models.dart';
 import '../../features/operations/domain/mipd_models.dart';
 import '../../features/operations/domain/spraying_models.dart';
 import '../../features/operations/presentation/inspection_view_model.dart';
 import '../../features/operations/presentation/activity_view_model.dart';
+import '../../features/operations/presentation/harvest_forecast_view_model.dart';
 import '../../features/operations/presentation/mipd_view_model.dart';
 import '../../features/operations/presentation/spraying_view_model.dart';
 import '../../features/operations/presentation/stock_view_model.dart';
@@ -72,6 +78,8 @@ class AppDependencies {
     this.mipdDatabase,
     ActivityRepository? activityRepository,
     this.activityDatabase,
+    HarvestForecastRepository? harvestForecastRepository,
+    this.harvestForecastDatabase,
     this.sharedReadRepository,
     InventoryViewModel? inventoryViewModel,
     FarmMapViewModel? farmMapViewModel,
@@ -79,6 +87,7 @@ class AppDependencies {
     SprayingViewModel? sprayingViewModel,
     MipdViewModel? mipdViewModel,
     ActivityViewModel? activityViewModel,
+    HarvestForecastViewModel? harvestForecastViewModel,
     AuthenticationRepository? authenticationRepository,
     AuthenticationViewModel? authenticationViewModel,
     StockRepository? stockRepository,
@@ -88,6 +97,7 @@ class AppDependencies {
        _injectedSprayingRepository = sprayingRepository,
        _injectedMipdRepository = mipdRepository,
        _injectedActivityRepository = activityRepository,
+       _injectedHarvestForecastRepository = harvestForecastRepository,
        _injectedAuthenticationRepository = authenticationRepository,
        _injectedStockRepository = stockRepository,
        _injectedInventoryViewModel = inventoryViewModel,
@@ -96,6 +106,7 @@ class AppDependencies {
        _injectedSprayingViewModel = sprayingViewModel,
        _injectedMipdViewModel = mipdViewModel,
        _injectedActivityViewModel = activityViewModel,
+       _injectedHarvestForecastViewModel = harvestForecastViewModel,
        _injectedAuthenticationViewModel = authenticationViewModel,
        _injectedStockViewModel = stockViewModel;
 
@@ -162,6 +173,15 @@ class AppDependencies {
       remoteDataSource: activityRemote,
       sharedReadRepository: sharedReadRepo,
     );
+    final harvestForecastDb = HarvestForecastDatabase(
+      projectUrl: supabaseClient.rest.url.toString(),
+    );
+    final harvestForecastRepo = DefaultHarvestForecastRepository(
+      localStore: HarvestForecastLocalStore(harvestForecastDb),
+      remoteDataSource: SupabaseHarvestForecastRemoteDataSource(supabaseClient),
+      inspectionLocalStore: inspStore,
+      refreshSharedCache: sharedReadRepo.refreshCache,
+    );
     final stockRepo = DefaultStockRepository(
       SupabaseStockRemoteDataSource(supabaseClient),
     );
@@ -180,11 +200,13 @@ class AppDependencies {
       sprayingDatabase: sprayDb,
       mipdDatabase: mipdDb,
       activityDatabase: activityDb,
+      harvestForecastDatabase: harvestForecastDb,
       sharedReadRepository: sharedReadRepo,
       inspectionRepository: inspRepo,
       sprayingRepository: sprayRepo,
       mipdRepository: mipdRepo,
       activityRepository: activityRepo,
+      harvestForecastRepository: harvestForecastRepo,
       authenticationRepository: authenticationRepo,
       stockRepository: stockRepo,
       inventoryViewModel: InventoryViewModel(
@@ -208,11 +230,13 @@ class AppDependencies {
   final SprayingDatabase? sprayingDatabase;
   final MipdDatabase? mipdDatabase;
   final ActivityDatabase? activityDatabase;
+  final HarvestForecastDatabase? harvestForecastDatabase;
   final SharedReadRepository? sharedReadRepository;
   final InspectionRepository? _injectedInspectionRepository;
   final SprayingRepository? _injectedSprayingRepository;
   final MipdRepository? _injectedMipdRepository;
   final ActivityRepository? _injectedActivityRepository;
+  final HarvestForecastRepository? _injectedHarvestForecastRepository;
   final AuthenticationRepository? _injectedAuthenticationRepository;
   final StockRepository? _injectedStockRepository;
 
@@ -247,12 +271,26 @@ class AppDependencies {
         refreshSharedCache: () async {},
       );
 
+  late final HarvestForecastRepository harvestForecastRepository =
+      _injectedHarvestForecastRepository ??
+      DefaultHarvestForecastRepository(
+        localStore: HarvestForecastLocalStore(
+          harvestForecastDatabase ?? HarvestForecastDatabase(projectUrl: ''),
+        ),
+        remoteDataSource: const _FakeEmptyHarvestForecastRemoteDataSource(),
+        inspectionLocalStore: InspectionLocalStore(
+          inspectionDatabase ?? InspectionDatabase(projectUrl: ''),
+        ),
+        refreshSharedCache: () async {},
+      );
+
   final InventoryViewModel? _injectedInventoryViewModel;
   final FarmMapViewModel? _injectedFarmMapViewModel;
   final InspectionViewModel? _injectedInspectionViewModel;
   final SprayingViewModel? _injectedSprayingViewModel;
   final MipdViewModel? _injectedMipdViewModel;
   final ActivityViewModel? _injectedActivityViewModel;
+  final HarvestForecastViewModel? _injectedHarvestForecastViewModel;
   final AuthenticationViewModel? _injectedAuthenticationViewModel;
   final StockViewModel? _injectedStockViewModel;
 
@@ -323,6 +361,18 @@ class AppDependencies {
         ),
       ));
 
+  HarvestForecastViewModel? _createdHarvestForecastViewModel;
+  HarvestForecastViewModel get harvestForecastViewModel =>
+      _injectedHarvestForecastViewModel ??
+      (_createdHarvestForecastViewModel ??= HarvestForecastViewModel(
+        repository: harvestForecastRepository,
+        locationService: locationService,
+        mapInitialPositionResolver: MapInitialPositionResolver(
+          locationService: locationService,
+          farmRepository: farmRepository,
+        ),
+      ));
+
   ActivityViewModel? _createdActivityViewModel;
   ActivityViewModel? get activityViewModel {
     if (_injectedActivityViewModel case final injected?) return injected;
@@ -370,6 +420,8 @@ class AppDependencies {
     _injectedSprayingViewModel?.dispose();
     (_injectedMipdViewModel ?? _createdMipdViewModel)?.dispose();
     (_injectedActivityViewModel ?? _createdActivityViewModel)?.dispose();
+    (_injectedHarvestForecastViewModel ?? _createdHarvestForecastViewModel)
+        ?.dispose();
     (_injectedAuthenticationViewModel ?? _createdAuthenticationViewModel)
         ?.dispose();
     (_injectedStockViewModel ?? _createdStockViewModel)?.dispose();
@@ -378,7 +430,18 @@ class AppDependencies {
     unawaited(sprayingDatabase?.close());
     unawaited(mipdDatabase?.close());
     unawaited(activityDatabase?.close());
+    unawaited(harvestForecastDatabase?.close());
   }
+}
+
+class _FakeEmptyHarvestForecastRemoteDataSource
+    implements HarvestForecastRemoteDataSource {
+  const _FakeEmptyHarvestForecastRemoteDataSource();
+
+  @override
+  Future<List<HarvestForecastSyncResult>> syncMarkings(
+    Map<String, dynamic> payload,
+  ) async => const [];
 }
 
 class _FakeEmptyMipdRemoteDataSource implements MipdRemoteDataSource {

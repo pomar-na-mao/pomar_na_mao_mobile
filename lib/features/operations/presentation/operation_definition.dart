@@ -73,6 +73,14 @@ const operationModules = <OperationModuleDefinition>[
         isEnabled: true,
       ),
       OperationDefinition(
+        id: 'harvest-forecast',
+        title: 'Previsão de Safra',
+        description: 'Registre estimativas de produção por planta no mapa.',
+        icon: Icons.trending_up_rounded,
+        accent: Color(0xFF15803D),
+        isEnabled: true,
+      ),
+      OperationDefinition(
         id: 'agronomic-sampling',
         title: 'Coletas agronômicas',
         description: 'Organize amostras e registros coletados no campo.',
