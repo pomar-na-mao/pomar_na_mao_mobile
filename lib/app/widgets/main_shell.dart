@@ -94,6 +94,8 @@ class _MainShellState extends State<MainShell> {
                             sprayingViewModel: scopeDeps?.sprayingViewModel,
                             mipdViewModel: scopeDeps?.mipdViewModel,
                             activityViewModel: scopeDeps?.activityViewModel,
+                            harvestForecastViewModel:
+                                scopeDeps?.harvestForecastViewModel,
                             stockViewModel: scopeDeps?.stockViewModel,
                             authenticationViewModel:
                                 scopeDeps?.authenticationViewModel,
@@ -114,6 +116,7 @@ class _MainShellState extends State<MainShell> {
                   effectiveInspectionVm?.pauseLocation();
                   effectiveMipdVm?.pauseLocation();
                   scopeDeps?.activityViewModel?.pauseLocation();
+                  scopeDeps?.harvestForecastViewModel.pauseLocation();
                 }
                 setState(() {
                   _selectedIndex = index;

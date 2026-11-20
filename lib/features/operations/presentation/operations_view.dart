@@ -5,6 +5,8 @@ import '../../auth/presentation/widgets/authentication_dialog.dart';
 import 'inspection_view.dart';
 import 'activity_view.dart';
 import 'activity_view_model.dart';
+import 'harvest_forecast_view.dart';
+import 'harvest_forecast_view_model.dart';
 import 'inspection_view_model.dart';
 import 'mipd_view.dart';
 import 'mipd_view_model.dart';
@@ -25,6 +27,8 @@ class OperationsView extends StatelessWidget {
     this.mipdMapBuilder,
     this.activityViewModel,
     this.activityMapBuilder,
+    this.harvestForecastViewModel,
+    this.harvestForecastMapBuilder,
     this.stockViewModel,
     this.authenticationViewModel,
     super.key,
@@ -38,6 +42,8 @@ class OperationsView extends StatelessWidget {
   final MipdMapBuilder? mipdMapBuilder;
   final ActivityViewModel? activityViewModel;
   final ActivityMapBuilder? activityMapBuilder;
+  final HarvestForecastViewModel? harvestForecastViewModel;
+  final HarvestForecastMapBuilder? harvestForecastMapBuilder;
   final StockViewModel? stockViewModel;
   final AuthenticationViewModel? authenticationViewModel;
 
@@ -96,6 +102,16 @@ class OperationsView extends StatelessWidget {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => StockView(viewModel: stockViewModel!),
+        ),
+      );
+    } else if (operation.id == 'harvest-forecast' &&
+        harvestForecastViewModel != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => HarvestForecastView(
+            viewModel: harvestForecastViewModel!,
+            mapBuilder: harvestForecastMapBuilder,
+          ),
         ),
       );
     }

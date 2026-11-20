@@ -7,6 +7,10 @@ import 'package:pomar_na_mao_mobile/features/operations/data/activity_repository
 import 'package:pomar_na_mao_mobile/features/operations/domain/activity_models.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/activity_view.dart';
 import 'package:pomar_na_mao_mobile/features/operations/presentation/activity_view_model.dart';
+import 'package:pomar_na_mao_mobile/features/operations/data/harvest_forecast_repository.dart';
+import 'package:pomar_na_mao_mobile/features/operations/domain/harvest_forecast_models.dart';
+import 'package:pomar_na_mao_mobile/features/operations/presentation/harvest_forecast_view.dart';
+import 'package:pomar_na_mao_mobile/features/operations/presentation/harvest_forecast_view_model.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/mipd_photo_service.dart';
 import 'package:pomar_na_mao_mobile/features/operations/data/mipd_repository.dart';
 import 'package:pomar_na_mao_mobile/features/operations/domain/inspection_models.dart';
@@ -27,6 +31,7 @@ Widget buildSubject({
   SprayingMapBuilder? sprayingMapBuilder,
   MipdViewModel? mipdViewModel,
   ActivityViewModel? activityViewModel,
+  HarvestForecastViewModel? harvestForecastViewModel,
   StockViewModel? stockViewModel,
   AuthenticationViewModel? authenticationViewModel,
   TextScaler textScaler = TextScaler.noScaling,
@@ -50,6 +55,9 @@ Widget buildSubject({
           mipdMapBuilder: (_, _) =>
               const SizedBox(key: ValueKey('test-mipd-map')),
           activityViewModel: activityViewModel,
+          harvestForecastViewModel: harvestForecastViewModel,
+          harvestForecastMapBuilder: (_, _) =>
+              const SizedBox(key: ValueKey('test-harvest-forecast-map')),
           stockViewModel: stockViewModel,
           authenticationViewModel: authenticationViewModel,
           activityMapBuilder: (_, _) =>
@@ -150,6 +158,35 @@ class _EmptyStockRepository implements StockRepository {
 class _NoStockPhotoPicker implements StockPhotoPicker {
   @override
   Future<StockPhoto?> pick(StockPhotoSource source) async => null;
+}
+
+class _EmptyHarvestForecastRepository implements HarvestForecastRepository {
+  @override
+  String createLocalId() => 'local';
+  @override
+  Future<List<InspectionPlant>> loadPlants({bool forceRemote = false}) async =>
+      const [];
+  @override
+  Future<List<HarvestForecastMarking>> list() async => const [];
+  @override
+  Future<HarvestForecastMarking> save({
+    String? localId,
+    required double latitude,
+    required double longitude,
+    required HarvestForecastClassification classification,
+    DateTime? createdAt,
+  }) => throw UnimplementedError();
+  @override
+  Future<HarvestForecastMarking?> updateClassification({
+    required String localId,
+    required HarvestForecastClassification classification,
+  }) async => null;
+  @override
+  Future<bool> delete(String localId) async => false;
+  @override
+  Future<bool> syncAll() async => true;
+  @override
+  Future<bool> syncOne(String localId) async => true;
 }
 
 class _FakeAuthenticationRepository implements AuthenticationRepository {
@@ -275,7 +312,7 @@ void main() {
 
     await tester.drag(
       find.byKey(const ValueKey('operations-module-orchard-routine-list')),
-      const Offset(-1200, 0),
+      const Offset(-800, 0),
     );
     await tester.drag(
       find.byKey(
@@ -285,7 +322,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Estoque'), findsOneWidget);
-    expect(find.text('Coletas agronômicas'), findsOneWidget);
+    expect(find.text('Previsão de Safra'), findsOneWidget);
     expect(find.text('Planejamento de atividades'), findsOneWidget);
 
     final stockOpacity = tester.widget<AnimatedOpacity>(
@@ -295,6 +332,13 @@ void main() {
       ),
     );
     expect(stockOpacity.opacity, 1);
+
+    await tester.drag(
+      find.byKey(const ValueKey('operations-module-orchard-routine-list')),
+      const Offset(-600, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Coletas agronômicas'), findsOneWidget);
     semantics.dispose();
   });
 
@@ -307,7 +351,7 @@ void main() {
 
     await tester.drag(
       find.byKey(const ValueKey('operations-module-orchard-routine-list')),
-      const Offset(-1200, 0),
+      const Offset(-1600, 0),
     );
     await tester.drag(
       find.byKey(
@@ -587,6 +631,50 @@ void main() {
     expect(find.byKey(const ValueKey('authentication-dialog')), findsNothing);
     expect(find.byType(StockView), findsOneWidget);
   });
+
+  testWidgets(
+    'harvest forecast card appears after stock in orchard routine and opens its view',
+    (tester) async {
+      final viewModel = HarvestForecastViewModel(
+        repository: _EmptyHarvestForecastRepository(),
+        locationService: _NoLocationService(),
+      );
+      addTearDown(viewModel.dispose);
+      await setSurfaceSize(tester, const Size(768, 1024));
+      await tester.pumpWidget(
+        buildSubject(harvestForecastViewModel: viewModel),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey('operations-module-orchard-routine-list')),
+        const Offset(-1200, 0),
+      );
+      await tester.pumpAndSettle();
+
+      final stockCard = find.byKey(const ValueKey('operation-card-stock'));
+      final forecastCard = find.byKey(
+        const ValueKey('operation-card-harvest-forecast'),
+      );
+      expect(stockCard, findsOneWidget);
+      expect(forecastCard, findsOneWidget);
+      expect(
+        tester.getTopLeft(forecastCard).dx,
+        greaterThan(tester.getTopLeft(stockCard).dx),
+      );
+
+      await tester.tap(forecastCard);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HarvestForecastView), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('test-harvest-forecast-map')),
+        findsOneWidget,
+      );
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(OperationsView), findsOneWidget);
+    },
+  );
 
   for (final size in [
     const Size(320, 800),
